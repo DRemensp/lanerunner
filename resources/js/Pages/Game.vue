@@ -1226,12 +1226,41 @@ const handleResize = () => {
   applyCameraZoom();
 };
 
-const randomizeBuilding = (building) => {
-  building.scale.set(
-    2.4 + Math.random() * 2.2,
-    4 + Math.random() * 11,
-    3.5 + Math.random() * 3,
+let houseAssets = null;
+
+const buildHouse = (side) => {
+  const group = new THREE.Group();
+  const w = 3.2 + Math.random() * 2.4;
+  const h = 5 + Math.random() * 9;
+  const d = 4 + Math.random() * 3;
+  const base = new THREE.Mesh(
+    buildingGeometry,
+    buildingMaterials[Math.floor(Math.random() * buildingMaterials.length)],
   );
+  base.scale.set(w, h, d);
+  group.add(base);
+
+  const faceX = -side * (w / 2 + 0.03);
+  const faceRotation = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+  const rows = Math.max(1, Math.min(5, Math.floor((h - 2.6) / 2.1)));
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = -1; col <= 1; col += 2) {
+      const win = new THREE.Mesh(
+        houseAssets.windowGeometry,
+        Math.random() < 0.4 ? houseAssets.windowLit : houseAssets.windowDark,
+      );
+      win.position.set(faceX, 2.6 + row * 2.1, col * d * 0.22);
+      win.rotation.y = faceRotation;
+      group.add(win);
+    }
+  }
+
+  const door = new THREE.Mesh(houseAssets.doorGeometry, houseAssets.doorMat);
+  door.position.set(faceX, 0.85, 0);
+  door.rotation.y = faceRotation;
+  group.add(door);
+
+  return group;
 };
 
 const buildRunner = () => {
@@ -1432,11 +1461,19 @@ const initScene = () => {
   glowCtx.fillRect(0, 0, 128, 128);
   glowTexture = new THREE.CanvasTexture(glowCanvas);
 
-  const lampPoleGeometry = new THREE.BoxGeometry(0.09, 2.9, 0.09);
-  const lampArmGeometry = new THREE.BoxGeometry(0.55, 0.07, 0.07);
-  const lampHeadGeometry = new THREE.BoxGeometry(0.24, 0.12, 0.18);
-  const lampConeGeometry = new THREE.ConeGeometry(1.05, 2.8, 20, 1, true);
-  const lampPoolGeometry = new THREE.PlaneGeometry(3.2, 3.2);
+  houseAssets = {
+    windowGeometry: new THREE.PlaneGeometry(0.7, 0.9),
+    doorGeometry: new THREE.PlaneGeometry(0.95, 1.7),
+    windowLit: new THREE.MeshBasicMaterial({ color: 0xffd98c }),
+    windowDark: new THREE.MeshBasicMaterial({ color: 0x0a1322 }),
+    doorMat: new THREE.MeshBasicMaterial({ color: 0x0c1626 }),
+  };
+
+  const lampPoleGeometry = new THREE.BoxGeometry(0.11, 4.2, 0.11);
+  const lampArmGeometry = new THREE.BoxGeometry(0.8, 0.08, 0.08);
+  const lampHeadGeometry = new THREE.BoxGeometry(0.3, 0.15, 0.22);
+  const lampConeGeometry = new THREE.ConeGeometry(1.4, 3.9, 20, 1, true);
+  const lampPoolGeometry = new THREE.PlaneGeometry(4.4, 4.4);
   const lampPoleMaterial = new THREE.MeshLambertMaterial({ color: 0x24304a });
   const lampHeadMaterial = new THREE.MeshBasicMaterial({ color: 0xffdfa6 });
   const lampConeMaterial = new THREE.MeshBasicMaterial({
@@ -1478,47 +1515,40 @@ const initScene = () => {
     railRight.position.set(3.8, 0.2, 0);
     segment.add(railRight);
 
-    const buildings = [];
     for (let side = -1; side <= 1; side += 2) {
-      for (let b = 0; b < 3; b += 1) {
-        const building = new THREE.Mesh(
-          buildingGeometry,
-          buildingMaterials[Math.floor(Math.random() * buildingMaterials.length)],
-        );
-        building.position.set(
-          side * (7 + Math.random() * 4),
+      for (let b = 0; b < 2; b += 1) {
+        const house = buildHouse(side);
+        house.position.set(
+          side * (7.5 + Math.random() * 3),
           0,
-          -segmentLength / 2 + (b - 1) * (segmentLength / 3) + (Math.random() - 0.5) * 3,
+          -segmentLength / 2 + (b - 0.5) * 10 + (Math.random() - 0.5) * 4,
         );
-        randomizeBuilding(building);
-        segment.add(building);
-        buildings.push(building);
+        segment.add(house);
       }
     }
-    segment.userData.buildings = buildings;
 
     for (let side = -1; side <= 1; side += 2) {
       const lamp = new THREE.Group();
 
       const pole = new THREE.Mesh(lampPoleGeometry, lampPoleMaterial);
-      pole.position.y = 1.45;
+      pole.position.y = 2.1;
       lamp.add(pole);
 
       const arm = new THREE.Mesh(lampArmGeometry, lampPoleMaterial);
-      arm.position.set(-side * 0.27, 2.9, 0);
+      arm.position.set(-side * 0.4, 4.2, 0);
       lamp.add(arm);
 
       const head = new THREE.Mesh(lampHeadGeometry, lampHeadMaterial);
-      head.position.set(-side * 0.55, 2.85, 0);
+      head.position.set(-side * 0.8, 4.13, 0);
       lamp.add(head);
 
       const cone = new THREE.Mesh(lampConeGeometry, lampConeMaterial);
-      cone.position.set(-side * 0.55, 1.45, 0);
+      cone.position.set(-side * 0.8, 2.08, 0);
       lamp.add(cone);
 
       const pool = new THREE.Mesh(lampPoolGeometry, lampPoolMaterial);
       pool.rotation.x = -Math.PI / 2;
-      pool.position.set(-side * 0.55, 0.03, 0);
+      pool.position.set(-side * 0.8, 0.03, 0);
       lamp.add(pool);
 
       lamp.position.set(side * 4.15, 0, -segmentLength / 2);
@@ -1576,6 +1606,9 @@ const getObstacleAssets = () => {
     lightMat: track(new THREE.MeshBasicMaterial({ color: 0xffe9b0 })),
     tall: lambert(0xffb14a, 0.4),
     over: lambert(0x49a8ff, 0.45),
+    busBody: lambert(0xc22b3d, 0.25),
+    busRoof: lambert(0xe8e2d0),
+    frame: lambert(0x2a3350),
   };
   return obstacleAssets;
 };
@@ -1631,10 +1664,41 @@ const obstacleBuilders = {
     });
     return { mesh: g, size: { w: 1.5, h: 1.1, d: 2.6 } };
   },
-  'tall-block': () => {
+  'tall-bus': () => {
     const a = getObstacleAssets();
-    const mesh = new THREE.Mesh(track(new THREE.BoxGeometry(1.2, 2.8, 1.2)), a.tall);
-    return { mesh, size: { w: 1.2, h: 2.8, d: 1.2 } };
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(track(new THREE.BoxGeometry(1.5, 2.6, 3.4)), a.busBody);
+    body.position.y = 0.15;
+    g.add(body);
+    const roof = new THREE.Mesh(track(new THREE.BoxGeometry(1.52, 0.12, 3.42)), a.busRoof);
+    roof.position.y = 1.39;
+    g.add(roof);
+    const frontWinGeo = track(new THREE.BoxGeometry(1.3, 0.55, 0.06));
+    const sideWinGeo = track(new THREE.BoxGeometry(0.06, 0.55, 3.0));
+    [0.75, -0.35].forEach((y) => {
+      const front = new THREE.Mesh(frontWinGeo, a.carGlass);
+      front.position.set(0, y, 1.71);
+      g.add(front);
+      [-0.76, 0.76].forEach((x) => {
+        const sideWin = new THREE.Mesh(sideWinGeo, a.carGlass);
+        sideWin.position.set(x, y, 0);
+        g.add(sideWin);
+      });
+    });
+    const wheelGeo = track(new THREE.CylinderGeometry(0.3, 0.3, 0.22, 10));
+    wheelGeo.rotateZ(Math.PI / 2);
+    [[-0.72, 1.1], [0.72, 1.1], [-0.72, -1.1], [0.72, -1.1]].forEach(([x, z]) => {
+      const wheel = new THREE.Mesh(wheelGeo, a.wheel);
+      wheel.position.set(x, -1.15, z);
+      g.add(wheel);
+    });
+    const lightGeo = track(new THREE.BoxGeometry(0.2, 0.12, 0.06));
+    [-0.5, 0.5].forEach((x) => {
+      const headlight = new THREE.Mesh(lightGeo, a.lightMat);
+      headlight.position.set(x, -0.95, 1.71);
+      g.add(headlight);
+    });
+    return { mesh: g, size: { w: 1.5, h: 2.9, d: 3.4 } };
   },
   'tall-stack': () => {
     const a = getObstacleAssets();
@@ -1648,17 +1712,31 @@ const obstacleBuilders = {
     });
     return { mesh: g, size: { w: 1.2, h: 2.8, d: 1.2 } };
   },
-  'over-bar': () => {
+  'over-sign': () => {
     const a = getObstacleAssets();
-    const mesh = new THREE.Mesh(track(new THREE.BoxGeometry(1.6, 0.7, 1.2)), a.over);
-    return { mesh, size: { w: 1.6, h: 0.7, d: 1.2 } };
+    const g = new THREE.Group();
+    const panel = new THREE.Mesh(track(new THREE.BoxGeometry(1.6, 0.55, 0.12)), a.over);
+    g.add(panel);
+    const frameGeo = track(new THREE.BoxGeometry(1.7, 0.09, 0.17));
+    [0.3, -0.3].forEach((y) => {
+      const rail = new THREE.Mesh(frameGeo, a.frame);
+      rail.position.y = y;
+      g.add(rail);
+    });
+    const rodGeo = track(new THREE.BoxGeometry(0.07, 1.5, 0.07));
+    [-0.6, 0.6].forEach((x) => {
+      const rod = new THREE.Mesh(rodGeo, a.frame);
+      rod.position.set(x, 1.05, 0);
+      g.add(rod);
+    });
+    return { mesh: g, size: { w: 1.6, h: 0.7, d: 1.2 } };
   },
 };
 
 const obstacleVariants = {
   low: ['low-crate', 'low-barrel', 'low-car'],
-  tall: ['tall-block', 'tall-stack'],
-  over: ['over-bar'],
+  tall: ['tall-stack', 'tall-bus'],
+  over: ['over-sign'],
 };
 
 const getObstacle = (type, forcedKey = null) => {
@@ -1811,7 +1889,6 @@ const updateRunner = (delta) => {
     segment.position.z += speed.value * delta;
     if (segment.position.z > 30) {
       segment.position.z -= segmentLength * floorSegments.length;
-      (segment.userData.buildings || []).forEach(randomizeBuilding);
     }
   });
 
