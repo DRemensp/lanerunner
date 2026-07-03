@@ -477,6 +477,7 @@ let crashTimer = 0;
 let buildingGeometry;
 let buildingMaterials = [];
 let glowTexture;
+let starPoints;
 
 const obstaclePools = {};
 const obstacleResources = [];
@@ -1269,76 +1270,166 @@ const buildRunner = () => {
   limbMaterial = new THREE.MeshLambertMaterial({
     color: new THREE.Color(currentSkin.value.color).multiplyScalar(0.55),
   });
-  const headMaterial = new THREE.MeshLambertMaterial({ color: 0x131826 });
+  const darkMaterial = new THREE.MeshLambertMaterial({ color: 0x171c2a });
+  const headMaterial = new THREE.MeshLambertMaterial({ color: 0x1a2132 });
+  const visorMaterial = new THREE.MeshBasicMaterial({ color: 0x7df9ff });
 
   // Character spans roughly playerSize.h, centered on the group origin so the
-  // existing collision math keeps working unchanged.
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.36), playerMaterial);
+  // existing collision math keeps working. The runner faces -z.
+  const torso = new THREE.Group();
   torso.position.y = 0.2;
+  const jacket = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.56, 0.32), playerMaterial);
+  torso.add(jacket);
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.34, 0.05), limbMaterial);
+  chest.position.set(0, 0.04, -0.17);
+  torso.add(chest);
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.09, 0.34), darkMaterial);
+  belt.position.y = -0.31;
+  torso.add(belt);
+  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.44, 0.16), darkMaterial);
+  pack.position.set(0, 0.02, 0.26);
+  torso.add(pack);
   player.add(torso);
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.32, 0.34), headMaterial);
-  head.position.y = 0.68;
+  const head = new THREE.Group();
+  head.position.y = 0.56;
+  const skull = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.28, 0.3), headMaterial);
+  skull.position.y = 0.12;
+  head.add(skull);
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.09, 0.03), visorMaterial);
+  visor.position.set(0, 0.14, -0.16);
+  head.add(visor);
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.34), playerMaterial);
+  cap.position.y = 0.29;
+  head.add(cap);
+  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.16), playerMaterial);
+  brim.position.set(0, 0.27, -0.24);
+  head.add(brim);
   player.add(head);
 
-  const legGeometry = new THREE.BoxGeometry(0.2, 0.58, 0.24);
-  legGeometry.translate(0, -0.29, 0);
-  const legLeft = new THREE.Mesh(legGeometry, limbMaterial);
-  legLeft.position.set(-0.17, -0.08, 0);
-  player.add(legLeft);
-  const legRight = new THREE.Mesh(legGeometry, limbMaterial);
-  legRight.position.set(0.17, -0.08, 0);
-  player.add(legRight);
+  const makeLeg = (x) => {
+    const hip = new THREE.Group();
+    hip.position.set(x, -0.05, 0);
+    const thighGeo = new THREE.BoxGeometry(0.19, 0.34, 0.22);
+    thighGeo.translate(0, -0.165, 0);
+    hip.add(new THREE.Mesh(thighGeo, limbMaterial));
+    const knee = new THREE.Group();
+    knee.position.y = -0.33;
+    const shinGeo = new THREE.BoxGeometry(0.16, 0.28, 0.19);
+    shinGeo.translate(0, -0.14, 0);
+    knee.add(new THREE.Mesh(shinGeo, limbMaterial));
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.32), darkMaterial);
+    shoe.position.set(0, -0.27, -0.05);
+    knee.add(shoe);
+    hip.add(knee);
+    return { hip, knee };
+  };
 
-  const armGeometry = new THREE.BoxGeometry(0.15, 0.5, 0.2);
-  armGeometry.translate(0, -0.22, 0);
-  const armLeft = new THREE.Mesh(armGeometry, limbMaterial);
-  armLeft.position.set(-0.4, 0.44, 0);
-  player.add(armLeft);
-  const armRight = new THREE.Mesh(armGeometry, limbMaterial);
-  armRight.position.set(0.4, 0.44, 0);
-  player.add(armRight);
+  const makeArm = (x) => {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(x, 0.42, 0);
+    const upperGeo = new THREE.BoxGeometry(0.15, 0.3, 0.17);
+    upperGeo.translate(0, -0.15, 0);
+    shoulder.add(new THREE.Mesh(upperGeo, playerMaterial));
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.3;
+    const foreGeo = new THREE.BoxGeometry(0.13, 0.26, 0.15);
+    foreGeo.translate(0, -0.13, 0);
+    elbow.add(new THREE.Mesh(foreGeo, limbMaterial));
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.12), headMaterial);
+    hand.position.y = -0.3;
+    elbow.add(hand);
+    shoulder.add(elbow);
+    return { shoulder, elbow };
+  };
 
-  runnerParts = { torso, head, legLeft, legRight, armLeft, armRight };
+  const legL = makeLeg(-0.17);
+  const legR = makeLeg(0.17);
+  const armL = makeArm(-0.38);
+  const armR = makeArm(0.38);
+  player.add(legL.hip, legR.hip, armL.shoulder, armR.shoulder);
+
+  runnerParts = { torso, head, legL, legR, armL, armR };
 };
 
 const animateRunner = (delta) => {
   if (!runnerParts) return;
-  const { torso, legLeft, legRight, armLeft, armRight } = runnerParts;
+  const { torso, head, legL, legR, armL, armR } = runnerParts;
   const grounded = player.position.y <= currentGroundCenter + groundedEpsilon;
+  const d = (current, target, speedFactor = 14) =>
+    THREE.MathUtils.damp(current, target, speedFactor, delta);
 
-  player.rotation.z = THREE.MathUtils.damp(
-    player.rotation.z,
-    (player.position.x - lanes[currentLane]) * 0.18,
-    10,
-    delta,
-  );
+  player.rotation.z = d(player.rotation.z, (player.position.x - lanes[currentLane]) * 0.18, 10);
 
   if (isSliding) {
-    legLeft.rotation.x = 1.1;
-    legRight.rotation.x = 1.1;
-    armLeft.rotation.x = -0.6;
-    armRight.rotation.x = -0.6;
-    torso.position.y = 0.2;
+    // Feet-first slide, head tucked back.
+    legL.hip.rotation.x = d(legL.hip.rotation.x, 1.25);
+    legR.hip.rotation.x = d(legR.hip.rotation.x, 1.0);
+    legL.knee.rotation.x = d(legL.knee.rotation.x, -0.45);
+    legR.knee.rotation.x = d(legR.knee.rotation.x, -0.7);
+    armL.shoulder.rotation.x = d(armL.shoulder.rotation.x, -0.7);
+    armR.shoulder.rotation.x = d(armR.shoulder.rotation.x, -0.7);
+    armL.elbow.rotation.x = d(armL.elbow.rotation.x, 0.5);
+    armR.elbow.rotation.x = d(armR.elbow.rotation.x, 0.5);
+    torso.rotation.x = d(torso.rotation.x, -0.3);
+    head.rotation.x = d(head.rotation.x, 0.25);
     return;
   }
 
   if (!grounded) {
-    legLeft.rotation.x = THREE.MathUtils.damp(legLeft.rotation.x, 0.7, 14, delta);
-    legRight.rotation.x = THREE.MathUtils.damp(legRight.rotation.x, -0.45, 14, delta);
-    armLeft.rotation.x = THREE.MathUtils.damp(armLeft.rotation.x, -1.4, 14, delta);
-    armRight.rotation.x = THREE.MathUtils.damp(armRight.rotation.x, -1.4, 14, delta);
-    torso.position.y = 0.2;
+    // Hero jump: front leg reaching, back leg tucked, arms thrown up.
+    legL.hip.rotation.x = d(legL.hip.rotation.x, 0.95, 12);
+    legR.hip.rotation.x = d(legR.hip.rotation.x, -0.5, 12);
+    legL.knee.rotation.x = d(legL.knee.rotation.x, -0.25, 12);
+    legR.knee.rotation.x = d(legR.knee.rotation.x, -1.35, 12);
+    armL.shoulder.rotation.x = d(armL.shoulder.rotation.x, -1.6, 12);
+    armR.shoulder.rotation.x = d(armR.shoulder.rotation.x, -1.25, 12);
+    armL.elbow.rotation.x = d(armL.elbow.rotation.x, 0.4, 12);
+    armR.elbow.rotation.x = d(armR.elbow.rotation.x, 0.4, 12);
+    torso.rotation.x = d(torso.rotation.x, 0.18, 10);
+    head.rotation.x = d(head.rotation.x, -0.12, 10);
     return;
   }
 
   runPhase += delta * (6 + speed.value * 0.6);
   const swing = Math.sin(runPhase);
-  legLeft.rotation.x = swing * 0.95;
-  legRight.rotation.x = -swing * 0.95;
-  armLeft.rotation.x = -swing * 0.75;
-  armRight.rotation.x = swing * 0.75;
-  torso.position.y = 0.2 + Math.abs(Math.cos(runPhase)) * 0.045;
+  legL.hip.rotation.x = swing;
+  legR.hip.rotation.x = -swing;
+  // Knee bends hardest while the leg swings through the back.
+  legL.knee.rotation.x = -(0.25 + Math.max(0, -swing) * 1.15);
+  legR.knee.rotation.x = -(0.25 + Math.max(0, swing) * 1.15);
+  armL.shoulder.rotation.x = -swing * 0.85;
+  armR.shoulder.rotation.x = swing * 0.85;
+  armL.elbow.rotation.x = 0.9;
+  armR.elbow.rotation.x = 0.9;
+  torso.rotation.x = d(torso.rotation.x, 0.14, 8);
+  torso.rotation.y = swing * 0.1;
+  head.rotation.x = d(head.rotation.x, -0.08, 8);
+  torso.position.y = 0.2 + Math.abs(Math.cos(runPhase)) * 0.04;
+};
+
+let idleTime = 0;
+
+const animateIdle = (delta) => {
+  if (!runnerParts || !player?.visible) return;
+  const { torso, head, legL, legR, armL, armR } = runnerParts;
+  idleTime += delta;
+  const d = (current, target) => THREE.MathUtils.damp(current, target, 6, delta);
+
+  torso.position.y = 0.2 + Math.sin(idleTime * 2) * 0.012;
+  torso.rotation.x = d(torso.rotation.x, 0.02);
+  torso.rotation.y = d(torso.rotation.y, 0);
+  head.rotation.x = d(head.rotation.x, 0);
+  head.rotation.y = Math.sin(idleTime * 0.6) * 0.25;
+  [legL, legR].forEach((leg) => {
+    leg.hip.rotation.x = d(leg.hip.rotation.x, 0);
+    leg.knee.rotation.x = d(leg.knee.rotation.x, -0.06);
+  });
+  [armL, armR].forEach((arm) => {
+    arm.shoulder.rotation.x = d(arm.shoulder.rotation.x, Math.sin(idleTime * 2) * 0.04);
+    arm.elbow.rotation.x = d(arm.elbow.rotation.x, 0.25);
+  });
+  player.rotation.z = d(player.rotation.z, 0);
 };
 
 const getCoin = () => {
@@ -1568,6 +1659,39 @@ const initScene = () => {
   particleMaterials.gold = new THREE.MeshBasicMaterial({ color: 0xffcf4d });
   particleMaterials.red = new THREE.MeshBasicMaterial({ color: 0xff3b57 });
   particleMaterials.skin = new THREE.MeshBasicMaterial({ color: currentSkin.value.color });
+  particleMaterials.dust = new THREE.MeshBasicMaterial({
+    color: 0x9fb2cc,
+    transparent: true,
+    opacity: 0.55,
+  });
+
+  const starCount = 260;
+  const starPositions = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount; i += 1) {
+    starPositions[i * 3] = (Math.random() - 0.5) * 300;
+    starPositions[i * 3 + 1] = 25 + Math.random() * 80;
+    starPositions[i * 3 + 2] = -180 + Math.random() * 210;
+  }
+  const starGeometry = new THREE.BufferGeometry();
+  starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+  starPoints = new THREE.Points(
+    starGeometry,
+    new THREE.PointsMaterial({
+      color: 0xbfd4ff,
+      size: 0.8,
+      transparent: true,
+      opacity: 0.8,
+      fog: false,
+    }),
+  );
+  scene.add(starPoints);
+
+  const moon = new THREE.Mesh(
+    new THREE.CircleGeometry(5, 24),
+    new THREE.MeshBasicMaterial({ color: 0xf5ecd4, fog: false }),
+  );
+  moon.position.set(-45, 55, -140);
+  scene.add(moon);
 
   buildRunner();
   player.position.set(lanes[currentLane], currentGroundCenter, 2);
@@ -1857,6 +1981,14 @@ const updateRunner = (delta) => {
   currentSurfaceY = surfaceY;
   currentGroundCenter = targetGround;
   if (player.position.y <= targetGround) {
+    if (playerVelocityY < -6) {
+      spawnBurst(
+        new THREE.Vector3(player.position.x, targetGround - playerHeight / 2 + 0.06, player.position.z),
+        ['dust'],
+        5,
+        2.5,
+      );
+    }
     player.position.y = targetGround;
     playerVelocityY = 0;
     lastGroundedAt = performance.now();
@@ -1959,7 +2091,10 @@ const animate = (time) => {
 
   if (state.value === 'running') {
     updateRunner(delta);
-  } else if (state.value === 'crashing') {
+  } else if (state.value !== 'crashing') {
+    animateIdle(delta);
+  }
+  if (state.value === 'crashing') {
     crashTimer -= delta;
     camera.position.x += (Math.random() - 0.5) * 0.12 * Math.max(0, crashTimer);
     camera.position.y += (Math.random() - 0.5) * 0.08 * Math.max(0, crashTimer);
@@ -2068,6 +2203,8 @@ onBeforeUnmount(() => {
   coinGeometry?.dispose();
   coinMaterial?.dispose();
   glowTexture?.dispose();
+  starPoints?.geometry?.dispose();
+  starPoints?.material?.dispose();
   particleGeometry?.dispose();
   Object.values(particleMaterials).forEach((material) => material?.dispose());
   buildingGeometry?.dispose();
