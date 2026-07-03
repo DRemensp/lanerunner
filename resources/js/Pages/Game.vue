@@ -1486,6 +1486,13 @@ onBeforeUnmount(() => {
   if (pointerUnlockHandler) {
     window.removeEventListener('pointerdown', pointerUnlockHandler);
   }
+  fadeToken += 1;
+  [audioPrimary, audioSecondary].forEach((audio) => {
+    if (!audio) return;
+    audio.onended = null;
+    audio.pause();
+    audio.removeAttribute('src');
+  });
   window.removeEventListener('resize', handleResize);
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('touchstart', handleTouchStart);
