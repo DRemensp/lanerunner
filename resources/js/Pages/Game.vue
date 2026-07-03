@@ -122,14 +122,6 @@
     </div>
 
     <div v-if="state === 'menu' && !showAuthGate" class="menu-overlay">
-      <div
-        v-if="menuScreen === 'main' && showMenuLove"
-        :key="menuLoveKey"
-        class="menu-love"
-        aria-hidden="true"
-      >
-        <div class="menu-love-text">I LOVE YOU ZEYNY</div>
-      </div>
       <div v-if="menuScreen === 'main'" class="menu-layout">
         <div class="menu-left">
           <div class="menu-title">
@@ -255,7 +247,7 @@
                 <div v-if="leaderboard.length" class="menu-leaderboard">
                   <div class="menu-leaderboard-title">Top Runners</div>
                   <ol>
-                    <li v-for="leader in leaderboard" :key="leader.name + leader.best_distance">
+                    <li v-for="(leader, index) in leaderboard" :key="index">
                       <span>{{ leader.name }}</span>
                       <span>{{ leader.best_distance }}</span>
                     </li>
@@ -371,8 +363,6 @@ const isPaused = ref(false);
 const currentTrackName = ref('');
 const showTrackToast = ref(false);
 const cameraZoom = ref(1);
-const showMenuLove = ref(false);
-const menuLoveKey = ref(0);
 
 const cameraBase = {
   y: 5.5,
@@ -450,6 +440,7 @@ let currentTrack = null;
 let shuffleQueue = [];
 let playHistory = [];
 let audioUnlocked = false;
+let fadeToken = 0;
 let toastTimer;
 let pointerUnlockHandler;
 
@@ -547,19 +538,6 @@ const backToMenu = () => {
   menuScreen.value = 'main';
 };
 
-let menuLoveTimer;
-
-const triggerMenuLove = () => {
-  menuLoveKey.value += 1;
-  showMenuLove.value = true;
-  if (menuLoveTimer) {
-    clearTimeout(menuLoveTimer);
-  }
-  menuLoveTimer = setTimeout(() => {
-    showMenuLove.value = false;
-  }, 3800);
-};
-
 const normalizeSkins = (skins) =>
   skins.map((skin) => ({
     id: skin.id,
@@ -572,9 +550,10 @@ const normalizeSkins = (skins) =>
 
 const ensureSelectedSkin = () => {
   if (!skinOptions.value.length) return;
-  const exists = skinOptions.value.some((skin) => skin.id === selectedSkin.value);
-  if (!exists) {
-    selectedSkin.value = skinOptions.value[0].id;
+  const selected = skinOptions.value.find((skin) => skin.id === selectedSkin.value);
+  if (!selected || !canUseSkin(selected)) {
+    const fallback = skinOptions.value.find((skin) => canUseSkin(skin)) || skinOptions.value[0];
+    selectedSkin.value = fallback.id;
   }
 };
 
@@ -703,6 +682,7 @@ const rememberTrack = (track) => {
 const setActiveTrack = async (track, { recordHistory = true } = {}) => {
   if (!track) return;
   initAudio();
+  const token = ++fadeToken;
   const baseVolume = isMuted.value ? 0 : audioVolume.value;
   const nextAudio = inactiveAudio;
   nextAudio.src = track.src;
@@ -715,11 +695,17 @@ const setActiveTrack = async (track, { recordHistory = true } = {}) => {
     return;
   }
 
+  if (token !== fadeToken) {
+    nextAudio.pause();
+    return;
+  }
+
   const prevAudio = activeAudio;
   const fadeStart = performance.now();
   const fadeDuration = 700;
 
   const step = (now) => {
+    if (token !== fadeToken) return;
     const t = Math.min(1, (now - fadeStart) / fadeDuration);
     if (prevAudio) {
       prevAudio.volume = baseVolume * (1 - t);
@@ -903,7 +889,7 @@ const loadLeaderboard = async () => {
 };
 
 const canUseSkin = (skin) =>
-  isGuest.value || skin.is_default || ownedSkinIds.value.includes(skin.id);
+  skin.is_default || (!isGuest.value && ownedSkinIds.value.includes(skin.id));
 
 const selectSkin = async (skin) => {
   if (!canUseSkin(skin)) return;
@@ -1465,20 +1451,6 @@ watch(state, () => {
   syncPlaylist();
 });
 
-watch(
-  () => [state.value, menuScreen.value],
-  ([nextState, nextScreen], [prevState, prevScreen]) => {
-    if (
-      nextState === 'menu' &&
-      nextScreen === 'main' &&
-      (prevState !== 'menu' || prevScreen !== 'main')
-    ) {
-      triggerMenuLove();
-    }
-  },
-  { immediate: true },
-);
-
 watch(audioVolume, () => {
   applyAudioVolume();
   persistAudioPrefs();
@@ -1514,9 +1486,6 @@ onBeforeUnmount(() => {
   if (pointerUnlockHandler) {
     window.removeEventListener('pointerdown', pointerUnlockHandler);
   }
-  if (menuLoveTimer) {
-    clearTimeout(menuLoveTimer);
-  }
   window.removeEventListener('resize', handleResize);
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('touchstart', handleTouchStart);
@@ -1525,6 +1494,15 @@ onBeforeUnmount(() => {
   if (renderer && renderer.domElement && canvasWrap.value) {
     canvasWrap.value.removeChild(renderer.domElement);
   }
+  scene?.traverse((object) => {
+    if (object.isMesh) {
+      object.geometry?.dispose();
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach((material) => material?.dispose());
+    }
+  });
+  Object.values(obstacleGeometries).forEach((geometry) => geometry?.dispose());
+  Object.values(obstacleMaterials).forEach((material) => material?.dispose());
   renderer?.dispose();
 });
 </script>
@@ -1618,64 +1596,6 @@ onBeforeUnmount(() => {
   );
   z-index: 3;
   animation: fadeIn 0.6s ease;
-}
-
-.menu-love {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  align-items: center;
-  justify-items: end;
-  padding: 0 min(12vw, 160px) 8vh 0;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.menu-love-text {
-  position: relative;
-  z-index: 0;
-  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', sans-serif;
-  font-size: clamp(2.2rem, 6vw, 4.6rem);
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
-  background: linear-gradient(120deg, #ffe08a 0%, #ff7a59 35%, #39f9c0 70%, #25a6ff 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow:
-    0 0 18px rgba(255, 140, 120, 0.55),
-    0 0 26px rgba(60, 200, 255, 0.55);
-  animation: menuLoveFloat 3.8s ease forwards;
-}
-
-.menu-love-text::before {
-  content: '';
-  position: absolute;
-  inset: -40% -30%;
-  border-radius: 999px;
-  background: radial-gradient(
-    circle,
-    rgba(255, 207, 107, 0.35) 0%,
-    rgba(255, 122, 89, 0.2) 35%,
-    rgba(57, 249, 192, 0.16) 55%,
-    transparent 70%
-  );
-  filter: blur(8px);
-  z-index: -1;
-  animation: menuLoveHalo 3.8s ease forwards;
-}
-
-.menu-love-text::after {
-  content: '';
-  position: absolute;
-  inset: -70% -60%;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.18);
-  box-shadow:
-    0 0 18px rgba(80, 200, 255, 0.5),
-    0 0 32px rgba(255, 140, 120, 0.3);
-  z-index: -2;
-  animation: menuLoveRing 3.8s ease forwards;
 }
 
 .menu-layout {
@@ -2387,69 +2307,7 @@ onBeforeUnmount(() => {
   }
 }
 
-@keyframes menuLoveFloat {
-  0% {
-    opacity: 0;
-    transform: translateY(32px) scale(0.7) rotate(-4deg);
-    letter-spacing: 0.6em;
-    filter: blur(1.5px);
-  }
-  28% {
-    opacity: 1;
-    transform: translateY(0) scale(1.05) rotate(0deg);
-    letter-spacing: 0.32em;
-    filter: blur(0);
-  }
-  70% {
-    opacity: 1;
-    transform: translateY(-10px) scale(1) rotate(1deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-30px) scale(0.92) rotate(4deg);
-  }
-}
-
-@keyframes menuLoveHalo {
-  0% {
-    opacity: 0;
-    transform: scale(0.6) rotate(0deg);
-  }
-  35% {
-    opacity: 1;
-    transform: scale(1) rotate(25deg);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.15) rotate(60deg);
-  }
-}
-
-@keyframes menuLoveRing {
-  0% {
-    opacity: 0;
-    transform: scale(0.4) rotate(0deg);
-  }
-  30% {
-    opacity: 0.9;
-    transform: scale(1) rotate(40deg);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.2) rotate(120deg);
-  }
-}
-
 @media (max-width: 768px) {
-  .menu-love {
-    justify-items: center;
-    padding: 0 6vw 10vh;
-  }
-
-  .menu-love-text {
-    letter-spacing: 0.22em;
-  }
-
   .hud {
     top: calc(12px + env(safe-area-inset-top));
     left: 16px;

@@ -34,6 +34,11 @@ class RunnerProfileService
 
     public function ensureDefaultSkins(): Skin
     {
+        $defaultSkin = Skin::where('is_default', true)->orderBy('id')->first();
+        if ($defaultSkin) {
+            return $defaultSkin;
+        }
+
         foreach (self::DEFAULT_SKINS as $skinData) {
             Skin::updateOrCreate(
                 ['slug' => $skinData['slug']],
