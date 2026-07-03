@@ -114,6 +114,7 @@ class RunnerController extends Controller
         $validated = $request->validate([
             'distance' => ['required', 'integer', 'min:0'],
             'max_speed' => ['nullable', 'numeric', 'min:0'],
+            'coins' => ['nullable', 'integer', 'min:0'],
             'run_id' => ['nullable', 'uuid'],
         ]);
 
@@ -168,6 +169,8 @@ class RunnerController extends Controller
         $profile->total_runs += 1;
         $profile->last_run_at = now();
 
+        $coinsEarned = 0;
+
         if ($verified) {
             if ($distance > $profile->best_distance) {
                 $profile->best_distance = $distance;
@@ -176,6 +179,12 @@ class RunnerController extends Controller
             if ($maxSpeed > $profile->best_speed) {
                 $profile->best_speed = $maxSpeed;
             }
+
+            // Coins spawn in lines of 5 roughly every other obstacle row, which
+            // works out to well under distance/6; anything above that is fake.
+            $coinsCap = (int) floor($distance / 6) + 10;
+            $coinsEarned = min((int) ($validated['coins'] ?? 0), $coinsCap);
+            $profile->coins += $coinsEarned;
         }
 
         if (!empty($cheatReasons)) {
@@ -193,11 +202,50 @@ class RunnerController extends Controller
         return response([
             'guest' => false,
             'accepted' => $verified,
+            'coins_earned' => $coinsEarned,
             'profile' => [
                 'best_distance' => $profile->best_distance,
                 'best_speed' => (float) $profile->best_speed,
                 'total_runs' => $profile->total_runs,
+                'coins' => $profile->coins,
             ],
+        ]);
+    }
+
+    public function buySkin(Request $request, RunnerProfileService $service): Response
+    {
+        $validated = $request->validate([
+            'skin_id' => ['required', 'integer', 'exists:skins,id'],
+        ]);
+
+        $user = $request->user();
+        if (!$user) {
+            return response([
+                'guest' => true,
+                'message' => 'Login required.',
+            ], 401);
+        }
+
+        $profile = $service->ensureProfile($user);
+        $skin = \App\Models\Skin::findOrFail((int) $validated['skin_id']);
+
+        $alreadyOwned = $user->skins()->where('skins.id', $skin->id)->exists();
+        if (!$alreadyOwned) {
+            if ($profile->coins < $skin->price_coins) {
+                return response([
+                    'message' => 'Not enough coins.',
+                    'coins' => $profile->coins,
+                ], 422);
+            }
+
+            $profile->coins -= $skin->price_coins;
+            $profile->save();
+            $user->skins()->attach($skin->id, ['unlocked_at' => now()]);
+        }
+
+        return response([
+            'coins' => $profile->coins,
+            'owned_skin_ids' => $user->skins()->pluck('skins.id')->values(),
         ]);
     }
 

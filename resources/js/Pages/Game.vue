@@ -110,10 +110,14 @@
       </div>
     </div>
 
-    <div v-if="state === 'running'" class="hud">
+    <div v-if="state === 'running' || state === 'crashing'" class="hud">
       <div class="hud-block">
         <div class="hud-label">Score</div>
         <div class="hud-value">{{ Math.floor(score) }}</div>
+      </div>
+      <div class="hud-block coins">
+        <div class="hud-label">Coins</div>
+        <div class="hud-value">{{ runCoins }}</div>
       </div>
       <div class="hud-block">
         <div class="hud-label">Speed</div>
@@ -203,6 +207,9 @@
             </div>
             <div class="menu-field">
               <label for="skin">Runner Skin</label>
+              <div v-if="authUser" class="shop-balance">
+                Balance: <strong>{{ totalCoins }}</strong> coins
+              </div>
               <div class="skin-row">
                 <button
                   v-for="skin in skinOptions"
@@ -210,14 +217,15 @@
                   class="skin-chip"
                   :class="{ active: skin.id === selectedSkin, locked: !canUseSkin(skin) }"
                   :style="{ '--skin': skin.color }"
-                  :title="canUseSkin(skin) ? 'Select skin' : 'Locked'"
-                  :disabled="!canUseSkin(skin)"
+                  :title="canUseSkin(skin) ? 'Select skin' : `Unlock for ${skin.price} coins`"
                   @click="selectSkin(skin)"
                   type="button"
                 >
                   {{ skin.label }}
+                  <span v-if="!canUseSkin(skin)" class="skin-price">{{ skin.price }}c</span>
                 </button>
               </div>
+              <div v-if="shopMessage" class="shop-message">{{ shopMessage }}</div>
             </div>
           </template>
 
@@ -295,6 +303,7 @@
         <div class="death-score">
           <div>Last Score: <strong>{{ Math.floor(score) }}</strong></div>
           <div>Best Score: <strong>{{ Math.floor(bestScore) }}</strong></div>
+          <div class="death-coins">Coins <strong>+{{ runCoins }}</strong></div>
         </div>
         <div class="death-actions">
           <button class="primary-btn" @click="startRun" type="button">Run Again</button>
@@ -348,6 +357,9 @@ const state = ref('menu');
 const score = ref(0);
 const bestScore = ref(0);
 const speed = ref(0);
+const runCoins = ref(0);
+const totalCoins = ref(0);
+const shopMessage = ref('');
 const leaderboard = ref([]);
 const ownedSkinIds = ref([]);
 const loadingProfile = ref(false);
@@ -377,9 +389,9 @@ const levelOptions = [
 const selectedLevel = ref(levelOptions[1].id);
 
 const skinOptions = ref([
-  { id: 1, slug: 'neon', label: 'Neon', color: '#3bffb3', is_default: true },
-  { id: 2, slug: 'ember', label: 'Ember', color: '#ff6b3b', is_default: false },
-  { id: 3, slug: 'ion', label: 'Ion', color: '#49a8ff', is_default: false },
+  { id: 1, slug: 'neon', label: 'Neon', color: '#3bffb3', price: 0, is_default: true },
+  { id: 2, slug: 'ember', label: 'Ember', color: '#ff6b3b', price: 300, is_default: false },
+  { id: 3, slug: 'ion', label: 'Ion', color: '#49a8ff', price: 450, is_default: false },
 ]);
 const selectedSkin = ref(skinOptions.value[0].id);
 
@@ -426,6 +438,9 @@ let lastTime = 0;
 
 let player;
 let playerMaterial;
+let limbMaterial;
+let runnerParts = null;
+let runPhase = 0;
 let playerVelocityY = 0;
 let currentLane = 1;
 let isSliding = false;
@@ -447,6 +462,21 @@ let pointerUnlockHandler;
 let floorSegments = [];
 let obstacles = [];
 let spawnTimer = 0;
+
+let coins = [];
+let coinPool = [];
+let coinGeometry;
+let coinMaterial;
+
+let particles = [];
+let particlePool = [];
+let particleGeometry;
+const particleMaterials = {};
+let crashTimer = 0;
+
+let buildingGeometry;
+let buildingMaterials = [];
+let archMaterials = [];
 
 const obstacleGeometries = {
   low: null,
@@ -505,7 +535,7 @@ const getGroundCenterForSurface = (surfaceY, playerHeight) => surfaceY + playerH
 const currentGroundHeight = () => currentGroundCenter;
 
 const startRun = async () => {
-  if (!scene) return;
+  if (!scene || state.value === 'crashing') return;
   unlockAudio();
   menuScreen.value = 'main';
   resetRun();
@@ -522,6 +552,7 @@ const openMenuScreen = (screen) => {
     return;
   }
   showLoginPrompt.value = false;
+  shopMessage.value = '';
   menuScreen.value = screen;
 };
 
@@ -869,6 +900,7 @@ const loadProfile = async () => {
       if (data.profile.active_skin_id) {
         selectedSkin.value = Number(data.profile.active_skin_id);
       }
+      totalCoins.value = data.profile.coins ?? 0;
       inventoryItems.value = Array.isArray(data.inventory) ? data.inventory : [];
       ensureSelectedSkin();
     }
@@ -892,7 +924,30 @@ const canUseSkin = (skin) =>
   skin.is_default || (!isGuest.value && ownedSkinIds.value.includes(skin.id));
 
 const selectSkin = async (skin) => {
-  if (!canUseSkin(skin)) return;
+  shopMessage.value = '';
+
+  if (!canUseSkin(skin)) {
+    if (isGuest.value) {
+      showLoginPrompt.value = true;
+      return;
+    }
+    if (totalCoins.value < (skin.price ?? 0)) {
+      shopMessage.value = `Not enough coins — ${skin.label} costs ${skin.price}.`;
+      return;
+    }
+    try {
+      const response = await axios.post('/api/runner/skin/buy', { skin_id: skin.id });
+      totalCoins.value = response.data.coins ?? totalCoins.value;
+      ownedSkinIds.value = Array.isArray(response.data.owned_skin_ids)
+        ? response.data.owned_skin_ids.map((id) => Number(id))
+        : ownedSkinIds.value;
+      shopMessage.value = `${skin.label} unlocked!`;
+    } catch (error) {
+      shopMessage.value = error.response?.data?.message || 'Purchase failed.';
+      return;
+    }
+  }
+
   selectedSkin.value = skin.id;
 
   if (authUser.value) {
@@ -919,6 +974,7 @@ const startRunSession = async () => {
 
 const resetRun = () => {
   score.value = 0;
+  runCoins.value = 0;
   speed.value = currentLevel.value.baseSpeed;
   spawnTimer = 0.7;
   currentLane = 1;
@@ -927,14 +983,24 @@ const resetRun = () => {
   isSliding = false;
   slideTimer = 0;
   pendingSlide = false;
+  runPhase = 0;
   currentSurfaceY = 0;
   currentGroundCenter = getGroundCenterForSurface(currentSurfaceY, currentPlayerHeight());
   lastGroundedAt = performance.now();
   if (player) {
     player.position.set(lanes[currentLane], currentGroundCenter, 2);
     player.scale.y = 1;
+    player.rotation.z = 0;
+    player.visible = true;
+  }
+  if (camera) {
+    camera.fov = 60;
+    camera.updateProjectionMatrix();
+    camera.position.x = 0;
+    applyCameraZoom();
   }
   clearObstacles();
+  clearCoins();
   resetFloor();
 };
 
@@ -953,11 +1019,15 @@ const persistRun = async () => {
       const response = await axios.post('/api/runner/run/end', {
         distance,
         max_speed: maxSpeed,
+        coins: runCoins.value,
         run_id: runToken.value,
       });
       const updated = response.data.profile;
       if (updated && typeof updated.best_distance === 'number') {
         bestScore.value = updated.best_distance;
+      }
+      if (updated && typeof updated.coins === 'number') {
+        totalCoins.value = updated.coins;
       }
       loadProfile();
     } catch (error) {
@@ -1168,6 +1238,156 @@ const handleResize = () => {
   applyCameraZoom();
 };
 
+const randomizeBuilding = (building) => {
+  building.scale.set(
+    2.4 + Math.random() * 2.2,
+    4 + Math.random() * 11,
+    3.5 + Math.random() * 3,
+  );
+};
+
+const buildRunner = () => {
+  player = new THREE.Group();
+  playerMaterial = new THREE.MeshLambertMaterial({ color: currentSkin.value.color });
+  limbMaterial = new THREE.MeshLambertMaterial({
+    color: new THREE.Color(currentSkin.value.color).multiplyScalar(0.55),
+  });
+  const headMaterial = new THREE.MeshLambertMaterial({ color: 0x131826 });
+
+  // Character spans roughly playerSize.h, centered on the group origin so the
+  // existing collision math keeps working unchanged.
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.36), playerMaterial);
+  torso.position.y = 0.2;
+  player.add(torso);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.32, 0.34), headMaterial);
+  head.position.y = 0.68;
+  player.add(head);
+
+  const legGeometry = new THREE.BoxGeometry(0.2, 0.58, 0.24);
+  legGeometry.translate(0, -0.29, 0);
+  const legLeft = new THREE.Mesh(legGeometry, limbMaterial);
+  legLeft.position.set(-0.17, -0.08, 0);
+  player.add(legLeft);
+  const legRight = new THREE.Mesh(legGeometry, limbMaterial);
+  legRight.position.set(0.17, -0.08, 0);
+  player.add(legRight);
+
+  const armGeometry = new THREE.BoxGeometry(0.15, 0.5, 0.2);
+  armGeometry.translate(0, -0.22, 0);
+  const armLeft = new THREE.Mesh(armGeometry, limbMaterial);
+  armLeft.position.set(-0.4, 0.44, 0);
+  player.add(armLeft);
+  const armRight = new THREE.Mesh(armGeometry, limbMaterial);
+  armRight.position.set(0.4, 0.44, 0);
+  player.add(armRight);
+
+  runnerParts = { torso, head, legLeft, legRight, armLeft, armRight };
+};
+
+const animateRunner = (delta) => {
+  if (!runnerParts) return;
+  const { torso, legLeft, legRight, armLeft, armRight } = runnerParts;
+  const grounded = player.position.y <= currentGroundCenter + groundedEpsilon;
+
+  player.rotation.z = THREE.MathUtils.damp(
+    player.rotation.z,
+    (player.position.x - lanes[currentLane]) * 0.18,
+    10,
+    delta,
+  );
+
+  if (isSliding) {
+    legLeft.rotation.x = 1.1;
+    legRight.rotation.x = 1.1;
+    armLeft.rotation.x = -0.6;
+    armRight.rotation.x = -0.6;
+    torso.position.y = 0.2;
+    return;
+  }
+
+  if (!grounded) {
+    legLeft.rotation.x = THREE.MathUtils.damp(legLeft.rotation.x, 0.7, 14, delta);
+    legRight.rotation.x = THREE.MathUtils.damp(legRight.rotation.x, -0.45, 14, delta);
+    armLeft.rotation.x = THREE.MathUtils.damp(armLeft.rotation.x, -1.4, 14, delta);
+    armRight.rotation.x = THREE.MathUtils.damp(armRight.rotation.x, -1.4, 14, delta);
+    torso.position.y = 0.2;
+    return;
+  }
+
+  runPhase += delta * (6 + speed.value * 0.6);
+  const swing = Math.sin(runPhase);
+  legLeft.rotation.x = swing * 0.95;
+  legRight.rotation.x = -swing * 0.95;
+  armLeft.rotation.x = -swing * 0.75;
+  armRight.rotation.x = swing * 0.75;
+  torso.position.y = 0.2 + Math.abs(Math.cos(runPhase)) * 0.045;
+};
+
+const getCoin = () => {
+  if (coinPool.length) {
+    return coinPool.pop();
+  }
+  return new THREE.Mesh(coinGeometry, coinMaterial);
+};
+
+const spawnCoinLine = (laneIndex, baseZ) => {
+  for (let k = -2; k <= 2; k += 1) {
+    const coin = getCoin();
+    coin.position.set(lanes[laneIndex], 1.0, baseZ + k * 2.0);
+    coin.rotation.y = Math.random() * Math.PI;
+    coins.push(coin);
+    scene.add(coin);
+  }
+};
+
+const clearCoins = () => {
+  coins.forEach((coin) => {
+    scene.remove(coin);
+    coinPool.push(coin);
+  });
+  coins = [];
+};
+
+const spawnBurst = (position, materialKeys, count, force = 7) => {
+  for (let i = 0; i < count; i += 1) {
+    const key = materialKeys[i % materialKeys.length];
+    let particle = particlePool.pop();
+    if (!particle) {
+      particle = new THREE.Mesh(particleGeometry, particleMaterials[key]);
+    } else {
+      particle.material = particleMaterials[key];
+    }
+    particle.position.copy(position);
+    particle.scale.setScalar(0.6 + Math.random() * 0.8);
+    particle.userData.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * force,
+      Math.random() * force * 0.9,
+      (Math.random() - 0.4) * force,
+    );
+    particle.userData.life = 0.55 + Math.random() * 0.35;
+    particles.push(particle);
+    scene.add(particle);
+  }
+};
+
+const updateParticles = (delta) => {
+  for (let i = particles.length - 1; i >= 0; i -= 1) {
+    const particle = particles[i];
+    particle.userData.life -= delta;
+    if (particle.userData.life <= 0) {
+      scene.remove(particle);
+      particlePool.push(particle);
+      particles.splice(i, 1);
+      continue;
+    }
+    particle.userData.velocity.y += gravity * 0.6 * delta;
+    particle.position.addScaledVector(particle.userData.velocity, delta);
+    particle.rotation.x += delta * 6;
+    particle.rotation.y += delta * 5;
+  }
+};
+
 const initScene = () => {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05070f);
@@ -1189,22 +1409,34 @@ const initScene = () => {
     canvasWrap.value.appendChild(renderer.domElement);
   }
 
-  const hemiLight = new THREE.HemisphereLight(0x9fc1ff, 0x0b0d13, 0.9);
+  const hemiLight = new THREE.HemisphereLight(0x9fc1ff, 0x141824, 1.6);
   scene.add(hemiLight);
 
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.7);
   dirLight.position.set(6, 10, 4);
   scene.add(dirLight);
 
-  const floorMaterial = new THREE.MeshBasicMaterial({
+  const floorMaterial = new THREE.MeshLambertMaterial({
     color: 0x0e1b2f,
   });
   const stripeMaterial = new THREE.MeshBasicMaterial({
     color: 0x2ee5ff,
   });
-  const railMaterial = new THREE.MeshBasicMaterial({
+  const railMaterial = new THREE.MeshLambertMaterial({
     color: 0x2b3b56,
   });
+
+  buildingGeometry = new THREE.BoxGeometry(1, 1, 1);
+  buildingGeometry.translate(0, 0.5, 0);
+  buildingMaterials = [
+    new THREE.MeshLambertMaterial({ color: 0x1a2a46 }),
+    new THREE.MeshLambertMaterial({ color: 0x14203a }),
+    new THREE.MeshLambertMaterial({ color: 0x223354 }),
+  ];
+  archMaterials = [
+    new THREE.MeshBasicMaterial({ color: 0x2ee5ff }),
+    new THREE.MeshBasicMaterial({ color: 0xff5f9e }),
+  ];
 
   for (let i = 0; i < 6; i += 1) {
     const segment = new THREE.Group();
@@ -1230,16 +1462,52 @@ const initScene = () => {
     railRight.position.set(3.8, 0.2, 0);
     segment.add(railRight);
 
+    const buildings = [];
+    for (let side = -1; side <= 1; side += 2) {
+      for (let b = 0; b < 3; b += 1) {
+        const building = new THREE.Mesh(
+          buildingGeometry,
+          buildingMaterials[Math.floor(Math.random() * buildingMaterials.length)],
+        );
+        building.position.set(
+          side * (7 + Math.random() * 4),
+          0,
+          -segmentLength / 2 + (b - 1) * (segmentLength / 3) + (Math.random() - 0.5) * 3,
+        );
+        randomizeBuilding(building);
+        segment.add(building);
+        buildings.push(building);
+      }
+    }
+    segment.userData.buildings = buildings;
+
+    const archMaterial = archMaterials[i % archMaterials.length];
+    const postGeometry = new THREE.BoxGeometry(0.14, 3.4, 0.14);
+    const postLeft = new THREE.Mesh(postGeometry, archMaterial);
+    postLeft.position.set(-3.8, 1.7, -segmentLength / 2);
+    segment.add(postLeft);
+    const postRight = postLeft.clone();
+    postRight.position.x = 3.8;
+    segment.add(postRight);
+    const archBar = new THREE.Mesh(new THREE.BoxGeometry(7.74, 0.14, 0.14), archMaterial);
+    archBar.position.set(0, 3.4, -segmentLength / 2);
+    segment.add(archBar);
+
     segment.position.z = -i * segmentLength;
     scene.add(segment);
     floorSegments.push(segment);
   }
 
-  const playerGeometry = new THREE.BoxGeometry(playerSize.w, playerSize.h, playerSize.d);
-  playerMaterial = new THREE.MeshBasicMaterial({
-    color: currentSkin.value.color,
-  });
-  player = new THREE.Mesh(playerGeometry, playerMaterial);
+  coinGeometry = new THREE.CylinderGeometry(0.32, 0.32, 0.09, 18);
+  coinGeometry.rotateX(Math.PI / 2);
+  coinMaterial = new THREE.MeshBasicMaterial({ color: 0xffcf4d });
+
+  particleGeometry = new THREE.BoxGeometry(0.13, 0.13, 0.13);
+  particleMaterials.gold = new THREE.MeshBasicMaterial({ color: 0xffcf4d });
+  particleMaterials.red = new THREE.MeshBasicMaterial({ color: 0xff3b57 });
+  particleMaterials.skin = new THREE.MeshBasicMaterial({ color: currentSkin.value.color });
+
+  buildRunner();
   player.position.set(lanes[currentLane], currentGroundCenter, 2);
   scene.add(player);
 
@@ -1267,7 +1535,11 @@ const getObstacle = (type) => {
   if (!obstacleGeometries[type]) {
     const size = sizes[type];
     obstacleGeometries[type] = new THREE.BoxGeometry(size.w, size.h, size.d);
-    obstacleMaterials[type] = new THREE.MeshBasicMaterial({ color: colors[type] });
+    obstacleMaterials[type] = new THREE.MeshLambertMaterial({
+      color: colors[type],
+      emissive: colors[type],
+      emissiveIntensity: 0.5,
+    });
   }
 
   if (obstaclePools[type]?.length) {
@@ -1293,6 +1565,13 @@ const spawnRow = () => {
     obstacles.push(obstacle);
     scene.add(obstacle);
   });
+
+  const freeLanes = pattern
+    .map((type, laneIndex) => (type === 'none' ? laneIndex : -1))
+    .filter((laneIndex) => laneIndex >= 0);
+  if (freeLanes.length && Math.random() < 0.55) {
+    spawnCoinLine(freeLanes[Math.floor(Math.random() * freeLanes.length)], baseZ);
+  }
 };
 
 const checkCollision = (obstacle, playerHeight) => {
@@ -1376,12 +1655,46 @@ const updateRunner = (delta) => {
 
   const collisionPlayerHeight = currentPlayerHeight();
 
+  animateRunner(delta);
+
+  camera.fov = THREE.MathUtils.damp(
+    camera.fov,
+    60 + Math.min(14, Math.max(0, speed.value - 10) * 0.55),
+    3,
+    delta,
+  );
+  camera.updateProjectionMatrix();
+
   floorSegments.forEach((segment) => {
     segment.position.z += speed.value * delta;
     if (segment.position.z > 10) {
       segment.position.z -= segmentLength * floorSegments.length;
+      (segment.userData.buildings || []).forEach(randomizeBuilding);
     }
   });
+
+  for (let i = coins.length - 1; i >= 0; i -= 1) {
+    const coin = coins[i];
+    coin.position.z += speed.value * delta;
+    coin.rotation.y += delta * 5;
+    if (coin.position.z > 8) {
+      scene.remove(coin);
+      coinPool.push(coin);
+      coins.splice(i, 1);
+      continue;
+    }
+    if (
+      Math.abs(coin.position.z - player.position.z) < 0.8 &&
+      Math.abs(coin.position.x - player.position.x) < 0.75 &&
+      Math.abs(coin.position.y - player.position.y) < 1.15
+    ) {
+      runCoins.value += 1;
+      spawnBurst(coin.position, ['gold'], 4, 3.5);
+      scene.remove(coin);
+      coinPool.push(coin);
+      coins.splice(i, 1);
+    }
+  }
 
   spawnTimer -= delta;
   if (spawnTimer <= 0) {
@@ -1403,7 +1716,7 @@ const updateRunner = (delta) => {
       continue;
     }
     if (checkCollision(obstacle, collisionPlayerHeight)) {
-      endRun();
+      startCrash();
       break;
     }
   }
@@ -1413,6 +1726,13 @@ const updateRunner = (delta) => {
   camera.lookAt(lookAtTarget);
 };
 
+const startCrash = () => {
+  state.value = 'crashing';
+  crashTimer = 0.75;
+  player.visible = false;
+  spawnBurst(player.position, ['skin', 'red', 'skin'], 26, 8);
+};
+
 const animate = (time) => {
   animationId = requestAnimationFrame(animate);
   const delta = Math.min(0.05, (time - lastTime) / 1000 || 0);
@@ -1420,14 +1740,31 @@ const animate = (time) => {
 
   if (state.value === 'running') {
     updateRunner(delta);
+  } else if (state.value === 'crashing') {
+    crashTimer -= delta;
+    camera.position.x += (Math.random() - 0.5) * 0.12 * Math.max(0, crashTimer);
+    camera.position.y += (Math.random() - 0.5) * 0.08 * Math.max(0, crashTimer);
+    if (crashTimer <= 0) {
+      applyCameraZoom();
+      endRun();
+    }
   }
+
+  updateParticles(delta);
 
   renderer.render(scene, camera);
 };
 
 watch(selectedSkin, () => {
-  if (playerMaterial && currentSkin.value) {
+  if (!currentSkin.value) return;
+  if (playerMaterial) {
     playerMaterial.color.set(currentSkin.value.color);
+  }
+  if (limbMaterial) {
+    limbMaterial.color.set(currentSkin.value.color).multiplyScalar(0.55);
+  }
+  if (particleMaterials.skin) {
+    particleMaterials.skin.color.set(currentSkin.value.color);
   }
 });
 
@@ -1510,6 +1847,11 @@ onBeforeUnmount(() => {
   });
   Object.values(obstacleGeometries).forEach((geometry) => geometry?.dispose());
   Object.values(obstacleMaterials).forEach((material) => material?.dispose());
+  coinGeometry?.dispose();
+  coinMaterial?.dispose();
+  particleGeometry?.dispose();
+  Object.values(particleMaterials).forEach((material) => material?.dispose());
+  buildingGeometry?.dispose();
   renderer?.dispose();
 });
 </script>
@@ -2021,9 +2363,39 @@ onBeforeUnmount(() => {
 }
 
 .skin-chip.locked {
-  opacity: 0.45;
-  cursor: not-allowed;
+  opacity: 0.6;
   box-shadow: none;
+}
+
+.skin-price {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 207, 77, 0.15);
+  border: 1px solid rgba(255, 207, 77, 0.4);
+  color: #ffcf4d;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+}
+
+.shop-balance {
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ffcf4d;
+}
+
+.shop-message {
+  font-size: 0.8rem;
+  color: rgba(255, 220, 150, 0.9);
+}
+
+.hud-block.coins .hud-value {
+  color: #ffcf4d;
+}
+
+.death-coins {
+  color: #ffcf4d;
 }
 
 .skin-chip.locked::before {
