@@ -476,7 +476,7 @@ let crashTimer = 0;
 
 let buildingGeometry;
 let buildingMaterials = [];
-let archMaterials = [];
+let glowTexture;
 
 const obstacleGeometries = {
   low: null,
@@ -1057,7 +1057,7 @@ const clearObstacles = () => {
 
 const resetFloor = () => {
   floorSegments.forEach((segment, index) => {
-    segment.position.z = -index * segmentLength;
+    segment.position.z = -(index - 1) * segmentLength;
   });
 };
 
@@ -1433,12 +1433,40 @@ const initScene = () => {
     new THREE.MeshLambertMaterial({ color: 0x14203a }),
     new THREE.MeshLambertMaterial({ color: 0x223354 }),
   ];
-  archMaterials = [
-    new THREE.MeshBasicMaterial({ color: 0x2ee5ff }),
-    new THREE.MeshBasicMaterial({ color: 0xff5f9e }),
-  ];
+  const glowCanvas = document.createElement('canvas');
+  glowCanvas.width = 128;
+  glowCanvas.height = 128;
+  const glowCtx = glowCanvas.getContext('2d');
+  const gradient = glowCtx.createRadialGradient(64, 64, 4, 64, 64, 64);
+  gradient.addColorStop(0, 'rgba(255, 214, 150, 0.5)');
+  gradient.addColorStop(1, 'rgba(255, 214, 150, 0)');
+  glowCtx.fillStyle = gradient;
+  glowCtx.fillRect(0, 0, 128, 128);
+  glowTexture = new THREE.CanvasTexture(glowCanvas);
 
-  for (let i = 0; i < 6; i += 1) {
+  const lampPoleGeometry = new THREE.BoxGeometry(0.09, 2.9, 0.09);
+  const lampArmGeometry = new THREE.BoxGeometry(0.55, 0.07, 0.07);
+  const lampHeadGeometry = new THREE.BoxGeometry(0.24, 0.12, 0.18);
+  const lampConeGeometry = new THREE.ConeGeometry(1.05, 2.8, 20, 1, true);
+  const lampPoolGeometry = new THREE.PlaneGeometry(3.2, 3.2);
+  const lampPoleMaterial = new THREE.MeshLambertMaterial({ color: 0x24304a });
+  const lampHeadMaterial = new THREE.MeshBasicMaterial({ color: 0xffdfa6 });
+  const lampConeMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffca7a,
+    transparent: true,
+    opacity: 0.07,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const lampPoolMaterial = new THREE.MeshBasicMaterial({
+    map: glowTexture,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+
+  for (let i = 0; i < 7; i += 1) {
     const segment = new THREE.Group();
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, segmentLength), floorMaterial);
     floor.rotation.x = -Math.PI / 2;
@@ -1481,19 +1509,35 @@ const initScene = () => {
     }
     segment.userData.buildings = buildings;
 
-    const archMaterial = archMaterials[i % archMaterials.length];
-    const postGeometry = new THREE.BoxGeometry(0.14, 3.4, 0.14);
-    const postLeft = new THREE.Mesh(postGeometry, archMaterial);
-    postLeft.position.set(-3.8, 1.7, -segmentLength / 2);
-    segment.add(postLeft);
-    const postRight = postLeft.clone();
-    postRight.position.x = 3.8;
-    segment.add(postRight);
-    const archBar = new THREE.Mesh(new THREE.BoxGeometry(7.74, 0.14, 0.14), archMaterial);
-    archBar.position.set(0, 3.4, -segmentLength / 2);
-    segment.add(archBar);
+    for (let side = -1; side <= 1; side += 2) {
+      const lamp = new THREE.Group();
 
-    segment.position.z = -i * segmentLength;
+      const pole = new THREE.Mesh(lampPoleGeometry, lampPoleMaterial);
+      pole.position.y = 1.45;
+      lamp.add(pole);
+
+      const arm = new THREE.Mesh(lampArmGeometry, lampPoleMaterial);
+      arm.position.set(-side * 0.27, 2.9, 0);
+      lamp.add(arm);
+
+      const head = new THREE.Mesh(lampHeadGeometry, lampHeadMaterial);
+      head.position.set(-side * 0.55, 2.85, 0);
+      lamp.add(head);
+
+      const cone = new THREE.Mesh(lampConeGeometry, lampConeMaterial);
+      cone.position.set(-side * 0.55, 1.45, 0);
+      lamp.add(cone);
+
+      const pool = new THREE.Mesh(lampPoolGeometry, lampPoolMaterial);
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.set(-side * 0.55, 0.03, 0);
+      lamp.add(pool);
+
+      lamp.position.set(side * 4.15, 0, -segmentLength / 2);
+      segment.add(lamp);
+    }
+
+    segment.position.z = -(i - 1) * segmentLength;
     scene.add(segment);
     floorSegments.push(segment);
   }
@@ -1667,7 +1711,7 @@ const updateRunner = (delta) => {
 
   floorSegments.forEach((segment) => {
     segment.position.z += speed.value * delta;
-    if (segment.position.z > 10) {
+    if (segment.position.z > 30) {
       segment.position.z -= segmentLength * floorSegments.length;
       (segment.userData.buildings || []).forEach(randomizeBuilding);
     }
@@ -1677,7 +1721,7 @@ const updateRunner = (delta) => {
     const coin = coins[i];
     coin.position.z += speed.value * delta;
     coin.rotation.y += delta * 5;
-    if (coin.position.z > 8) {
+    if (coin.position.z > 18) {
       scene.remove(coin);
       coinPool.push(coin);
       coins.splice(i, 1);
@@ -1706,7 +1750,7 @@ const updateRunner = (delta) => {
   for (let i = obstacles.length - 1; i >= 0; i -= 1) {
     const obstacle = obstacles[i];
     obstacle.position.z += speed.value * delta;
-    if (obstacle.position.z > 8) {
+    if (obstacle.position.z > 18) {
       scene.remove(obstacle);
       const type = obstacle.userData?.type;
       if (type && obstaclePools[type]) {
@@ -1849,6 +1893,7 @@ onBeforeUnmount(() => {
   Object.values(obstacleMaterials).forEach((material) => material?.dispose());
   coinGeometry?.dispose();
   coinMaterial?.dispose();
+  glowTexture?.dispose();
   particleGeometry?.dispose();
   Object.values(particleMaterials).forEach((material) => material?.dispose());
   buildingGeometry?.dispose();
