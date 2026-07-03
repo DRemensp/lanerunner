@@ -478,21 +478,9 @@ let buildingGeometry;
 let buildingMaterials = [];
 let glowTexture;
 
-const obstacleGeometries = {
-  low: null,
-  tall: null,
-  over: null,
-};
-const obstacleMaterials = {
-  low: null,
-  tall: null,
-  over: null,
-};
-const obstaclePools = {
-  low: [],
-  tall: [],
-  over: [],
-};
+const obstaclePools = {};
+const obstacleResources = [];
+let obstacleAssets = null;
 
 const rowPatterns = [
   ['low', 'none', 'none'],
@@ -1047,9 +1035,9 @@ const persistRun = async () => {
 const clearObstacles = () => {
   obstacles.forEach((obstacle) => {
     scene.remove(obstacle);
-    const type = obstacle.userData?.type;
-    if (type && obstaclePools[type]) {
-      obstaclePools[type].push(obstacle);
+    const key = obstacle.userData?.poolKey;
+    if (key) {
+      (obstaclePools[key] ||= []).push(obstacle);
     }
   });
   obstacles = [];
@@ -1564,39 +1552,148 @@ const initScene = () => {
   window.addEventListener('touchend', handleTouchEnd, { passive: true });
 };
 
-const getObstacle = (type) => {
-  const sizes = {
-    low: { w: 1.1, h: 1.4, d: 1.1 },
-    tall: { w: 1.2, h: 2.8, d: 1.2 },
-    over: { w: 1.6, h: 0.7, d: 1.2 },
-  };
-  const colors = {
-    low: 0xff3b57,
-    tall: 0xffb14a,
-    over: 0x49a8ff,
-  };
+const track = (resource) => {
+  obstacleResources.push(resource);
+  return resource;
+};
 
-  if (!obstacleGeometries[type]) {
-    const size = sizes[type];
-    obstacleGeometries[type] = new THREE.BoxGeometry(size.w, size.h, size.d);
-    obstacleMaterials[type] = new THREE.MeshLambertMaterial({
-      color: colors[type],
-      emissive: colors[type],
-      emissiveIntensity: 0.5,
+const getObstacleAssets = () => {
+  if (obstacleAssets) return obstacleAssets;
+  const lambert = (color, glow = 0) =>
+    track(new THREE.MeshLambertMaterial({
+      color,
+      emissive: glow ? color : 0x000000,
+      emissiveIntensity: glow,
+    }));
+  obstacleAssets = {
+    wood: lambert(0x9a6632),
+    woodDark: lambert(0x6b4420),
+    barrel: lambert(0xd23a4f, 0.3),
+    ring: lambert(0x39404f),
+    carBody: lambert(0xd7404f, 0.25),
+    carGlass: lambert(0x18202e),
+    wheel: lambert(0x11141a),
+    lightMat: track(new THREE.MeshBasicMaterial({ color: 0xffe9b0 })),
+    tall: lambert(0xffb14a, 0.4),
+    over: lambert(0x49a8ff, 0.45),
+  };
+  return obstacleAssets;
+};
+
+// Every variant is centered on its origin so the existing collision math
+// (position = center, userData.size = box extents) keeps working.
+const obstacleBuilders = {
+  'low-crate': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(track(new THREE.BoxGeometry(1.15, 1.15, 1.15)), a.wood));
+    const plankGeo = track(new THREE.BoxGeometry(1.21, 0.16, 1.21));
+    const plankH = new THREE.Mesh(plankGeo, a.woodDark);
+    g.add(plankH);
+    const plankV = new THREE.Mesh(plankGeo, a.woodDark);
+    plankV.rotation.z = Math.PI / 2;
+    g.add(plankV);
+    return { mesh: g, size: { w: 1.15, h: 1.15, d: 1.15 } };
+  },
+  'low-barrel': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(track(new THREE.CylinderGeometry(0.55, 0.55, 1.35, 14)), a.barrel));
+    const ringGeo = track(new THREE.CylinderGeometry(0.58, 0.58, 0.09, 14));
+    [-0.42, 0.42].forEach((y) => {
+      const ring = new THREE.Mesh(ringGeo, a.ring);
+      ring.position.y = y;
+      g.add(ring);
     });
-  }
+    return { mesh: g, size: { w: 1.1, h: 1.35, d: 1.1 } };
+  },
+  'low-car': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(track(new THREE.BoxGeometry(1.5, 0.5, 2.6)), a.carBody);
+    body.position.y = -0.05;
+    g.add(body);
+    const cabin = new THREE.Mesh(track(new THREE.BoxGeometry(1.3, 0.42, 1.3)), a.carGlass);
+    cabin.position.set(0, 0.34, 0.15);
+    g.add(cabin);
+    const wheelGeo = track(new THREE.CylinderGeometry(0.26, 0.26, 0.2, 10));
+    wheelGeo.rotateZ(Math.PI / 2);
+    [[-0.72, 0.85], [0.72, 0.85], [-0.72, -0.85], [0.72, -0.85]].forEach(([x, z]) => {
+      const wheel = new THREE.Mesh(wheelGeo, a.wheel);
+      wheel.position.set(x, -0.29, z);
+      g.add(wheel);
+    });
+    const lightGeo = track(new THREE.BoxGeometry(0.2, 0.1, 0.06));
+    [-0.5, 0.5].forEach((x) => {
+      const headlight = new THREE.Mesh(lightGeo, a.lightMat);
+      headlight.position.set(x, -0.02, 1.31);
+      g.add(headlight);
+    });
+    return { mesh: g, size: { w: 1.5, h: 1.1, d: 2.6 } };
+  },
+  'tall-block': () => {
+    const a = getObstacleAssets();
+    const mesh = new THREE.Mesh(track(new THREE.BoxGeometry(1.2, 2.8, 1.2)), a.tall);
+    return { mesh, size: { w: 1.2, h: 2.8, d: 1.2 } };
+  },
+  'tall-stack': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    const boxGeo = track(new THREE.BoxGeometry(1.2, 0.92, 1.2));
+    [-0.93, 0, 0.93].forEach((y, i) => {
+      const box = new THREE.Mesh(boxGeo, a.tall);
+      box.position.y = y;
+      box.rotation.y = (i - 1) * 0.18;
+      g.add(box);
+    });
+    return { mesh: g, size: { w: 1.2, h: 2.8, d: 1.2 } };
+  },
+  'over-bar': () => {
+    const a = getObstacleAssets();
+    const mesh = new THREE.Mesh(track(new THREE.BoxGeometry(1.6, 0.7, 1.2)), a.over);
+    return { mesh, size: { w: 1.6, h: 0.7, d: 1.2 } };
+  },
+};
 
-  if (obstaclePools[type]?.length) {
-    return obstaclePools[type].pop();
-  }
+const obstacleVariants = {
+  low: ['low-crate', 'low-barrel', 'low-car'],
+  tall: ['tall-block', 'tall-stack'],
+  over: ['over-bar'],
+};
 
-  const obstacle = new THREE.Mesh(obstacleGeometries[type], obstacleMaterials[type]);
-  obstacle.userData.type = type;
-  obstacle.userData.size = sizes[type];
+const getObstacle = (type, forcedKey = null) => {
+  const keys = obstacleVariants[type];
+  const key = forcedKey || keys[Math.floor(Math.random() * keys.length)];
+
+  let obstacle;
+  if (obstaclePools[key]?.length) {
+    obstacle = obstaclePools[key].pop();
+  } else {
+    const { mesh, size } = obstacleBuilders[key]();
+    mesh.userData.type = type;
+    mesh.userData.poolKey = key;
+    mesh.userData.size = size;
+    obstacle = mesh;
+  }
+  obstacle.userData.vz = 0;
   return obstacle;
 };
 
 const spawnRow = () => {
+  // Sometimes a single oncoming car instead of a full row.
+  if (Math.random() < 0.25) {
+    const car = getObstacle('low', 'low-car');
+    car.userData.vz = 5 + Math.random() * 5;
+    car.position.set(
+      lanes[Math.floor(Math.random() * lanes.length)],
+      car.userData.size.h / 2 + 0.02,
+      -90,
+    );
+    obstacles.push(car);
+    scene.add(car);
+    return;
+  }
+
   const pattern = rowPatterns[Math.floor(Math.random() * rowPatterns.length)];
   const baseZ = -60;
 
@@ -1605,6 +1702,7 @@ const spawnRow = () => {
     const obstacle = getObstacle(type);
     const size = obstacle.userData.size;
     const y = type === 'over' ? 1.55 : size.h / 2 + 0.02;
+    obstacle.rotation.y = 0;
     obstacle.position.set(lanes[laneIndex], y, baseZ);
     obstacles.push(obstacle);
     scene.add(obstacle);
@@ -1749,12 +1847,12 @@ const updateRunner = (delta) => {
 
   for (let i = obstacles.length - 1; i >= 0; i -= 1) {
     const obstacle = obstacles[i];
-    obstacle.position.z += speed.value * delta;
+    obstacle.position.z += (speed.value + (obstacle.userData.vz || 0)) * delta;
     if (obstacle.position.z > 18) {
       scene.remove(obstacle);
-      const type = obstacle.userData?.type;
-      if (type && obstaclePools[type]) {
-        obstaclePools[type].push(obstacle);
+      const key = obstacle.userData?.poolKey;
+      if (key) {
+        (obstaclePools[key] ||= []).push(obstacle);
       }
       obstacles.splice(i, 1);
       continue;
@@ -1889,8 +1987,7 @@ onBeforeUnmount(() => {
       materials.forEach((material) => material?.dispose());
     }
   });
-  Object.values(obstacleGeometries).forEach((geometry) => geometry?.dispose());
-  Object.values(obstacleMaterials).forEach((material) => material?.dispose());
+  obstacleResources.forEach((resource) => resource?.dispose());
   coinGeometry?.dispose();
   coinMaterial?.dispose();
   glowTexture?.dispose();
