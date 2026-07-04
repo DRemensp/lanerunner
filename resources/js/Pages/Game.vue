@@ -190,6 +190,20 @@
             <button class="menu-link primary" @click="startRun" type="button">
               Start Game
             </button>
+            <div class="difficulty-row">
+              <span class="difficulty-label">Difficulty</span>
+              <div class="difficulty-toggle">
+                <button
+                  v-for="level in levelOptions"
+                  :key="level.id"
+                  :class="{ active: selectedLevel === level.id }"
+                  @click="setLevel(level.id)"
+                  type="button"
+                >
+                  {{ level.label }}
+                </button>
+              </div>
+            </div>
             <button class="menu-link" @click="openMenuScreen('level')" type="button">
               Skins
             </button>
@@ -444,9 +458,23 @@ const cameraBase = {
 };
 
 const levelOptions = [
+  { id: 'rush', label: 'City Rush', baseSpeed: 12, stepDistance: 500, speedStep: 2 },
   { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 500, speedStep: 4 },
 ];
 const selectedLevel = ref(levelOptions[0].id);
+
+const loadLevelPref = () => {
+  const stored = localStorage.getItem('runner_level');
+  if (levelOptions.some((level) => level.id === stored)) {
+    selectedLevel.value = stored;
+  }
+};
+
+const setLevel = (levelId) => {
+  if (!levelOptions.some((level) => level.id === levelId)) return;
+  selectedLevel.value = levelId;
+  localStorage.setItem('runner_level', levelId);
+};
 
 const skinOptions = ref([
   { id: 1, slug: 'neon', label: 'Neon', color: '#3bffb3', price: 0, is_default: true },
@@ -3605,6 +3633,7 @@ const handleVisibility = () => {
 
 onMounted(() => {
   loadAudioPrefs();
+  loadLevelPref();
   initAudio();
   pointerUnlockHandler = () => unlockAudio();
   window.addEventListener('pointerdown', pointerUnlockHandler, { once: true });
@@ -4233,6 +4262,48 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 10px;
   margin-top: 16px;
+}
+
+.difficulty-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 0 6px;
+}
+
+.difficulty-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(170, 200, 255, 0.7);
+}
+
+.difficulty-toggle {
+  display: inline-flex;
+  border: 1px solid rgba(110, 165, 255, 0.4);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 3px;
+  background: rgba(8, 12, 22, 0.6);
+}
+
+.difficulty-toggle button {
+  border: none;
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: transparent;
+  color: rgba(210, 225, 255, 0.75);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.difficulty-toggle button.active {
+  background: linear-gradient(120deg, #39f9c0, #25a6ff);
+  color: #05070f;
+  font-weight: 700;
 }
 
 .menu-link {
