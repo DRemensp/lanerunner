@@ -241,7 +241,8 @@
     </button>
 
     <div v-if="nearMissToast && state === 'running'" class="near-miss">
-      Near Miss +{{ nearMissAmount }}
+      Near Miss<template v-if="nearMissCombo > 1"> x{{ nearMissCombo }}</template>
+      +{{ nearMissAmount }}
     </div>
 
     <div v-if="bumpToast && state === 'running'" class="bump-warning">
@@ -611,6 +612,8 @@ const showHandPrompt = ref(false);
 const isTouchDevice = ref(false);
 const nearMissToast = ref(false);
 const nearMissAmount = ref(25);
+const nearMissCombo = ref(0);
+let nearMissComboAt = -Infinity;
 let nearMissTimer;
 
 const shieldActive = ref(false);
@@ -635,6 +638,7 @@ let eventTimer = 8;
 let trafficWave = null;
 let coinRushEndZ = null;
 let nextMilestone = 2500;
+let smashStreak = 0;
 
 const cameraBase = {
   y: 5.5,
@@ -1799,6 +1803,9 @@ const resetRun = () => {
   bumpShakeTimer = 0;
   laneOrigin = 1;
   bumpToast.value = false;
+  nearMissCombo.value = 0;
+  nearMissComboAt = -Infinity;
+  smashStreak = 0;
   trafficWave = null;
   coinRushEndZ = null;
   eventTimer = 8;
@@ -2801,9 +2808,15 @@ const updateParticles = (delta) => {
 };
 
 const nearMissBase = 25;
+// Chained near misses within the combo window multiply the bonus (x2, x3…).
+const nearMissComboWindowMs = 4000;
 
 const triggerNearMiss = () => {
-  const bonus = nearMissBase * (multiTime.value > 0 ? 2 : 1);
+  const now = performance.now();
+  nearMissCombo.value =
+    now - nearMissComboAt < nearMissComboWindowMs ? nearMissCombo.value + 1 : 1;
+  nearMissComboAt = now;
+  const bonus = nearMissBase * nearMissCombo.value * (multiTime.value > 0 ? 2 : 1);
   nearMissAmount.value = bonus;
   score.value += bonus;
   sfx.nearMiss();
@@ -3751,6 +3764,8 @@ const handleSideBump = (obstacle) => {
   currentLane = laneOrigin;
   bumpProtectUntil = now + 800;
   bumpShakeTimer = 0.3;
+  nearMissCombo.value = 0;
+  nearMissComboAt = -Infinity;
   spawnBurst(
     new THREE.Vector3(
       (player.position.x + obstacle.position.x) / 2,
@@ -4008,6 +4023,19 @@ const spawnDriveTraffic = () => {
   scene.add(vehicle);
 };
 
+// Zone-2 pickup: a short coin line on one of the four drive lanes.
+const spawnDriveCoins = () => {
+  const laneX = carLanes[Math.floor(Math.random() * carLanes.length)];
+  const baseZ = -(150 + Math.min(150, speed.value * 0.9));
+  for (let k = 0; k < 6; k += 1) {
+    const coin = getCoin();
+    coin.position.set(laneX, 1.0, baseZ - k * 3.2);
+    coin.rotation.y = Math.random() * Math.PI;
+    coins.push(coin);
+    scene.add(coin);
+  }
+};
+
 const emitFireTrail = () => {
   const keys = ['flame', 'gold', 'red'];
   for (let i = 0; i < 3; i += 1) {
@@ -4052,6 +4080,11 @@ const smashObstacle = (obstacle, index) => {
   obstacle.userData.flyLife = 1.7;
   flyingCars.push(obstacle);
   score.value += 40;
+  smashStreak += 1;
+  if (smashStreak % 5 === 0) {
+    score.value += 150;
+    showEventToast(`Smash x${smashStreak}`, '+150 bonus', 1400);
+  }
   sfx.smash();
   spawnBurst(obstacle.position, ['red', 'gold', 'dust'], 12, 9);
   bumpShakeTimer = 0.22;
@@ -4093,6 +4126,7 @@ const clearFlyingCars = () => {
 
 const activateGodMode = () => {
   godModeActive.value = true;
+  smashStreak = 0;
   sfx.godMode();
   bumpShakeTimer = 0.3;
 };
@@ -5623,7 +5657,10 @@ const updateRunner = (delta) => {
       continue;
     }
     if (
-      Math.abs(coin.position.z - player.position.z) < 0.8 &&
+      // Widen the pickup window with speed so fast zone-2 runs cannot step
+      // over a coin between two frames.
+      Math.abs(coin.position.z - player.position.z) <
+        Math.max(0.8, speed.value * delta * 1.2) &&
       Math.abs(coin.position.x - player.position.x) < 0.75 &&
       Math.abs(coin.position.y - player.position.y) < 1.15
     ) {
@@ -5665,6 +5702,9 @@ const updateRunner = (delta) => {
     driveSpawnTimer -= delta;
     if (driveSpawnTimer <= 0) {
       spawnDriveTraffic();
+      if (Math.random() < 0.28) {
+        spawnDriveCoins();
+      }
       driveSpawnTimer = Math.max(
         0.28,
         THREE.MathUtils.randFloat(0.7, 1.5) * (26 / Math.max(14, speed.value)),
@@ -5857,6 +5897,8 @@ const startCrash = () => {
   state.value = 'crashing';
   crashTimer = 0.75;
   player.visible = false;
+  nearMissCombo.value = 0;
+  nearMissComboAt = -Infinity;
   sfx.crash();
   spawnBurst(player.position, ['skin', 'red', 'skin'], 26, 8);
 };
