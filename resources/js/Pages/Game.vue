@@ -468,9 +468,23 @@
 
             <template v-else-if="menuScreen === 'leaderboard'">
               <div class="leaderboard-panel">
-                <div class="leaderboard-stat">
-                  <div class="leaderboard-label">Best Score</div>
-                  <div class="leaderboard-value">{{ Math.floor(bestScore) }}</div>
+                <div class="stats-grid">
+                  <div class="leaderboard-stat">
+                    <div class="leaderboard-label">Best Score</div>
+                    <div class="leaderboard-value">{{ Math.floor(bestScore) }}</div>
+                  </div>
+                  <div class="leaderboard-stat">
+                    <div class="leaderboard-label">Top Speed</div>
+                    <div class="leaderboard-value">{{ Math.round(statBestSpeed) }}</div>
+                  </div>
+                  <div class="leaderboard-stat">
+                    <div class="leaderboard-label">Runs</div>
+                    <div class="leaderboard-value">{{ statTotalRuns }}</div>
+                  </div>
+                  <div v-if="authUser" class="leaderboard-stat">
+                    <div class="leaderboard-label">Coins</div>
+                    <div class="leaderboard-value">{{ totalCoins }}</div>
+                  </div>
                 </div>
                 <div v-if="leaderboard.length" class="menu-leaderboard">
                   <div class="menu-leaderboard-title">Top Runners</div>
@@ -597,6 +611,8 @@ const isGuest = computed(() => !authUser.value);
 const state = ref('menu');
 const score = ref(0);
 const bestScore = ref(0);
+const statBestSpeed = ref(0);
+const statTotalRuns = ref(0);
 const speed = ref(0);
 const runCoins = ref(0);
 const totalCoins = ref(0);
@@ -1108,6 +1124,9 @@ const ensureSelectedSkin = () => {
 const loadGuestPrefs = () => {
   const storedBest = Number.parseInt(localStorage.getItem('runner_best_distance') || '0', 10);
   bestScore.value = Number.isFinite(storedBest) ? storedBest : 0;
+  statBestSpeed.value = Number.parseFloat(localStorage.getItem('runner_best_speed') || '0') || 0;
+  statTotalRuns.value =
+    Number.parseInt(localStorage.getItem('runner_total_runs') || '0', 10) || 0;
   const storedSkin = Number.parseInt(localStorage.getItem('runner_skin_id') || '', 10);
   if (Number.isFinite(storedSkin)) {
     selectedSkin.value = storedSkin;
@@ -1592,6 +1611,8 @@ const loadProfile = async () => {
       loadGuestPrefs();
     } else if (data.profile) {
       bestScore.value = data.profile.best_distance ?? 0;
+      statBestSpeed.value = Number(data.profile.best_speed) || 0;
+      statTotalRuns.value = data.profile.total_runs ?? 0;
       ownedSkinIds.value = Array.isArray(data.owned_skin_ids)
         ? data.owned_skin_ids.map((id) => Number(id))
         : [];
@@ -1908,6 +1929,10 @@ const persistRun = async () => {
     : distance;
   localStorage.setItem('runner_best_distance', String(nextBest));
   bestScore.value = nextBest;
+  statTotalRuns.value += 1;
+  localStorage.setItem('runner_total_runs', String(statTotalRuns.value));
+  statBestSpeed.value = Math.max(statBestSpeed.value, maxSpeed);
+  localStorage.setItem('runner_best_speed', String(statBestSpeed.value));
 };
 
 const clearObstacles = () => {
@@ -6416,6 +6441,12 @@ onBeforeUnmount(() => {
 .event-toast .finale-toast-sub {
   font-size: 0.7rem;
   color: rgba(255, 230, 190, 0.8);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
 }
 
 .tutorial-hint {
