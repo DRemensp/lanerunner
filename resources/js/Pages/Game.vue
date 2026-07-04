@@ -5099,6 +5099,87 @@ const updateLaunch = (delta) => {
   camera.lookAt(lookAtTarget);
 };
 
+// Zone-3 pickups: repair kits and rapid-fire stars floating in the flight path.
+let skyPickups = [];
+let skyPickupTimer = 7;
+let rapidFireTime = 0;
+let skyPickupAssets = null;
+
+const getSkyPickupAssets = () => {
+  if (skyPickupAssets) return skyPickupAssets;
+  skyPickupAssets = {
+    geo: new THREE.OctahedronGeometry(0.75),
+    heal: new THREE.MeshStandardMaterial({
+      color: 0x35ff88,
+      emissive: 0x1fbb5e,
+      emissiveIntensity: 1.4,
+    }),
+    rapid: new THREE.MeshStandardMaterial({
+      color: 0xffd24d,
+      emissive: 0xcc9a1f,
+      emissiveIntensity: 1.6,
+    }),
+  };
+  return skyPickupAssets;
+};
+
+const spawnSkyPickup = () => {
+  const assets = getSkyPickupAssets();
+  const type = Math.random() < 0.55 ? 'heal' : 'rapid';
+  const mesh = new THREE.Mesh(assets.geo, assets[type]);
+  mesh.userData.type = type;
+  mesh.position.set(
+    THREE.MathUtils.randFloat(-11, 11),
+    THREE.MathUtils.randFloat(5, 18),
+    -220,
+  );
+  skyPickups.push(mesh);
+  scene.add(mesh);
+};
+
+const clearSkyPickups = () => {
+  skyPickups.forEach((pickup) => scene.remove(pickup));
+  skyPickups = [];
+};
+
+const updateSkyPickups = (delta) => {
+  skyPickupTimer -= delta;
+  if (skyPickupTimer <= 0) {
+    spawnSkyPickup();
+    skyPickupTimer = THREE.MathUtils.randFloat(6, 10);
+  }
+  if (rapidFireTime > 0) {
+    rapidFireTime -= delta;
+  }
+  for (let i = skyPickups.length - 1; i >= 0; i -= 1) {
+    const pickup = skyPickups[i];
+    pickup.position.z += (speed.value + 18) * delta;
+    pickup.rotation.y += delta * 3;
+    pickup.rotation.x += delta * 1.5;
+    if (pickup.position.z > 15) {
+      scene.remove(pickup);
+      skyPickups.splice(i, 1);
+      continue;
+    }
+    const dx = pickup.position.x - player.position.x;
+    const dy = pickup.position.y - player.position.y;
+    const dz = pickup.position.z - player.position.z;
+    if (dx * dx + dy * dy + dz * dz < 7.5) {
+      if (pickup.userData.type === 'heal') {
+        playerHp.value = Math.min(100, playerHp.value + 25);
+        showEventToast('Repair Kit', '+25 HP', 1200);
+      } else {
+        rapidFireTime = 6;
+        showEventToast('Rapid Fire', 'Six seconds of fury!', 1200);
+      }
+      sfx.powerup();
+      spawnBurst(pickup.position, ['gold', 'skin'], 10, 6);
+      scene.remove(pickup);
+      skyPickups.splice(i, 1);
+    }
+  }
+};
+
 const updatePlane = (delta) => {
   const inputX = THREE.MathUtils.clamp(
     (planeKeys.right ? 1 : 0) - (planeKeys.left ? 1 : 0) + joyVec.x,
@@ -5156,10 +5237,12 @@ const updatePlane = (delta) => {
     }
   }
 
+  updateSkyPickups(delta);
+
   fireTimer -= delta;
   if (fireTimer <= 0) {
     fireProjectiles();
-    fireTimer = 0.18;
+    fireTimer = rapidFireTime > 0 ? 0.09 : 0.18;
   }
 
   for (let i = projectiles.length - 1; i >= 0; i -= 1) {
@@ -5481,6 +5564,9 @@ const exitFinale = () => {
   clearEnemies();
   clearProjectiles();
   clearEnemyBolts();
+  clearSkyPickups();
+  rapidFireTime = 0;
+  skyPickupTimer = 7;
   playerHp.value = 100;
   damageFlash.value = false;
   bossCount = 0;
