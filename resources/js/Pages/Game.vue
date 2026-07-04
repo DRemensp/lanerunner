@@ -2,14 +2,9 @@
   <div class="runner-page">
     <div ref="canvasWrap" class="runner-canvas"></div>
 
-    <div v-if="state !== 'running' && !showAuthGate" class="auth-bar">
-      <template v-if="authUser">
-        <div class="auth-user">Signed in as <strong>{{ authUser.name }}</strong></div>
-      </template>
-      <template v-else>
-        <Link class="ghost-btn small" href="/login">Login</Link>
-        <Link class="primary-btn small" href="/register">Register</Link>
-      </template>
+    <div v-if="state === 'menu' && !showAuthGate && !authUser" class="auth-bar">
+      <Link class="ghost-btn small" href="/login">Login</Link>
+      <Link class="primary-btn small" href="/register">Register</Link>
     </div>
 
     <div
@@ -178,7 +173,7 @@
               Start Game
             </button>
             <button class="menu-link" @click="openMenuScreen('level')" type="button">
-              Change Lvl
+              Skins
             </button>
             <button class="menu-link" @click="openMenuScreen('inventory')" type="button">
               Inventory
@@ -222,7 +217,7 @@
             <div class="menu-screen-title">
               {{
                 menuScreen === 'level'
-                  ? 'Game Setup'
+                  ? 'Skins'
                   : menuScreen === 'inventory'
                     ? 'Inventory'
                     : menuScreen === 'leaderboard'
@@ -233,14 +228,6 @@
           </div>
           <div class="menu-screen-card">
             <template v-if="menuScreen === 'level'">
-            <div class="menu-field">
-              <label for="level">Level</label>
-              <select id="level" v-model="selectedLevel">
-                <option v-for="level in levelOptions" :key="level.id" :value="level.id">
-                  {{ level.label }}
-                </option>
-              </select>
-            </div>
             <div class="menu-field">
               <label for="skin">Runner Skin</label>
               <div v-if="authUser" class="shop-balance">
@@ -436,11 +423,9 @@ const cameraBase = {
 };
 
 const levelOptions = [
-  { id: 'casual', label: 'Leicht (Casual)', baseSpeed: 10, stepDistance: 500, speedStep: 1 },
-  { id: 'rush', label: 'Mittel (City Rush)', baseSpeed: 12, stepDistance: 500, speedStep: 2 },
-  { id: 'night', label: 'Schwer (Night Run)', baseSpeed: 14, stepDistance: 500, speedStep: 4 },
+  { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 500, speedStep: 4 },
 ];
-const selectedLevel = ref(levelOptions[1].id);
+const selectedLevel = ref(levelOptions[0].id);
 
 const skinOptions = ref([
   { id: 1, slug: 'neon', label: 'Neon', color: '#3bffb3', price: 0, is_default: true },
@@ -541,6 +526,7 @@ let crashTimer = 0;
 let buildingGeometry;
 let buildingMaterials = [];
 let glowTexture;
+let skylineTexture;
 let starPoints;
 
 const obstaclePools = {};
@@ -1443,8 +1429,8 @@ let houseAssets = null;
 
 const buildHouse = (side) => {
   const group = new THREE.Group();
-  const w = 3.2 + Math.random() * 2.4;
-  const h = 5 + Math.random() * 9;
+  const w = 3.2 + Math.random() * 2.6;
+  const h = 5 + Math.random() * 11;
   const d = 4 + Math.random() * 3;
   const base = new THREE.Mesh(
     buildingGeometry,
@@ -1453,19 +1439,60 @@ const buildHouse = (side) => {
   base.scale.set(w, h, d);
   group.add(base);
 
+  const parapet = new THREE.Mesh(buildingGeometry, houseAssets.trimMat);
+  parapet.scale.set(w + 0.18, 0.3, d + 0.18);
+  parapet.position.y = h - 0.05;
+  group.add(parapet);
+
+  if (Math.random() < 0.55) {
+    const ac = new THREE.Mesh(houseAssets.acGeo, houseAssets.grayMat);
+    ac.position.set((Math.random() - 0.5) * w * 0.5, h + 0.45, (Math.random() - 0.5) * d * 0.4);
+    group.add(ac);
+  }
+  if (Math.random() < 0.4) {
+    const antenna = new THREE.Mesh(houseAssets.antennaGeo, houseAssets.grayMat);
+    antenna.position.set(
+      (Math.random() - 0.5) * w * 0.6,
+      h + 1.2,
+      (Math.random() - 0.5) * d * 0.4,
+    );
+    group.add(antenna);
+  }
+  if (Math.random() < 0.3) {
+    const tank = new THREE.Mesh(houseAssets.tankGeo, houseAssets.trimMat);
+    tank.position.set((Math.random() - 0.5) * w * 0.4, h + 0.45, (Math.random() - 0.5) * d * 0.3);
+    group.add(tank);
+  }
+
   const faceX = -side * (w / 2 + 0.03);
   const faceRotation = side < 0 ? Math.PI / 2 : -Math.PI / 2;
-  const rows = Math.max(1, Math.min(5, Math.floor((h - 2.6) / 2.1)));
+  const rows = Math.max(1, Math.min(6, Math.floor((h - 2.4) / 1.9)));
   for (let row = 0; row < rows; row += 1) {
-    for (let col = -1; col <= 1; col += 2) {
-      const win = new THREE.Mesh(
-        houseAssets.windowGeometry,
-        Math.random() < 0.4 ? houseAssets.windowLit : houseAssets.windowDark,
-      );
-      win.position.set(faceX, 2.6 + row * 2.1, col * d * 0.22);
+    for (let col = -1; col <= 1; col += 1) {
+      if (Math.random() < 0.12) continue;
+      const litRoll = Math.random();
+      const material =
+        litRoll < 0.3
+          ? houseAssets.windowLit
+          : litRoll < 0.42
+            ? houseAssets.windowCool
+            : houseAssets.windowDark;
+      const win = new THREE.Mesh(houseAssets.windowGeometry, material);
+      win.position.set(faceX, 2.5 + row * 1.9, col * d * 0.26);
       win.rotation.y = faceRotation;
       group.add(win);
     }
+  }
+
+  if (Math.random() < 0.35) {
+    const sign = new THREE.Mesh(
+      houseAssets.signGeo,
+      houseAssets.neonMats[Math.floor(Math.random() * houseAssets.neonMats.length)],
+    );
+    sign.scale.y = Math.min(1, (h * 0.45) / 2.4);
+    sign.position.set(-side * (w / 2 + 0.09), h * 0.55, (Math.random() - 0.5) * d * 0.5);
+    sign.rotation.y = faceRotation;
+    group.add(sign);
   }
 
   const door = new THREE.Mesh(houseAssets.doorGeometry, houseAssets.doorMat);
@@ -1950,7 +1977,7 @@ const triggerNearMiss = () => {
 const initScene = () => {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05070f);
-  scene.fog = new THREE.Fog(0x05070f, 35, 140);
+  scene.fog = new THREE.Fog(0x05070f, 40, 165);
 
   camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
   camera.position.set(0, cameraBase.y, cameraBase.z);
@@ -1976,14 +2003,16 @@ const initScene = () => {
   scene.add(dirLight);
 
   const floorMaterial = new THREE.MeshLambertMaterial({
-    color: 0x0e1b2f,
+    color: 0x11151f,
   });
-  const stripeMaterial = new THREE.MeshBasicMaterial({
-    color: 0x2ee5ff,
-  });
-  const railMaterial = new THREE.MeshLambertMaterial({
-    color: 0x2b3b56,
-  });
+  const laneDashGeometry = new THREE.BoxGeometry(0.09, 0.02, 1.3);
+  const laneDashMaterial = new THREE.MeshBasicMaterial({ color: 0xcfd8ea });
+  const edgeLineGeometry = new THREE.BoxGeometry(0.07, 0.02, segmentLength);
+  const edgeLineMaterial = new THREE.MeshBasicMaterial({ color: 0x2ee5ff });
+  const curbGeometry = new THREE.BoxGeometry(0.34, 0.26, segmentLength);
+  const curbMaterial = new THREE.MeshLambertMaterial({ color: 0x39465e });
+  const sidewalkGeometry = new THREE.BoxGeometry(2.6, 0.26, segmentLength);
+  const sidewalkMaterial = new THREE.MeshLambertMaterial({ color: 0x1a2233 });
 
   buildingGeometry = new THREE.BoxGeometry(1, 1, 1);
   buildingGeometry.translate(0, 0.5, 0);
@@ -1991,6 +2020,9 @@ const initScene = () => {
     new THREE.MeshLambertMaterial({ color: 0x1a2a46 }),
     new THREE.MeshLambertMaterial({ color: 0x14203a }),
     new THREE.MeshLambertMaterial({ color: 0x223354 }),
+    new THREE.MeshLambertMaterial({ color: 0x2c2340 }),
+    new THREE.MeshLambertMaterial({ color: 0x1c3040 }),
+    new THREE.MeshLambertMaterial({ color: 0x33273a }),
   ];
   const glowCanvas = document.createElement('canvas');
   glowCanvas.width = 128;
@@ -2004,11 +2036,21 @@ const initScene = () => {
   glowTexture = new THREE.CanvasTexture(glowCanvas);
 
   houseAssets = {
-    windowGeometry: new THREE.PlaneGeometry(0.7, 0.9),
+    windowGeometry: new THREE.PlaneGeometry(0.62, 0.85),
     doorGeometry: new THREE.PlaneGeometry(0.95, 1.7),
     windowLit: new THREE.MeshBasicMaterial({ color: 0xffd98c }),
+    windowCool: new THREE.MeshBasicMaterial({ color: 0x9fd8ff }),
     windowDark: new THREE.MeshBasicMaterial({ color: 0x0a1322 }),
     doorMat: new THREE.MeshBasicMaterial({ color: 0x0c1626 }),
+    trimMat: new THREE.MeshLambertMaterial({ color: 0x33415e }),
+    grayMat: new THREE.MeshLambertMaterial({ color: 0x222c42 }),
+    acGeo: new THREE.BoxGeometry(0.7, 0.45, 0.6),
+    antennaGeo: new THREE.BoxGeometry(0.07, 2.4, 0.07),
+    tankGeo: new THREE.CylinderGeometry(0.5, 0.5, 0.9, 10),
+    signGeo: new THREE.PlaneGeometry(0.42, 2.4),
+    neonMats: [0xff4fd8, 0x2ee5ff, 0xffa22e, 0x67f05a, 0xff5a6e].map(
+      (color) => new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+    ),
   };
 
   const lampPoleGeometry = new THREE.BoxGeometry(0.11, 4.2, 0.11);
@@ -2033,29 +2075,31 @@ const initScene = () => {
     blending: THREE.AdditiveBlending,
   });
 
-  for (let i = 0; i < 7; i += 1) {
+  for (let i = 0; i < 9; i += 1) {
     const segment = new THREE.Group();
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, segmentLength), floorMaterial);
     floor.rotation.x = -Math.PI / 2;
     segment.add(floor);
 
-    const stripeGeometry = new THREE.BoxGeometry(0.08, 0.02, 6);
-    const stripeLeft = new THREE.Mesh(stripeGeometry, stripeMaterial);
-    stripeLeft.position.set(-1, 0.01, -3);
-    segment.add(stripeLeft);
+    for (let side = -1; side <= 1; side += 2) {
+      for (let dash = 0; dash < 5; dash += 1) {
+        const laneDash = new THREE.Mesh(laneDashGeometry, laneDashMaterial);
+        laneDash.position.set(side, 0.01, -segmentLength / 2 + 2 + dash * 4);
+        segment.add(laneDash);
+      }
 
-    const stripeRight = stripeLeft.clone();
-    stripeRight.position.set(1, 0.01, 3);
-    segment.add(stripeRight);
+      const edgeLine = new THREE.Mesh(edgeLineGeometry, edgeLineMaterial);
+      edgeLine.position.set(side * 3.15, 0.012, 0);
+      segment.add(edgeLine);
 
-    const railGeometry = new THREE.BoxGeometry(0.2, 0.4, segmentLength);
-    const railLeft = new THREE.Mesh(railGeometry, railMaterial);
-    railLeft.position.set(-3.8, 0.2, 0);
-    segment.add(railLeft);
+      const curb = new THREE.Mesh(curbGeometry, curbMaterial);
+      curb.position.set(side * 3.45, 0.13, 0);
+      segment.add(curb);
 
-    const railRight = railLeft.clone();
-    railRight.position.set(3.8, 0.2, 0);
-    segment.add(railRight);
+      const sidewalk = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
+      sidewalk.position.set(side * 4.92, 0.13, 0);
+      segment.add(sidewalk);
+    }
 
     for (let side = -1; side <= 1; side += 2) {
       for (let b = 0; b < 2; b += 1) {
@@ -2093,7 +2137,7 @@ const initScene = () => {
       pool.position.set(-side * 0.8, 0.03, 0);
       lamp.add(pool);
 
-      lamp.position.set(side * 4.15, 0, -segmentLength / 2);
+      lamp.position.set(side * 4.6, 0.26, -segmentLength / 2);
       segment.add(lamp);
     }
 
@@ -2143,6 +2187,41 @@ const initScene = () => {
   );
   moon.position.set(-45, 55, -140);
   scene.add(moon);
+
+  // Distant city silhouette painted onto a canvas, parked behind the fog.
+  const skylineCanvas = document.createElement('canvas');
+  skylineCanvas.width = 1024;
+  skylineCanvas.height = 256;
+  const skyCtx = skylineCanvas.getContext('2d');
+  let cursorX = 0;
+  while (cursorX < skylineCanvas.width) {
+    const towerW = 28 + Math.random() * 62;
+    const towerH = 60 + Math.random() * 175;
+    skyCtx.fillStyle = '#0a1124';
+    skyCtx.fillRect(cursorX, skylineCanvas.height - towerH, towerW, towerH);
+    skyCtx.fillStyle = 'rgba(255, 214, 140, 0.5)';
+    for (let wy = skylineCanvas.height - towerH + 8; wy < skylineCanvas.height - 8; wy += 9) {
+      for (let wx = cursorX + 5; wx < cursorX + towerW - 5; wx += 8) {
+        if (Math.random() < 0.16) {
+          skyCtx.fillRect(wx, wy, 3, 4);
+        }
+      }
+    }
+    cursorX += towerW + 4 + Math.random() * 12;
+  }
+  skylineTexture = new THREE.CanvasTexture(skylineCanvas);
+  const skyline = new THREE.Mesh(
+    new THREE.PlaneGeometry(340, 82),
+    new THREE.MeshBasicMaterial({
+      map: skylineTexture,
+      transparent: true,
+      opacity: 0.9,
+      fog: false,
+      depthWrite: false,
+    }),
+  );
+  skyline.position.set(0, 34, -155);
+  scene.add(skyline);
 
   buildRunner();
   player.position.set(lanes[currentLane], currentGroundCenter, 2);
@@ -2197,6 +2276,7 @@ const getObstacleAssets = () => {
     busPaints: [0xc22b3d, 0x2f6fd0, 0x2f9e63, 0xd8892b].map((color) => lambert(color, 0.25)),
     tall: lambert(0xffb14a, 0.4),
     over: lambert(0x49a8ff, 0.45),
+    hazard: track(new THREE.MeshBasicMaterial({ color: 0xffa22e })),
     busBody: lambert(0xc22b3d, 0.25),
     busRoof: lambert(0xe8e2d0),
     frame: lambert(0x2a3350),
@@ -2341,22 +2421,34 @@ const obstacleBuilders = {
     });
     return { mesh: g, size: { w: 1.2, h: 2.8, d: 1.2 } };
   },
-  'over-sign': () => {
+  // Roadwork barrier: striped beam on two legs, open underneath — slide
+  // under it or jump over it. Collision box covers only the beam.
+  'over-barrier': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
-    const panel = new THREE.Mesh(track(new THREE.BoxGeometry(1.6, 0.55, 0.12)), a.over);
-    g.add(panel);
-    const frameGeo = track(new THREE.BoxGeometry(1.7, 0.09, 0.17));
-    [0.3, -0.3].forEach((y) => {
-      const rail = new THREE.Mesh(frameGeo, a.frame);
-      rail.position.y = y;
-      g.add(rail);
+    const beam = new THREE.Mesh(track(new THREE.BoxGeometry(1.7, 0.26, 0.14)), a.barrel);
+    g.add(beam);
+    const stripeGeo = track(new THREE.BoxGeometry(0.3, 0.28, 0.16));
+    [-0.55, 0.05, 0.62].forEach((x) => {
+      const stripe = new THREE.Mesh(stripeGeo, a.busRoof);
+      stripe.position.x = x;
+      g.add(stripe);
     });
-    const rodGeo = track(new THREE.BoxGeometry(0.07, 1.5, 0.07));
-    [-0.6, 0.6].forEach((x) => {
-      const rod = new THREE.Mesh(rodGeo, a.frame);
-      rod.position.set(x, 1.05, 0);
-      g.add(rod);
+    const legGeo = track(new THREE.BoxGeometry(0.1, 1.72, 0.1));
+    const footGeo = track(new THREE.BoxGeometry(0.36, 0.08, 0.36));
+    [-0.82, 0.82].forEach((x) => {
+      const leg = new THREE.Mesh(legGeo, a.frame);
+      leg.position.set(x, -0.73, 0);
+      g.add(leg);
+      const foot = new THREE.Mesh(footGeo, a.frame);
+      foot.position.set(x, -1.55, 0);
+      g.add(foot);
+    });
+    const lampGeo = track(new THREE.BoxGeometry(0.12, 0.1, 0.12));
+    [-0.82, 0, 0.82].forEach((x) => {
+      const hazardLamp = new THREE.Mesh(lampGeo, a.hazard);
+      hazardLamp.position.set(x, 0.2, 0);
+      g.add(hazardLamp);
     });
     return { mesh: g, size: { w: 1.6, h: 0.7, d: 1.2 } };
   },
@@ -2365,7 +2457,7 @@ const obstacleBuilders = {
 const obstacleVariants = {
   low: ['low-crate', 'low-barrel', 'car-any'],
   tall: ['tall-stack', 'tall-any'],
-  over: ['over-sign'],
+  over: ['over-barrier'],
 };
 
 // Low-poly vehicles from Kenney's CC0 Car Kit (kenney.nl), loaded at runtime.
@@ -2519,7 +2611,7 @@ const spawnOncoming = () => {
     vehicle.position.set(
       lanes[laneOrder[i]],
       vehicle.userData.size.h / 2 + 0.02,
-      -90 - i * 14 - Math.random() * 8,
+      -(112 + Math.min(20, speed.value * 0.3)) - i * 10 - Math.random() * 5,
     );
     obstacles.push(vehicle);
     scene.add(vehicle);
@@ -2534,7 +2626,8 @@ const spawnRow = () => {
   }
 
   const pattern = rowPatterns[Math.floor(Math.random() * rowPatterns.length)];
-  const baseZ = -60;
+  // Spawn farther out the faster we go, so there is always time to react.
+  const baseZ = -(70 + Math.min(45, speed.value));
 
   pattern.forEach((type, laneIndex) => {
     if (type === 'none') return;
@@ -3056,6 +3149,7 @@ onBeforeUnmount(() => {
   coinGeometry?.dispose();
   coinMaterial?.dispose();
   glowTexture?.dispose();
+  skylineTexture?.dispose();
   starPoints?.geometry?.dispose();
   starPoints?.material?.dispose();
   particleGeometry?.dispose();
