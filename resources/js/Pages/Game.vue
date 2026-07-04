@@ -533,6 +533,25 @@
                 </div>
               </div>
               <div class="menu-field">
+                <label>Render Quality</label>
+                <div class="difficulty-toggle">
+                  <button
+                    :class="{ active: renderQuality === 'full' }"
+                    @click="setRenderQuality('full')"
+                    type="button"
+                  >
+                    Full
+                  </button>
+                  <button
+                    :class="{ active: renderQuality === 'battery' }"
+                    @click="setRenderQuality('battery')"
+                    type="button"
+                  >
+                    Battery Saver
+                  </button>
+                </div>
+              </div>
+              <div class="menu-field">
                 <label for="settings-zoom">Zoom</label>
                 <input
                   id="settings-zoom"
@@ -2291,6 +2310,19 @@ const handleTouchCancel = (event) => {
   }
 };
 
+// Battery Saver renders at a lower pixel ratio — a big win on hot phones.
+const renderQuality = ref(localStorage.getItem('runner_quality') || 'full');
+const currentPixelRatio = () =>
+  Math.min(window.devicePixelRatio || 1, renderQuality.value === 'battery' ? 1.3 : 2);
+const setRenderQuality = (quality) => {
+  renderQuality.value = quality;
+  localStorage.setItem('runner_quality', quality);
+  if (renderer) {
+    renderer.setPixelRatio(currentPixelRatio());
+    handleResize();
+  }
+};
+
 const getViewportSize = () => {
   const viewport = window.visualViewport;
   return {
@@ -2918,7 +2950,7 @@ const initScene = () => {
   applyCameraZoom();
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(currentPixelRatio());
   renderer.setSize(1, 1);
   renderer.setClearColor(0x05070f, 1);
   renderer.domElement.style.display = 'block';
