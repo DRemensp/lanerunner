@@ -534,7 +534,7 @@ const FINALE_SCORE = 10000;
 const carLanes = [-3, -1, 1, 3];
 const carPlayerSize = { w: 1.5, h: 1.1, d: 2.6 };
 const driveScoreMinSpeed = 15;
-const driveMaxSpeed = 42;
+const driveMaxSpeed = 80;
 const finalePhase = ref('none'); // none | approach | walk | enter | drive
 // Dev cheat (F9 during a run): jump straight to the finale trigger. The run
 // is then never persisted, so it cannot flag the account or touch records.
@@ -610,6 +610,8 @@ let powerupAssets = null;
 
 let sfxCtx = null;
 let sfxGain = null;
+let engineOsc = null;
+let engineGain = null;
 
 let particles = [];
 let particlePool = [];
@@ -711,10 +713,6 @@ const backToMenu = () => {
 const toggleDriveCamera = () => {
   if (finalePhase.value !== 'drive') return;
   driveCamera.value = driveCamera.value === 'chase' ? 'ego' : 'chase';
-  if (carVisual) {
-    // Hood cam: hide our own car so we don't sit inside an empty shell.
-    carVisual.visible = driveCamera.value === 'chase';
-  }
 };
 
 const pauseRun = () => {
@@ -864,6 +862,13 @@ const sfx = {
     playTone({ freq: 55, to: 140, type: 'sawtooth', duration: 0.7, gain: 0.22 });
     playNoise({ duration: 0.5, from: 300, to: 900, gain: 0.12, delay: 0.15 });
   },
+  rev: () => playTone({ freq: 70, to: 150, type: 'sawtooth', duration: 0.35, gain: 0.16 }),
+  brakeScreech: () => playNoise({ duration: 0.45, from: 2600, to: 900, gain: 0.22 }),
+  horn: () => {
+    const base = 400 + Math.random() * 80;
+    playTone({ freq: base, type: 'square', duration: 0.3, gain: 0.15 });
+    playTone({ freq: base * 1.26, type: 'square', duration: 0.3, gain: 0.15 });
+  },
   land: () => {
     playNoise({ duration: 0.12, from: 500, to: 140, gain: 0.22 });
     playTone({ freq: 95, to: 55, type: 'sine', duration: 0.12, gain: 0.25 });
@@ -892,6 +897,32 @@ const sfx = {
     playNoise({ duration: 0.5, from: 900, to: 90, gain: 0.55 });
     playTone({ freq: 160, to: 50, type: 'sawtooth', duration: 0.5, gain: 0.35 });
   },
+};
+
+// Looping engine drone for zone 2 — pitch and volume follow the car speed.
+const updateEngineSound = () => {
+  const ctx = getSfxContext();
+  if (!ctx) return;
+  if (!engineOsc) {
+    engineOsc = ctx.createOscillator();
+    engineOsc.type = 'sawtooth';
+    engineGain = ctx.createGain();
+    engineGain.gain.value = 0;
+    engineOsc.connect(engineGain).connect(sfxGain);
+    engineOsc.start();
+  }
+  engineGain.gain.setTargetAtTime(
+    0.045 + (speed.value / driveMaxSpeed) * 0.06,
+    ctx.currentTime,
+    0.1,
+  );
+  engineOsc.frequency.setTargetAtTime(38 + speed.value * 1.9, ctx.currentTime, 0.08);
+};
+
+const silenceEngineSound = () => {
+  if (engineGain && sfxCtx) {
+    engineGain.gain.setTargetAtTime(0, sfxCtx.currentTime, 0.15);
+  }
 };
 
 const initAudio = () => {
@@ -1468,10 +1499,16 @@ const handleKeydown = (event) => {
       case 'ArrowUp':
       case 'KeyW':
       case 'Space':
+        if (!accelHeld) {
+          sfx.rev();
+        }
         accelHeld = true;
         break;
       case 'ArrowDown':
       case 'KeyS':
+        if (!brakeHeld && speed.value > 12) {
+          sfx.brakeScreech();
+        }
         brakeHeld = true;
         break;
       case 'KeyC':
@@ -1546,9 +1583,13 @@ const triggerSwipe = (dx, dy) => {
 
   if (finalePhase.value === 'drive') {
     if (dy < 0) {
-      driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 7);
+      driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 10);
+      sfx.rev();
     } else {
-      driveTargetSpeed = Math.max(0, driveTargetSpeed - 7);
+      driveTargetSpeed = Math.max(0, driveTargetSpeed - 10);
+      if (speed.value > 12) {
+        sfx.brakeScreech();
+      }
     }
     return true;
   }
@@ -3160,7 +3201,7 @@ const spawnDriveTraffic = () => {
   vehicle.position.set(
     carLanes[laneIndex],
     vehicle.userData.size.h / 2 + 0.02,
-    -150 - Math.random() * 20,
+    -(140 + Math.min(70, speed.value * 0.8)) - Math.random() * 20,
   );
   obstacles.push(vehicle);
   scene.add(vehicle);
@@ -3219,6 +3260,7 @@ const updateRunner = (delta) => {
       driveTargetSpeed = Math.max(0, driveTargetSpeed - 34 * delta);
     }
     speed.value = THREE.MathUtils.damp(speed.value, driveTargetSpeed, 2.2, delta);
+    updateEngineSound();
     // No points below cruising speed — crawling along earns nothing.
     if (speed.value >= driveScoreMinSpeed) {
       score.value += speed.value * delta * 2.4 * scoreMult;
@@ -3334,7 +3376,7 @@ const updateRunner = (delta) => {
   const egoView = driving && driveCamera.value === 'ego';
   camera.fov = THREE.MathUtils.damp(
     camera.fov,
-    (egoView ? 70 : 60) + Math.min(14, Math.max(0, speed.value - 10) * 0.55),
+    (egoView ? 70 : 60) + Math.min(driving ? 20 : 14, Math.max(0, speed.value - 10) * 0.55),
     3,
     delta,
   );
@@ -3467,7 +3509,7 @@ const updateRunner = (delta) => {
         }
       }
     }
-    if (obstacle.position.z > 18 || obstacle.position.z < -230) {
+    if (obstacle.position.z > 18 || obstacle.position.z < -245) {
       scene.remove(obstacle);
       const key = obstacle.userData?.poolKey;
       if (key) {
@@ -3495,6 +3537,35 @@ const updateRunner = (delta) => {
         }
         continue;
       }
+      // Zone 2: rear-ending a low car ahead is survivable — it honks and
+      // brakes, and we shed speed instead of crashing. Trucks and oncoming
+      // traffic stay fatal.
+      if (
+        driving &&
+        obstacle.userData.vz < 0 &&
+        obstacle.userData.type === 'low' &&
+        obstacle.position.z < player.position.z
+      ) {
+        const carSpeed = -obstacle.userData.vz;
+        const brakedSpeed = carSpeed * 0.75;
+        obstacle.userData.vz = -brakedSpeed;
+        speed.value = Math.min(speed.value, brakedSpeed * 0.9);
+        driveTargetSpeed = Math.min(driveTargetSpeed, brakedSpeed * 0.9);
+        bumpProtectUntil = now + 900;
+        bumpShakeTimer = 0.25;
+        sfx.horn();
+        spawnBurst(
+          new THREE.Vector3(
+            obstacle.position.x,
+            0.8,
+            obstacle.position.z + obstacle.userData.size.d / 2,
+          ),
+          ['dust'],
+          6,
+          3,
+        );
+        continue;
+      }
       if (shieldActive.value) {
         shieldActive.value = false;
         invulnUntil = performance.now() + 900;
@@ -3518,15 +3589,17 @@ const updateRunner = (delta) => {
   }
 
   if (egoView) {
+    // Hood cam: sit at the top of the windshield so the bonnet stays in
+    // frame at the bottom while the car itself remains visible.
     camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x, 12, delta);
-    camera.position.y = THREE.MathUtils.damp(camera.position.y, 1.18, 10, delta);
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, 1.24, 10, delta);
     camera.position.z = THREE.MathUtils.damp(
       camera.position.z,
-      player.position.z - 0.5,
+      player.position.z + 0.25,
       12,
       delta,
     );
-    lookAtTarget.set(camera.position.x + player.rotation.z * 5, 0.95, player.position.z - 30);
+    lookAtTarget.set(camera.position.x + player.rotation.z * 5, 0.68, player.position.z - 26);
     camera.lookAt(lookAtTarget);
     camera.rotation.z += player.rotation.z * 0.5;
   } else {
@@ -3621,6 +3694,10 @@ const animate = (time) => {
   if (Math.abs(musicDuckCurrent - musicDuckTarget) > 0.005) {
     musicDuckCurrent = THREE.MathUtils.damp(musicDuckCurrent, musicDuckTarget, 1.2, delta);
     applyAudioVolume();
+  }
+
+  if (engineOsc && (state.value !== 'running' || finalePhase.value !== 'drive')) {
+    silenceEngineSound();
   }
 
   renderer.render(scene, camera);
