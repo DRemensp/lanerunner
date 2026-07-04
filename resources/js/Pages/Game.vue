@@ -351,7 +351,7 @@
         </div>
       </div>
 
-      <div v-else class="menu-screen">
+      <div v-else class="menu-screen" :class="{ 'skin-screen': menuScreen === 'level' }">
           <div class="menu-screen-head">
             <button class="ghost-btn small" @click="backToMainMenu" type="button">
               Back
@@ -368,76 +368,77 @@
               }}
             </div>
           </div>
-          <div class="menu-screen-card">
-            <template v-if="menuScreen === 'level'">
-            <div class="skin-shop" data-allow-scroll>
-            <div class="menu-field">
-              <label for="skin">Runner Skin</label>
-              <div v-if="authUser" class="shop-balance">
-                Balance: <strong>{{ totalCoins }}</strong> coins
-              </div>
-              <div class="skin-row">
+          <div v-if="menuScreen === 'level'" class="skin-dock">
+            <div class="skin-tabs">
+              <button
+                class="skin-tab"
+                :class="{ active: skinTab === 'runner' }"
+                @click="setSkinTab('runner')"
+                type="button"
+              >
+                Runner
+              </button>
+              <button
+                class="skin-tab"
+                :class="{ active: skinTab === 'car' }"
+                @click="setSkinTab('car')"
+                type="button"
+              >
+                {{ zone2Seen ? 'Car' : '???' }}
+              </button>
+              <button
+                class="skin-tab"
+                :class="{ active: skinTab === 'plane' }"
+                @click="setSkinTab('plane')"
+                type="button"
+              >
+                {{ zone3Seen ? 'Aircraft' : '???' }}
+              </button>
+              <div v-if="authUser" class="shop-balance">{{ totalCoins }}c</div>
+            </div>
+            <div v-if="skinTab === 'car' && !zone2Seen" class="zone-locked">
+              ??? &mdash; Find the end of the line first.
+            </div>
+            <div v-else-if="skinTab === 'plane' && !zone3Seen" class="zone-locked">
+              ??? &mdash; Only gods take to the sky.
+            </div>
+            <div v-else class="skin-strip" data-allow-scroll>
+              <button
+                v-for="skin in activeTabSkins"
+                :key="skin.id"
+                class="skin-chip"
+                :class="{
+                  active: isSkinActive(skin),
+                  locked: !canUseSkin(skin),
+                  previewing: previewSkin && previewSkin.id === skin.id,
+                }"
+                :style="{ '--skin': skin.color }"
+                @click="tapSkin(skin)"
+                type="button"
+              >
+                {{ skin.label }}
+                <span v-if="!canUseSkin(skin)" class="skin-price">{{ skin.price }}c</span>
+              </button>
+            </div>
+            <div class="skin-info">
+              <template v-if="previewSkin">
+                <span class="skin-info-name">{{ previewSkin.label }}</span>
                 <button
-                  v-for="skin in runnerSkinOptions"
-                  :key="skin.id"
-                  class="skin-chip"
-                  :class="{ active: skin.id === selectedSkin, locked: !canUseSkin(skin) }"
-                  :style="{ '--skin': skin.color }"
-                  :title="canUseSkin(skin) ? 'Select skin' : `Unlock for ${skin.price} coins`"
-                  @click="selectSkin(skin)"
+                  v-if="!canUseSkin(previewSkin)"
+                  class="buy-btn"
+                  @click="buyPreviewedSkin"
                   type="button"
                 >
-                  {{ skin.label }}
-                  <span v-if="!canUseSkin(skin)" class="skin-price">{{ skin.price }}c</span>
+                  Buy &mdash; {{ previewSkin.price }}c
                 </button>
-              </div>
+                <span v-else-if="isSkinActive(previewSkin)" class="skin-info-note">Selected</span>
+              </template>
+              <span v-if="shopMessage" class="shop-message">{{ shopMessage }}</span>
             </div>
-            <div class="menu-field">
-              <label>Zone 2 &mdash; Getaway Car</label>
-              <div v-if="zone2Seen && carSkinOptions.length" class="skin-row">
-                <button
-                  v-for="skin in carSkinOptions"
-                  :key="skin.id"
-                  class="skin-chip"
-                  :class="{ active: skin.slug === selectedCarSlug, locked: !canUseSkin(skin) }"
-                  :style="{ '--skin': skin.color }"
-                  :title="canUseSkin(skin) ? 'Select car' : `Unlock for ${skin.price} coins`"
-                  @click="selectCarSkin(skin)"
-                  type="button"
-                >
-                  {{ skin.label }}
-                  <span v-if="!canUseSkin(skin)" class="skin-price">{{ skin.price }}c</span>
-                </button>
-              </div>
-              <div v-else class="zone-locked">??? &mdash; Find the end of the line first.</div>
-            </div>
-            <div class="menu-field">
-              <label>Zone 3 &mdash; Aircraft</label>
-              <div v-if="zone3Seen && planeSkinOptions.length" class="skin-row">
-                <button
-                  v-for="skin in planeSkinOptions"
-                  :key="skin.id"
-                  class="skin-chip"
-                  :class="{ active: skin.slug === selectedPlaneSlug, locked: !canUseSkin(skin) }"
-                  :style="{ '--skin': skin.color }"
-                  :title="canUseSkin(skin) ? 'Select aircraft' : `Unlock for ${skin.price} coins`"
-                  @click="selectPlaneSkin(skin)"
-                  type="button"
-                >
-                  {{ skin.label }}
-                  <span v-if="!canUseSkin(skin)" class="skin-price">{{ skin.price }}c</span>
-                </button>
-              </div>
-              <div v-else class="zone-locked">??? &mdash; Only gods take to the sky.</div>
-            </div>
-            <div v-if="shopMessage" class="shop-message">{{ shopMessage }}</div>
-            <div class="skin-preview-hint">
-              Tap a skin or car to preview it live.
-            </div>
-            </div>
-          </template>
+          </div>
 
-          <template v-else-if="menuScreen === 'inventory'">
+          <div v-else class="menu-screen-card">
+          <template v-if="menuScreen === 'inventory'">
             <div class="menu-inventory">
               <div v-if="inventoryItems.length === 0" class="menu-empty">
                 No items yet. Earn or buy items to fill your inventory.
@@ -985,10 +986,14 @@ const openMenuScreen = (screen) => {
   showLoginPrompt.value = false;
   shopMessage.value = '';
   menuScreen.value = screen;
+  if (screen === 'level') {
+    setSkinTab('runner');
+  }
 };
 
 const backToMainMenu = () => {
   clearCarPreview();
+  previewSkin.value = null;
   menuScreen.value = 'main';
 };
 
@@ -1566,13 +1571,16 @@ const canUseSkin = (skin) =>
   (skin.price ?? 0) === 0 ||
   (!isGuest.value && ownedSkinIds.value.includes(skin.id));
 
-// Car preview in the skins menu: the car takes the runner's spot on stage.
+// Vehicle preview in the skins menu: the car/plane takes the runner's spot
+// on stage; previewKind drives the camera framing.
 let previewCar = null;
+let previewKind = null;
 const clearCarPreview = () => {
   if (previewCar) {
     if (scene) scene.remove(previewCar);
     previewCar = null;
   }
+  previewKind = null;
   if (player && state.value === 'menu') {
     player.visible = true;
   }
@@ -1589,7 +1597,28 @@ const showCarPreview = (skin) => {
     template.size.h / 2 + 0.02,
     player ? player.position.z : 2,
   );
-  previewCar.rotation.y = Math.PI * 0.85;
+  previewCar.rotation.set(0, Math.PI * 0.85, 0);
+  previewKind = 'car';
+  scene.add(previewCar);
+  if (player) {
+    player.visible = false;
+  }
+};
+
+const showPlanePreview = (skin) => {
+  if (!scene) return;
+  clearCarPreview();
+  const key = skin.slug.replace(/^plane-/, '');
+  const template = planeTemplates[key] || planeTemplates.cesium;
+  if (!template) return;
+  previewCar = template.model.clone(true);
+  previewCar.position.set(
+    player ? player.position.x : 0,
+    1.5,
+    player ? player.position.z : 2,
+  );
+  previewCar.rotation.set(0, Math.PI * 0.85, 0);
+  previewKind = 'plane';
   scene.add(previewCar);
   if (player) {
     player.visible = false;
@@ -1621,39 +1650,93 @@ const purchaseSkin = async (skin) => {
   }
 };
 
-const selectCarSkin = async (skin) => {
-  shopMessage.value = '';
-  showCarPreview(skin);
-  if (!(await purchaseSkin(skin))) return;
-  selectedCarSlug.value = skin.slug;
-  localStorage.setItem('runner_car_slug', skin.slug);
+// Tapping a chip only previews (and selects when already owned/free) — buying
+// happens exclusively via the explicit Buy button.
+const skinTab = ref('runner');
+const previewSkin = ref(null);
+
+const activeTabSkins = computed(() =>
+  skinTab.value === 'car'
+    ? carSkinOptions.value
+    : skinTab.value === 'plane'
+      ? planeSkinOptions.value
+      : runnerSkinOptions.value,
+);
+
+const isSkinActive = (skin) => {
+  if (skin.category === 'car') return skin.slug === selectedCarSlug.value;
+  if (skin.category === 'plane') return skin.slug === selectedPlaneSlug.value;
+  return skin.id === selectedSkin.value;
 };
 
-const selectPlaneSkin = async (skin) => {
-  shopMessage.value = '';
-  if (!(await purchaseSkin(skin))) return;
-  selectedPlaneSlug.value = skin.slug;
-  localStorage.setItem('runner_plane_slug', skin.slug);
-};
-
-const selectSkin = async (skin) => {
-  shopMessage.value = '';
-  // Always preview the clicked character in the scene, even if locked.
-  clearCarPreview();
-  applyCharacter(skin);
-
-  if (!(await purchaseSkin(skin))) return;
-
+const applyRunnerSelection = (skin) => {
   selectedSkin.value = skin.id;
-
   if (authUser.value) {
-    try {
-      await axios.post('/api/runner/skin', { skin_id: skin.id });
-    } catch (error) {
-      // Ignore update errors to keep UI responsive.
-    }
+    axios.post('/api/runner/skin', { skin_id: skin.id }).catch(() => {});
   } else {
     localStorage.setItem('runner_skin_id', String(skin.id));
+  }
+};
+
+const applySkinSelection = (skin) => {
+  if (skin.category === 'car') {
+    selectedCarSlug.value = skin.slug;
+    localStorage.setItem('runner_car_slug', skin.slug);
+  } else if (skin.category === 'plane') {
+    selectedPlaneSlug.value = skin.slug;
+    localStorage.setItem('runner_plane_slug', skin.slug);
+  } else {
+    applyRunnerSelection(skin);
+  }
+};
+
+const tapSkin = (skin) => {
+  shopMessage.value = '';
+  previewSkin.value = skin;
+  if (skin.category === 'car') {
+    showCarPreview(skin);
+  } else if (skin.category === 'plane') {
+    showPlanePreview(skin);
+  } else {
+    clearCarPreview();
+    applyCharacter(skin);
+  }
+  if (canUseSkin(skin)) {
+    applySkinSelection(skin);
+  }
+};
+
+const buyPreviewedSkin = async () => {
+  const skin = previewSkin.value;
+  if (!skin) return;
+  if (!(await purchaseSkin(skin))) return;
+  applySkinSelection(skin);
+};
+
+const setSkinTab = (tab) => {
+  skinTab.value = tab;
+  shopMessage.value = '';
+  if (tab === 'car' && zone2Seen.value) {
+    const skin =
+      carSkinOptions.value.find((s) => s.slug === selectedCarSlug.value) ||
+      carSkinOptions.value[0];
+    if (skin) {
+      previewSkin.value = skin;
+      showCarPreview(skin);
+    }
+  } else if (tab === 'plane' && zone3Seen.value) {
+    const skin =
+      planeSkinOptions.value.find((s) => s.slug === selectedPlaneSlug.value) ||
+      planeSkinOptions.value[0];
+    if (skin) {
+      previewSkin.value = skin;
+      showPlanePreview(skin);
+    }
+  } else {
+    clearCarPreview();
+    previewSkin.value =
+      runnerSkinOptions.value.find((s) => s.id === selectedSkin.value) || null;
+    applyCharacter();
   }
 };
 
@@ -2030,12 +2113,24 @@ const handleKeyup = (event) => {
 const handleTouchStart = (event) => {
   if (state.value !== 'running') return;
   if (event.target?.closest?.('.joystick, .pedals')) return;
+  // Track exactly one swipe finger by identifier so a thumb resting on the
+  // pedals (or joystick) never hijacks or cancels the swipe gesture.
+  if (touchStart) return;
   const touch = event.changedTouches[0];
   touchStart = {
+    id: touch.identifier,
     x: touch.clientX,
     y: touch.clientY,
     time: performance.now(),
   };
+};
+
+const findTrackedTouch = (event) => {
+  if (!touchStart) return null;
+  for (const touch of event.changedTouches) {
+    if (touch.identifier === touchStart.id) return touch;
+  }
+  return null;
 };
 
 const triggerSwipe = (dx, dy) => {
@@ -2070,7 +2165,8 @@ const triggerSwipe = (dx, dy) => {
 
 const handleTouchEnd = (event) => {
   if (state.value !== 'running' || !touchStart) return;
-  const touch = event.changedTouches[0];
+  const touch = findTrackedTouch(event);
+  if (!touch) return;
   const dx = touch.clientX - touchStart.x;
   const dy = touch.clientY - touchStart.y;
   const dt = performance.now() - touchStart.time;
@@ -2095,13 +2191,20 @@ const handleTouchMove = (event) => {
   if (target?.closest?.('.joystick, .pedals')) return;
 
   if (state.value !== 'running' || !touchStart) return;
-  const touch = event.changedTouches[0];
+  const touch = findTrackedTouch(event);
+  if (!touch) return;
   const dx = touch.clientX - touchStart.x;
   const dy = touch.clientY - touchStart.y;
   const dt = performance.now() - touchStart.time;
 
   if (dt > swipeTimeLimit) return;
   if (triggerSwipe(dx, dy)) {
+    touchStart = null;
+  }
+};
+
+const handleTouchCancel = (event) => {
+  if (findTrackedTouch(event)) {
     touchStart = null;
   }
 };
@@ -2996,6 +3099,7 @@ const initScene = () => {
   window.addEventListener('touchstart', handleTouchStart, { passive: true });
   window.addEventListener('touchmove', handleTouchMove, { passive: false });
   window.addEventListener('touchend', handleTouchEnd, { passive: true });
+  window.addEventListener('touchcancel', handleTouchCancel, { passive: true });
 };
 
 const track = (resource) => {
@@ -5778,22 +5882,25 @@ const animate = (time) => {
       // phones the menu card fills the width, so frame the runner below it
       // instead by aiming above their head.
       const portrait = camera.aspect < 1;
-      // Cars need more distance than the runner to fit the frame.
-      const carView = Boolean(previewCar);
-      camera.position.x = damp(camera.position.x, portrait ? 0 : -1.4);
-      camera.position.y = damp(
-        camera.position.y,
-        carView ? (portrait ? 2.3 : 2.0) : portrait ? 1.7 : 1.5,
-      );
-      camera.position.z = damp(
-        camera.position.z,
-        carView ? (portrait ? -4.8 : -3.6) : portrait ? -2.4 : -1.4,
-      );
-      lookAtTarget.set(
-        portrait ? 0 : 1.05,
-        carView ? 0.9 : portrait ? 1.95 : 0.95,
-        2,
-      );
+      // The shop dock sits at the bottom, so aim low: the subject floats in
+      // the free upper half. Bigger subjects need more camera distance.
+      const kind = previewCar ? previewKind : 'runner';
+      const frames = {
+        runner: portrait
+          ? { cam: [0, 1.6, -2.8], look: [0, 0.75, 2] }
+          : { cam: [-1.4, 1.5, -1.6], look: [0.7, 0.85, 2] },
+        car: portrait
+          ? { cam: [0, 2.2, -5.4], look: [0, 0.3, 2] }
+          : { cam: [-1.2, 2.0, -3.8], look: [0.5, 0.5, 2] },
+        plane: portrait
+          ? { cam: [0, 2.8, -8.8], look: [0, 1.0, 2] }
+          : { cam: [-1.5, 2.6, -6.6], look: [0.5, 1.2, 2] },
+      };
+      const frame = frames[kind] || frames.runner;
+      camera.position.x = damp(camera.position.x, frame.cam[0]);
+      camera.position.y = damp(camera.position.y, frame.cam[1]);
+      camera.position.z = damp(camera.position.z, frame.cam[2]);
+      lookAtTarget.set(frame.look[0], frame.look[1], frame.look[2]);
       camera.lookAt(lookAtTarget);
       if (previewCar) {
         previewCar.rotation.y += delta * 0.7;
@@ -6001,8 +6108,10 @@ onBeforeUnmount(() => {
       }
     });
   });
+  window.removeEventListener('touchstart', handleTouchStart);
   window.removeEventListener('touchmove', handleTouchMove);
   window.removeEventListener('touchend', handleTouchEnd);
+  window.removeEventListener('touchcancel', handleTouchCancel);
   if (renderer && renderer.domElement && canvasWrap.value) {
     canvasWrap.value.removeChild(renderer.domElement);
   }
@@ -7025,13 +7134,108 @@ onBeforeUnmount(() => {
   color: rgba(170, 200, 255, 0.7);
 }
 
-.skin-shop {
+.menu-screen.skin-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: min(720px, 94vw);
+  padding: calc(96px + env(safe-area-inset-top)) 0 calc(14px + env(safe-area-inset-bottom)) 0;
+}
+
+.skin-dock {
   display: grid;
-  gap: 16px;
-  overflow-y: auto;
-  min-height: 0;
-  max-height: calc(100dvh - 240px);
-  padding-right: 4px;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(120, 180, 255, 0.35);
+  background: rgba(10, 14, 24, 0.88);
+}
+
+.skin-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skin-tab {
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 180, 255, 0.3);
+  background: rgba(16, 22, 38, 0.7);
+  color: rgba(210, 228, 255, 0.75);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.skin-tab.active {
+  border-color: rgba(61, 255, 179, 0.7);
+  color: #7dfce0;
+  box-shadow: 0 0 14px rgba(60, 255, 200, 0.25);
+}
+
+.skin-tabs .shop-balance {
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: #ffd76b;
+  white-space: nowrap;
+}
+
+.skin-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.skin-strip .skin-chip {
+  flex: 0 0 auto;
+}
+
+.skin-chip.previewing {
+  border-color: rgba(255, 210, 100, 0.75);
+}
+
+.skin-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  flex-wrap: wrap;
+}
+
+.skin-info-name {
+  font-size: 0.9rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(225, 238, 255, 0.9);
+}
+
+.skin-info-note {
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7dfce0;
+}
+
+.buy-btn {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 210, 100, 0.7);
+  background: rgba(60, 44, 12, 0.7);
+  color: #ffd76b;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.buy-btn:hover {
+  background: rgba(90, 66, 18, 0.85);
 }
 
 .skin-row {
