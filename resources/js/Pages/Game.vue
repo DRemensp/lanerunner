@@ -125,6 +125,10 @@
       </div>
     </div>
 
+    <div v-if="devRun && state !== 'menu'" class="dev-badge">
+      Dev Run &mdash; not saved
+    </div>
+
     <div v-if="finaleToast && state === 'running'" class="finale-toast">
       <div class="finale-toast-title">District Cleared</div>
       <div class="finale-toast-sub">You found the end of the line</div>
@@ -494,6 +498,9 @@ const carPlayerSize = { w: 1.5, h: 1.1, d: 2.6 };
 const driveScoreMinSpeed = 15;
 const driveMaxSpeed = 42;
 const finalePhase = ref('none'); // none | approach | walk | enter | drive
+// Dev cheat (F9 during a run): jump straight to the finale trigger. The run
+// is then never persisted, so it cannot flag the account or touch records.
+const devRun = ref(false);
 const finaleToast = ref(false);
 const driveHint = ref(false);
 let finaleTriggered = false;
@@ -1200,6 +1207,7 @@ const startRunSession = async () => {
 
 const resetRun = () => {
   exitFinale();
+  devRun.value = false;
   score.value = 0;
   runCoins.value = 0;
   speed.value = currentLevel.value.baseSpeed;
@@ -1249,6 +1257,10 @@ const endRun = () => {
 };
 
 const persistRun = async () => {
+  if (devRun.value) {
+    // Dev runs never touch records, coins, leaderboard, or anti-cheat.
+    return;
+  }
   const distance = Math.max(0, Math.floor(score.value));
   const maxSpeed = Number(speed.value.toFixed(2));
 
@@ -1384,6 +1396,14 @@ const handleKeydown = (event) => {
 
   if (event.code === 'Escape') {
     pauseRun();
+    return;
+  }
+
+  if (event.code === 'F9') {
+    if (!finaleTriggered && finalePhase.value === 'none') {
+      devRun.value = true;
+      score.value = FINALE_SCORE;
+    }
     return;
   }
 
@@ -3772,6 +3792,22 @@ onBeforeUnmount(() => {
 
 .hud-value.low {
   color: #ff6b6e;
+}
+
+.dev-badge {
+  position: absolute;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  left: calc(20px + env(safe-area-inset-left));
+  z-index: 3;
+  pointer-events: none;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 170, 60, 0.55);
+  background: rgba(30, 18, 6, 0.75);
+  color: #ffbe5c;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 .finale-toast {
