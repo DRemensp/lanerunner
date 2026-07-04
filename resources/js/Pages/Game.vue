@@ -3198,13 +3198,19 @@ const updateRunner = (delta) => {
       score.value += speed.value * delta * 2.4 * scoreMult;
     }
   } else if (finalePhase.value === 'approach') {
-    const plazaNear = plaza && plaza.position.z > -30;
-    speed.value = THREE.MathUtils.damp(speed.value, plazaNear ? 0 : 18, plazaNear ? 1.8 : 0.9, delta);
-    if (plaza && plaza.position.z > -6 && speed.value < 0.6) {
-      finalePhase.value = 'walk';
-      clearObstacles();
-      clearCoins();
-      clearPowerups();
+    if (plaza) {
+      // Brake proportionally to the remaining distance so the plaza always
+      // arrives instead of the world stalling short of it.
+      const stopDistance = Math.max(0, -2 - plaza.position.z);
+      const targetSpeed = Math.min(18, stopDistance * 0.9);
+      speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, 2.5, delta);
+      if (plaza.position.z > -6 && speed.value < 2.5) {
+        speed.value = 0;
+        finalePhase.value = 'walk';
+        clearObstacles();
+        clearCoins();
+        clearPowerups();
+      }
     }
   } else {
     score.value += speed.value * delta * 2.4 * scoreMult;
