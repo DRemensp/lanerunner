@@ -605,6 +605,9 @@ let enemies = [];
 let enemyPool = [];
 let enemySpawnTimer = 0;
 let bossCount = 0;
+let killsSinceMother = 0;
+let mothershipCount = 0;
+let motherTemplate = null;
 let projectiles = [];
 let projectilePool = [];
 let enemyBolts = [];
@@ -987,6 +990,18 @@ const sfx = {
   },
   shoot: () => playTone({ freq: 880 + Math.random() * 160, to: 320, type: 'square', duration: 0.09, gain: 0.1 }),
   enemyShoot: () => playTone({ freq: 260, to: 110, type: 'sawtooth', duration: 0.18, gain: 0.16 }),
+  shotgun: () => {
+    playNoise({ duration: 0.3, from: 1400, to: 300, gain: 0.3 });
+    playTone({ freq: 180, to: 90, type: 'sawtooth', duration: 0.25, gain: 0.2 });
+  },
+  motherSpawn: () => {
+    [70, 55, 85, 65].forEach((freq, i) =>
+      playTone({ freq, type: 'sawtooth', duration: 0.5, delay: i * 0.3, gain: 0.24 }),
+    );
+    playNoise({ duration: 1.2, from: 200, to: 900, gain: 0.16 });
+  },
+  shieldUp: () => playTone({ freq: 420, to: 980, type: 'sine', duration: 0.5, gain: 0.2 }),
+  absorb: () => playTone({ freq: 700, to: 220, type: 'sine', duration: 0.35, gain: 0.18 }),
   playerHit: () => {
     playNoise({ duration: 0.25, from: 900, to: 150, gain: 0.4 });
     playTone({ freq: 140, to: 70, type: 'square', duration: 0.22, gain: 0.26 });
@@ -2603,6 +2618,7 @@ const initScene = () => {
   particleMaterials.gold = new THREE.MeshBasicMaterial({ color: 0xffcf4d });
   particleMaterials.red = new THREE.MeshBasicMaterial({ color: 0xff3b57 });
   particleMaterials.flame = new THREE.MeshBasicMaterial({ color: 0xff7a2e });
+  particleMaterials.heal = new THREE.MeshBasicMaterial({ color: 0x67f05a });
   particleMaterials.skin = new THREE.MeshBasicMaterial({ color: currentSkin.value.color });
   particleMaterials.dust = new THREE.MeshBasicMaterial({
     color: 0x9fb2cc,
@@ -3744,10 +3760,45 @@ const getEnemyAssets = () => {
       boltGeo: new THREE.BoxGeometry(0.16, 0.16, 1.5),
       boltMat: new THREE.MeshBasicMaterial({ color: 0x7dffb0 }),
       enemyBoltGeo: new THREE.BoxGeometry(0.3, 0.3, 1.6),
+      motherBoltGeo: new THREE.BoxGeometry(0.5, 0.5, 2.2),
+      motherBoltMat: new THREE.MeshBasicMaterial({ color: 0x67f05a }),
       podGeo: new THREE.BoxGeometry(0.5, 0.4, 1.1),
+      hpBarGeo: new THREE.PlaneGeometry(1, 1),
+      hpBgMat: new THREE.MeshBasicMaterial({
+        color: 0x0a0f1a,
+        transparent: true,
+        opacity: 0.7,
+        depthWrite: false,
+      }),
+      hpFillMat: new THREE.MeshBasicMaterial({ color: 0xff4d5e, depthWrite: false }),
     };
   }
   return enemyAssets;
+};
+
+const attachHpBar = (enemy, width, yOffset) => {
+  const assets = getEnemyAssets();
+  const compensate = 1 / enemy.scale.x;
+  const barGroup = new THREE.Group();
+  barGroup.scale.setScalar(compensate);
+  barGroup.position.y = yOffset * compensate;
+  const bg = new THREE.Mesh(assets.hpBarGeo, assets.hpBgMat);
+  bg.scale.set(width + 0.3, 0.55, 1);
+  barGroup.add(bg);
+  const fill = new THREE.Mesh(assets.hpBarGeo, assets.hpFillMat);
+  fill.scale.set(width, 0.34, 1);
+  fill.position.z = 0.02;
+  barGroup.add(fill);
+  enemy.add(barGroup);
+  enemy.userData.hpBar = { fill, width };
+};
+
+const updateHpBar = (enemy) => {
+  const bar = enemy.userData.hpBar;
+  if (!bar) return;
+  const t = THREE.MathUtils.clamp(enemy.userData.hp / enemy.userData.maxHp, 0, 1);
+  bar.fill.scale.x = Math.max(0.02, bar.width * t);
+  bar.fill.position.x = (-bar.width * (1 - t)) / 2;
 };
 
 const spawnEnemy = () => {
@@ -3772,6 +3823,10 @@ const spawnEnemy = () => {
     enemy.userData.eye = eye;
     enemy.scale.setScalar(3.1);
   }
+  if (!enemy.userData.hpBar) {
+    attachHpBar(enemy, 4.6, 4.4);
+  }
+  enemy.userData.kind = 'drone';
   enemy.userData.hp = Math.min(90, 50 + bossCount * 10);
   enemy.userData.maxHp = enemy.userData.hp;
   enemy.userData.baseX = (Math.random() - 0.5) * 16;
@@ -3781,30 +3836,187 @@ const spawnEnemy = () => {
   enemy.userData.freq = 0.5 + Math.random() * 0.8;
   enemy.userData.phase = Math.random() * Math.PI * 2;
   enemy.userData.shootTimer = 2.2;
-  enemy.userData.telegraph = 0;
+  enemy.userData.burstLeft = 0;
+  enemy.userData.burstTick = 0;
+  enemy.userData.dodgeTimer = 1.6;
+  enemy.userData.agile = 0;
   enemy.position.set(enemy.userData.baseX, enemy.userData.baseY, -220);
   enemies.push(enemy);
   scene.add(enemy);
 };
 
-const fireEnemyBolt = (enemy) => {
+// The mothership: a proper alien saucer — hull discs, glass dome, rotating
+// rim lights, gun pods, tractor emitter, antennae, and a shield bubble.
+const buildMothershipModel = () => {
+  const lambert = (color, glow = 0) =>
+    new THREE.MeshLambertMaterial({
+      color,
+      emissive: glow ? color : 0x000000,
+      emissiveIntensity: glow,
+    });
+  const ship = new THREE.Group();
+
+  const hull = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 5.6, 1.5, 12), lambert(0x565f7d));
+  ship.add(hull);
+  const belly = new THREE.Mesh(new THREE.CylinderGeometry(5.6, 3.0, 1.1, 12), lambert(0x3f4763));
+  belly.position.y = -1.3;
+  ship.add(belly);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(5.6, 0.35, 8, 24), lambert(0x2c3350));
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = -0.75;
+  ship.add(rim);
+
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(2.1, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshLambertMaterial({
+      color: 0x7df9d0,
+      emissive: 0x2c8a6e,
+      emissiveIntensity: 0.55,
+      transparent: true,
+      opacity: 0.85,
+    }),
+  );
+  dome.position.y = 0.75;
+  ship.add(dome);
+
+  const lightRing = new THREE.Group();
+  const lightGeoSmall = new THREE.SphereGeometry(0.3, 8, 6);
+  for (let i = 0; i < 10; i += 1) {
+    const angle = (i / 10) * Math.PI * 2;
+    const light = new THREE.Mesh(
+      lightGeoSmall,
+      new THREE.MeshBasicMaterial({ color: i % 2 ? 0xffa22e : 0x67f05a }),
+    );
+    light.position.set(Math.cos(angle) * 5.1, -0.72, Math.sin(angle) * 5.1);
+    lightRing.add(light);
+  }
+  ship.add(lightRing);
+
+  const podGeoBig = new THREE.BoxGeometry(1.0, 0.8, 2.0);
+  const podMat = lambert(0x2c3350);
+  for (let i = 0; i < 4; i += 1) {
+    const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const pod = new THREE.Mesh(podGeoBig, podMat);
+    pod.position.set(Math.cos(angle) * 4.1, -1.15, Math.sin(angle) * 4.1);
+    pod.lookAt(pod.position.x * 2, -1.15, pod.position.z * 2);
+    ship.add(pod);
+  }
+
+  const emitter = new THREE.Mesh(
+    new THREE.ConeGeometry(1.5, 1.5, 8),
+    lambert(0x9b59d0, 0.6),
+  );
+  emitter.rotation.x = Math.PI;
+  emitter.position.y = -2.3;
+  ship.add(emitter);
+
+  const antennaGeoThin = new THREE.CylinderGeometry(0.05, 0.05, 1.6, 5);
+  const antennaMat = lambert(0x2c3350);
+  const tipGeo = new THREE.SphereGeometry(0.16, 6, 5);
+  [[-1.1, 0.4], [1.2, -0.3]].forEach(([x, z]) => {
+    const antenna = new THREE.Mesh(antennaGeoThin, antennaMat);
+    antenna.position.set(x, 2.2, z);
+    ship.add(antenna);
+    const tip = new THREE.Mesh(tipGeo, new THREE.MeshBasicMaterial({ color: 0xff3b57 }));
+    tip.position.set(x, 3.05, z);
+    ship.add(tip);
+  });
+
+  const shieldMeshBig = new THREE.Mesh(
+    new THREE.SphereGeometry(8, 18, 14),
+    new THREE.MeshBasicMaterial({
+      color: 0x7df9d0,
+      transparent: true,
+      opacity: 0.15,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  shieldMeshBig.visible = false;
+  ship.add(shieldMeshBig);
+
+  ship.userData.lightRing = lightRing;
+  ship.userData.shieldMesh = shieldMeshBig;
+  return ship;
+};
+
+const spawnMothership = () => {
+  if (!motherTemplate) {
+    motherTemplate = buildMothershipModel();
+    attachHpBar(motherTemplate, 11, 4.6);
+  }
+  const ship = motherTemplate;
+  ship.userData.kind = 'mother';
+  ship.userData.hp = 260 + mothershipCount * 60;
+  ship.userData.maxHp = ship.userData.hp;
+  ship.userData.baseX = 0;
+  ship.userData.baseY = 13;
+  ship.userData.freq = 0.4;
+  ship.userData.phase = 0;
+  ship.userData.attackTimer = 2.6;
+  ship.userData.burstLeft = 0;
+  ship.userData.burstTick = 0;
+  ship.userData.shieldTimer = 0;
+  ship.userData.ramCooldown = 0;
+  ship.userData.shieldMesh.visible = false;
+  ship.position.set(0, 13, -240);
+  enemies.push(ship);
+  scene.add(ship);
+  sfx.motherSpawn();
+  driveHintText.value = 'MOTHERSHIP INBOUND — it heals whenever it hits you!';
+  driveHint.value = true;
+  if (driveHintTimer) {
+    clearTimeout(driveHintTimer);
+  }
+  driveHintTimer = setTimeout(() => {
+    driveHint.value = false;
+  }, 4200);
+};
+
+const fireEnemyBolt = (enemy, targetPoint = null) => {
   const assets = getEnemyAssets();
+  const isMother = enemy.userData.kind === 'mother';
   let bolt = enemyBoltPool.pop();
   if (!bolt) {
     bolt = new THREE.Mesh(assets.enemyBoltGeo, assets.eyeMat);
   }
+  bolt.geometry = isMother ? assets.motherBoltGeo : assets.enemyBoltGeo;
+  bolt.material = isMother ? assets.motherBoltMat : assets.eyeMat;
   bolt.position.copy(enemy.position);
-  bolt.position.z += 2.5;
+  bolt.position.z += isMother ? 4 : 2.5;
+  const target = targetPoint || player.position;
   const dir = new THREE.Vector3()
-    .subVectors(player.position, bolt.position)
+    .subVectors(target, bolt.position)
     .normalize()
-    .multiplyScalar(42);
+    .multiplyScalar(isMother ? 46 : 42);
   bolt.userData.vel = dir;
   bolt.userData.life = 6;
-  bolt.lookAt(player.position);
+  bolt.userData.mother = isMother;
+  bolt.userData.dmg = isMother ? 20 : 18;
+  bolt.lookAt(target);
   enemyBolts.push(bolt);
   scene.add(bolt);
-  sfx.enemyShoot();
+};
+
+// Cross-pattern spread: a horizontal and a vertical fan of bolts.
+const fireShotgun = (enemy) => {
+  [-8, -4, 0, 4, 8].forEach((offset) => {
+    fireEnemyBolt(
+      enemy,
+      new THREE.Vector3(player.position.x + offset, player.position.y, player.position.z),
+    );
+    if (offset !== 0) {
+      fireEnemyBolt(
+        enemy,
+        new THREE.Vector3(
+          player.position.x,
+          THREE.MathUtils.clamp(player.position.y + offset * 0.6, 3, 21),
+          player.position.z,
+        ),
+      );
+    }
+  });
+  sfx.shotgun();
 };
 
 const clearEnemyBolts = () => {
@@ -3837,14 +4049,19 @@ const damagePlayer = (amount) => {
 const removeEnemy = (index) => {
   const enemy = enemies[index];
   scene.remove(enemy);
-  enemyPool.push(enemy);
+  if (enemy.userData.kind !== 'mother') {
+    // The mothership is a singleton template — never pool it as a drone.
+    enemyPool.push(enemy);
+  }
   enemies.splice(index, 1);
 };
 
 const clearEnemies = () => {
   enemies.forEach((enemy) => {
     scene.remove(enemy);
-    enemyPool.push(enemy);
+    if (enemy.userData.kind !== 'mother') {
+      enemyPool.push(enemy);
+    }
   });
   enemies = [];
 };
@@ -4025,6 +4242,7 @@ const enterPlane = () => {
   planeVelY = 0;
   playerHp.value = 100;
   bossCount = 0;
+  killsSinceMother = 0;
   enemySpawnTimer = 2.6;
   fireTimer = 0.5;
   envMode = 'day';
@@ -4159,11 +4377,15 @@ const updatePlane = (delta) => {
 
   updateOceanMotion(delta);
 
-  // --- Combat: one big boss drone at a time, and it shoots back. ---
+  // --- Combat: one big boss drone at a time; every 5 kills the mothership. ---
   if (!enemies.length) {
     enemySpawnTimer -= delta;
     if (enemySpawnTimer <= 0) {
-      spawnEnemy();
+      if (killsSinceMother >= 5) {
+        spawnMothership();
+      } else {
+        spawnEnemy();
+      }
     }
   }
 
@@ -4185,75 +4407,189 @@ const updatePlane = (delta) => {
 
   for (let i = enemies.length - 1; i >= 0; i -= 1) {
     const enemy = enemies[i];
-    enemy.userData.phase += delta * enemy.userData.freq;
-    // Fly in from the distance, then hold position and strafe toward the player.
-    enemy.position.z = THREE.MathUtils.damp(enemy.position.z, -52, 0.9, delta);
-    enemy.userData.baseX = THREE.MathUtils.damp(enemy.userData.baseX, player.position.x, 0.35, delta);
-    enemy.userData.baseY = THREE.MathUtils.damp(enemy.userData.baseY, player.position.y, 0.3, delta);
-    enemy.position.x = enemy.userData.baseX + Math.sin(enemy.userData.phase) * enemy.userData.ampX;
-    enemy.position.y = THREE.MathUtils.clamp(
-      enemy.userData.baseY + Math.cos(enemy.userData.phase * 1.3) * enemy.userData.ampY,
-      5,
-      19,
-    );
-    enemy.userData.ring.rotation.z += delta * 2.2;
+    const ud = enemy.userData;
+    const isMother = ud.kind === 'mother';
+    ud.phase += delta * ud.freq;
 
-    // Telegraphed return fire: the eye swells, then it shoots.
-    if (enemy.position.z > -140) {
-      enemy.userData.shootTimer -= delta;
-      if (enemy.userData.shootTimer <= 0.45) {
-        enemy.userData.eye.scale.setScalar(1 + (0.45 - Math.max(0, enemy.userData.shootTimer)) * 1.6);
+    if (isMother) {
+      enemy.position.z = THREE.MathUtils.damp(enemy.position.z, -68, 0.7, delta);
+      ud.baseX = THREE.MathUtils.damp(ud.baseX, player.position.x * 0.7, 0.25, delta);
+      enemy.position.x = ud.baseX + Math.sin(ud.phase) * 4;
+      enemy.position.y = THREE.MathUtils.clamp(13 + Math.cos(ud.phase * 0.8) * 2.5, 9, 18);
+      ud.lightRing.rotation.y += delta * 1.4;
+      enemy.rotation.y += delta * 0.12;
+
+      if (ud.shieldTimer > 0) {
+        ud.shieldTimer -= delta;
+        ud.shieldMesh.visible = true;
+        ud.shieldMesh.material.opacity = 0.12 + Math.sin(performance.now() * 0.012) * 0.05;
+        if (ud.shieldTimer <= 0) {
+          ud.shieldMesh.visible = false;
+        }
       }
-      if (enemy.userData.shootTimer <= 0) {
-        fireEnemyBolt(enemy);
-        enemy.userData.eye.scale.setScalar(1);
-        enemy.userData.shootTimer = 1.3 + Math.random() * 0.9;
+
+      if (ud.burstLeft > 0) {
+        ud.burstTick -= delta;
+        if (ud.burstTick <= 0) {
+          fireEnemyBolt(enemy, new THREE.Vector3(
+            player.position.x + (Math.random() - 0.5) * 3,
+            player.position.y + (Math.random() - 0.5) * 2,
+            player.position.z,
+          ));
+          sfx.enemyShoot();
+          ud.burstLeft -= 1;
+          ud.burstTick = 0.13;
+        }
+      } else if (enemy.position.z > -150) {
+        ud.attackTimer -= delta;
+        if (ud.attackTimer <= 0) {
+          const roll = Math.random();
+          if (roll < 0.4) {
+            ud.burstLeft = 6;
+            ud.burstTick = 0;
+          } else if (roll < 0.75) {
+            fireShotgun(enemy);
+          } else {
+            ud.shieldTimer = 3;
+            sfx.shieldUp();
+          }
+          ud.attackTimer = 2.3 + Math.random() * 1.6;
+        }
+      }
+      if (ud.ramCooldown > 0) {
+        ud.ramCooldown -= delta;
+      }
+    } else {
+      enemy.position.z = THREE.MathUtils.damp(enemy.position.z, -52, 0.9, delta);
+      // Occasional quick dodge to a new position near the player.
+      ud.dodgeTimer -= delta;
+      if (ud.dodgeTimer <= 0) {
+        ud.baseX = THREE.MathUtils.clamp(player.position.x + (Math.random() - 0.5) * 16, -12, 12);
+        ud.baseY = THREE.MathUtils.clamp(player.position.y + (Math.random() - 0.5) * 10, 5, 18);
+        ud.agile = 0.8;
+        ud.dodgeTimer = 1.4 + Math.random() * 1.6;
+      }
+      ud.agile -= delta;
+      const chaseRate = ud.agile > 0 ? 2.4 : 0.35;
+      ud.baseX = THREE.MathUtils.damp(ud.baseX, player.position.x, chaseRate * 0.3, delta);
+      enemy.position.x = ud.baseX + Math.sin(ud.phase) * ud.ampX;
+      enemy.position.y = THREE.MathUtils.clamp(
+        ud.baseY + Math.cos(ud.phase * 1.3) * ud.ampY,
+        5,
+        19,
+      );
+      ud.ring.rotation.z += delta * 2.2;
+
+      // Telegraphed triple burst: the eye swells, then three quick shots.
+      if (enemy.position.z > -140) {
+        if (ud.burstLeft > 0) {
+          ud.burstTick -= delta;
+          if (ud.burstTick <= 0) {
+            fireEnemyBolt(enemy, new THREE.Vector3(
+              player.position.x + (Math.random() - 0.5) * 2.5,
+              player.position.y + (Math.random() - 0.5) * 1.6,
+              player.position.z,
+            ));
+            sfx.enemyShoot();
+            ud.burstLeft -= 1;
+            ud.burstTick = 0.15;
+          }
+        } else {
+          ud.shootTimer -= delta;
+          if (ud.shootTimer <= 0.45) {
+            ud.eye.scale.setScalar(1 + (0.45 - Math.max(0, ud.shootTimer)) * 1.6);
+          }
+          if (ud.shootTimer <= 0) {
+            ud.burstLeft = 3;
+            ud.burstTick = 0;
+            ud.eye.scale.setScalar(1);
+            ud.shootTimer = 1.6 + Math.random() * 1.1;
+          }
+        }
       }
     }
 
+    updateHpBar(enemy);
+
+    const hbX = isMother ? 7.4 : 4.2;
+    const hbY = isMother ? 4.6 : 4.0;
+    const hbZ = isMother ? 6.2 : 4.4;
     let hit = false;
     for (let j = projectiles.length - 1; j >= 0; j -= 1) {
       const bolt = projectiles[j];
       if (
-        Math.abs(bolt.position.z - enemy.position.z) < 4.4 &&
-        Math.abs(bolt.position.x - enemy.position.x) < 4.2 &&
-        Math.abs(bolt.position.y - enemy.position.y) < 4.0
+        Math.abs(bolt.position.z - enemy.position.z) < hbZ &&
+        Math.abs(bolt.position.x - enemy.position.x) < hbX &&
+        Math.abs(bolt.position.y - enemy.position.y) < hbY
       ) {
         scene.remove(bolt);
         projectilePool.push(bolt);
         projectiles.splice(j, 1);
-        enemy.userData.hp -= 1;
+        if (isMother && ud.shieldTimer > 0) {
+          // Shield absorbs the shot.
+          spawnBurst(bolt.position, ['skin'], 2, 2);
+          continue;
+        }
+        ud.hp -= 1;
         hit = true;
       }
     }
     if (hit) {
       spawnBurst(enemy.position, ['gold'], 2, 3);
-      if (enemy.userData.hp <= 0) {
-        score.value += 600;
-        playerHp.value = Math.min(100, playerHp.value + 15);
-        bossCount += 1;
-        sfx.enemyDown();
-        spawnBurst(enemy.position, ['red', 'gold', 'dust'], 30, 11);
+      if (ud.hp <= 0) {
+        if (isMother) {
+          score.value += 2500;
+          playerHp.value = Math.min(100, playerHp.value + 40);
+          mothershipCount += 1;
+          killsSinceMother = 0;
+          sfx.enemyDown();
+          sfx.smash();
+          spawnBurst(enemy.position, ['red', 'gold', 'flame'], 40, 14);
+          spawnBurst(enemy.position, ['dust', 'gold'], 30, 9);
+          bumpShakeTimer = 0.5;
+          enemySpawnTimer = 3.5;
+        } else {
+          score.value += 600;
+          playerHp.value = Math.min(100, playerHp.value + 15);
+          bossCount += 1;
+          killsSinceMother += 1;
+          sfx.enemyDown();
+          spawnBurst(enemy.position, ['red', 'gold', 'dust'], 30, 11);
+          enemySpawnTimer = 2.4;
+        }
         removeEnemy(i);
-        enemySpawnTimer = 2.4;
         continue;
       }
     }
 
+    const ramX = isMother ? 7.8 : 4.4;
+    const ramY = isMother ? 4.4 : 3.4;
+    const ramZ = isMother ? 6.4 : 4.2;
     if (
-      Math.abs(enemy.position.z - player.position.z) < 4.2 &&
-      Math.abs(enemy.position.x - player.position.x) < 4.4 &&
-      Math.abs(enemy.position.y - player.position.y) < 3.4
+      Math.abs(enemy.position.z - player.position.z) < ramZ &&
+      Math.abs(enemy.position.x - player.position.x) < ramX &&
+      Math.abs(enemy.position.y - player.position.y) < ramY
     ) {
-      // Ramming hurts a lot and destroys the drone.
-      damagePlayer(40);
-      spawnBurst(enemy.position, ['red', 'dust'], 20, 9);
-      removeEnemy(i);
-      enemySpawnTimer = 2.4;
-      if (state.value !== 'running') {
-        return;
+      if (isMother) {
+        if (ud.ramCooldown <= 0) {
+          ud.ramCooldown = 1.2;
+          damagePlayer(50);
+          planeVelY = -14;
+          if (state.value !== 'running') {
+            return;
+          }
+        }
+      } else {
+        // Ramming hurts a lot and destroys the drone.
+        damagePlayer(40);
+        spawnBurst(enemy.position, ['red', 'dust'], 20, 9);
+        removeEnemy(i);
+        enemySpawnTimer = 2.4;
+        if (state.value !== 'running') {
+          return;
+        }
+        continue;
       }
-      continue;
     }
   }
 
@@ -4272,12 +4608,23 @@ const updatePlane = (delta) => {
       Math.abs(bolt.position.x - player.position.x) < 2.6 &&
       Math.abs(bolt.position.y - player.position.y) < 1.7
     ) {
+      const fromMother = bolt.userData.mother;
+      const damage = bolt.userData.dmg || 20;
       scene.remove(bolt);
       enemyBoltPool.push(bolt);
       enemyBolts.splice(i, 1);
-      damagePlayer(25);
+      damagePlayer(damage);
       if (state.value !== 'running') {
         return;
+      }
+      if (fromMother) {
+        // Health absorption: the mothership feeds on every hit it lands.
+        const mother = enemies.find((entity) => entity.userData.kind === 'mother');
+        if (mother) {
+          mother.userData.hp = Math.min(mother.userData.maxHp, mother.userData.hp + 10);
+          sfx.absorb();
+          spawnBurst(mother.position, ['heal'], 8, 5);
+        }
       }
     }
   }
@@ -4370,6 +4717,8 @@ const exitFinale = () => {
   playerHp.value = 100;
   damageFlash.value = false;
   bossCount = 0;
+  killsSinceMother = 0;
+  mothershipCount = 0;
   rampTriggered = false;
   rampHintShown = false;
   enemySpawnTimer = 0;
@@ -5081,6 +5430,15 @@ onBeforeUnmount(() => {
         resource.forEach((item) => item?.dispose?.());
       } else {
         resource?.dispose?.();
+      }
+    });
+  }
+  if (motherTemplate) {
+    motherTemplate.traverse((node) => {
+      if (node.isMesh) {
+        node.geometry?.dispose();
+        const materials = Array.isArray(node.material) ? node.material : [node.material];
+        materials.forEach((material) => material?.dispose());
       }
     });
   }
