@@ -165,6 +165,55 @@
       ></div>
     </div>
 
+    <div
+      v-if="
+        state === 'running' &&
+        (finalePhase === 'drive' || finalePhase === 'ramp') &&
+        isTouchDevice
+      "
+      class="pedals"
+      :class="handedness === 'left' ? 'pedals-right' : 'pedals-left'"
+    >
+      <button
+        class="pedal gas"
+        type="button"
+        @pointerdown.prevent="pedalGasDown"
+        @pointerup="pedalGasUp"
+        @pointercancel="pedalGasUp"
+        @pointerleave="pedalGasUp"
+      >
+        Gas
+      </button>
+      <button
+        class="pedal brake"
+        type="button"
+        @pointerdown.prevent="pedalBrakeDown"
+        @pointerup="pedalBrakeUp"
+        @pointercancel="pedalBrakeUp"
+        @pointerleave="pedalBrakeUp"
+      >
+        Brake
+      </button>
+    </div>
+
+    <div v-if="showHandPrompt && !showAuthGate" class="modal-overlay">
+      <div class="modal-card" @click.stop>
+        <div class="modal-title">Which is your main hand?</div>
+        <p>
+          Your main hand steers by swiping — the gas and brake pedals go to
+          the other side. You can change this later in Settings.
+        </p>
+        <div class="hand-choice">
+          <button class="primary-btn" @click="setHandedness('left')" type="button">
+            Left-handed
+          </button>
+          <button class="primary-btn alt" @click="setHandedness('right')" type="button">
+            Right-handed
+          </button>
+        </div>
+      </div>
+    </div>
+
     <button
       v-if="state === 'running' && finalePhase === 'drive'"
       class="cam-btn"
@@ -383,6 +432,25 @@
                 <div class="menu-slider-value">{{ Math.round(audioVolume * 100) }}%</div>
               </div>
               <div class="menu-field">
+                <label>Pedal Side (Mobile)</label>
+                <div class="difficulty-toggle">
+                  <button
+                    :class="{ active: handedness === 'right' }"
+                    @click="setHandedness('right')"
+                    type="button"
+                  >
+                    Right-handed
+                  </button>
+                  <button
+                    :class="{ active: handedness === 'left' }"
+                    @click="setHandedness('left')"
+                    type="button"
+                  >
+                    Left-handed
+                  </button>
+                </div>
+              </div>
+              <div class="menu-field">
                 <label for="settings-zoom">Zoom</label>
                 <input
                   id="settings-zoom"
@@ -479,6 +547,11 @@ const isPaused = ref(false);
 const currentTrackName = ref('');
 const showTrackToast = ref(false);
 const cameraZoom = ref(1);
+// Handedness decides which side the gas/brake pedals sit on: the dominant
+// hand stays free for lane swipes, pedals go to the other thumb.
+const handedness = ref('right');
+const showHandPrompt = ref(false);
+const isTouchDevice = ref(false);
 const nearMissToast = ref(false);
 const nearMissAmount = ref(25);
 let nearMissTimer;
@@ -507,6 +580,23 @@ const levelOptions = [
   { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 500, speedStep: 4 },
 ];
 const selectedLevel = ref(levelOptions[0].id);
+
+const loadHandednessPref = () => {
+  isTouchDevice.value =
+    window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window;
+  const stored = localStorage.getItem('runner_handedness');
+  if (stored === 'left' || stored === 'right') {
+    handedness.value = stored;
+  } else if (isTouchDevice.value) {
+    showHandPrompt.value = true;
+  }
+};
+
+const setHandedness = (hand) => {
+  handedness.value = hand;
+  localStorage.setItem('runner_handedness', hand);
+  showHandPrompt.value = false;
+};
 
 const loadLevelPref = () => {
   const stored = localStorage.getItem('runner_level');
@@ -1729,6 +1819,28 @@ const handleKeydown = (event) => {
   }
 };
 
+const pedalGasDown = () => {
+  if (!accelHeld) {
+    sfx.rev();
+  }
+  accelHeld = true;
+};
+
+const pedalGasUp = () => {
+  accelHeld = false;
+};
+
+const pedalBrakeDown = () => {
+  if (!brakeHeld && speed.value > 12) {
+    sfx.brakeScreech();
+  }
+  brakeHeld = true;
+};
+
+const pedalBrakeUp = () => {
+  brakeHeld = false;
+};
+
 const handleKeyup = (event) => {
   switch (event.code) {
     case 'ArrowUp':
@@ -1757,7 +1869,7 @@ const handleKeyup = (event) => {
 
 const handleTouchStart = (event) => {
   if (state.value !== 'running') return;
-  if (event.target?.closest?.('.joystick')) return;
+  if (event.target?.closest?.('.joystick, .pedals')) return;
   const touch = event.changedTouches[0];
   touchStart = {
     x: touch.clientX,
@@ -1784,15 +1896,7 @@ const triggerSwipe = (dx, dy) => {
   }
 
   if (finalePhase.value === 'drive' || finalePhase.value === 'ramp') {
-    if (dy < 0) {
-      driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 10);
-      sfx.rev();
-    } else {
-      driveTargetSpeed = Math.max(0, driveTargetSpeed - 10);
-      if (speed.value > 12) {
-        sfx.brakeScreech();
-      }
-    }
+    // Vertical swipes do nothing in the car — speed is on the pedals.
     return true;
   }
 
@@ -1828,7 +1932,7 @@ const handleTouchMove = (event) => {
   if (event.cancelable) {
     event.preventDefault();
   }
-  if (target?.closest?.('.joystick')) return;
+  if (target?.closest?.('.joystick, .pedals')) return;
 
   if (state.value !== 'running' || !touchStart) return;
   const touch = event.changedTouches[0];
@@ -3350,7 +3454,9 @@ const startDriving = () => {
   setRoadZone(2);
   musicDuckTarget = 0.6;
   sfx.engineStart();
-  driveHintText.value = 'Zone 2 — W/↑ gas, S/↓ brake, C camera. No points below speed 15.';
+  driveHintText.value = isTouchDevice.value
+    ? 'Zone 2 — hold the pedals, swipe to steer. No points below speed 15.'
+    : 'Zone 2 — W/↑ gas, S/↓ brake, C camera. No points below speed 15.';
   driveHint.value = true;
   if (driveHintTimer) {
     clearTimeout(driveHintTimer);
@@ -5379,6 +5485,7 @@ const handleVisibility = () => {
 onMounted(() => {
   loadAudioPrefs();
   loadLevelPref();
+  loadHandednessPref();
   initAudio();
   pointerUnlockHandler = () => unlockAudio();
   window.addEventListener('pointerdown', pointerUnlockHandler, { once: true });
@@ -5836,6 +5943,62 @@ onBeforeUnmount(() => {
   100% {
     opacity: 0;
   }
+}
+
+.pedals {
+  position: absolute;
+  bottom: calc(30px + env(safe-area-inset-bottom));
+  display: grid;
+  gap: 14px;
+  z-index: 5;
+}
+
+.pedals-left {
+  left: calc(22px + env(safe-area-inset-left));
+}
+
+.pedals-right {
+  right: calc(22px + env(safe-area-inset-right));
+}
+
+.pedal {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  border: 2px solid;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pedal.gas {
+  background: rgba(30, 90, 55, 0.75);
+  border-color: rgba(80, 240, 160, 0.7);
+  color: #7dffb0;
+}
+
+.pedal.brake {
+  background: rgba(90, 25, 35, 0.75);
+  border-color: rgba(255, 90, 110, 0.7);
+  color: #ff9dab;
+}
+
+.pedal:active {
+  transform: scale(0.93);
+  filter: brightness(1.4);
+}
+
+.hand-choice {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
 
 .joystick {
