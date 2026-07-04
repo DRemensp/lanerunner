@@ -135,8 +135,18 @@
     </div>
 
     <div v-if="driveHint && state === 'running'" class="drive-hint">
-      Zone 2 — W/&#8593; gas, S/&#8595; brake. No points below speed 15.
+      Zone 2 — W/&#8593; gas, S/&#8595; brake, C camera. No points below speed 15.
     </div>
+
+    <button
+      v-if="state === 'running' && finalePhase === 'drive'"
+      class="cam-btn"
+      @click="toggleDriveCamera"
+      type="button"
+      aria-label="Toggle camera view"
+    >
+      {{ driveCamera === 'chase' ? 'Ego' : '3rd' }}
+    </button>
 
     <div v-if="nearMissToast && state === 'running'" class="near-miss">
       Near Miss +{{ nearMissAmount }}
@@ -529,6 +539,7 @@ const finalePhase = ref('none'); // none | approach | walk | enter | drive
 // Dev cheat (F9 during a run): jump straight to the finale trigger. The run
 // is then never persisted, so it cannot flag the account or touch records.
 const devRun = ref(false);
+const driveCamera = ref('chase'); // chase | ego (hood cam, car hidden)
 const finaleToast = ref(false);
 const driveHint = ref(false);
 let finaleTriggered = false;
@@ -695,6 +706,15 @@ const closeLoginPrompt = () => {
 const backToMenu = () => {
   state.value = 'menu';
   menuScreen.value = 'main';
+};
+
+const toggleDriveCamera = () => {
+  if (finalePhase.value !== 'drive') return;
+  driveCamera.value = driveCamera.value === 'chase' ? 'ego' : 'chase';
+  if (carVisual) {
+    // Hood cam: hide our own car so we don't sit inside an empty shell.
+    carVisual.visible = driveCamera.value === 'chase';
+  }
 };
 
 const pauseRun = () => {
@@ -1453,6 +1473,9 @@ const handleKeydown = (event) => {
       case 'ArrowDown':
       case 'KeyS':
         brakeHeld = true;
+        break;
+      case 'KeyC':
+        toggleDriveCamera();
         break;
       default:
         break;
@@ -3069,6 +3092,7 @@ const startDriving = () => {
   driveTargetSpeed = 24;
   speed.value = 2;
   driveSpawnTimer = 1.6;
+  driveCamera.value = 'chase';
   clearObstacles();
   clearCoins();
   clearPowerups();
@@ -3153,6 +3177,8 @@ const exitFinale = () => {
     carVisual = null;
   }
   carWheels = [];
+  driveCamera.value = 'chase';
+  applyCameraZoom();
   if (activeCharacter) {
     activeCharacter.root.visible = true;
   } else {
@@ -3305,9 +3331,10 @@ const updateRunner = (delta) => {
 
   const collisionPlayerHeight = currentPlayerHeight();
 
+  const egoView = driving && driveCamera.value === 'ego';
   camera.fov = THREE.MathUtils.damp(
     camera.fov,
-    60 + Math.min(14, Math.max(0, speed.value - 10) * 0.55),
+    (egoView ? 70 : 60) + Math.min(14, Math.max(0, speed.value - 10) * 0.55),
     3,
     delta,
   );
@@ -3490,9 +3517,38 @@ const updateRunner = (delta) => {
     shieldMesh.rotation.y += delta * 1.4;
   }
 
-  camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x * 0.35, 4, delta);
-  lookAtTarget.set(player.position.x * 0.4, 1.2, -15);
-  camera.lookAt(lookAtTarget);
+  if (egoView) {
+    camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x, 12, delta);
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, 1.18, 10, delta);
+    camera.position.z = THREE.MathUtils.damp(
+      camera.position.z,
+      player.position.z - 0.5,
+      12,
+      delta,
+    );
+    lookAtTarget.set(camera.position.x + player.rotation.z * 5, 0.95, player.position.z - 30);
+    camera.lookAt(lookAtTarget);
+    camera.rotation.z += player.rotation.z * 0.5;
+  } else {
+    if (driving) {
+      // Recover smoothly after switching back from the hood cam.
+      camera.position.y = THREE.MathUtils.damp(
+        camera.position.y,
+        cameraBase.y * cameraZoom.value,
+        6,
+        delta,
+      );
+      camera.position.z = THREE.MathUtils.damp(
+        camera.position.z,
+        cameraBase.z * cameraZoom.value,
+        6,
+        delta,
+      );
+    }
+    camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x * 0.35, 4, delta);
+    lookAtTarget.set(player.position.x * 0.4, 1.2, -15);
+    camera.lookAt(lookAtTarget);
+  }
 };
 
 const startCrash = () => {
@@ -3993,6 +4049,24 @@ onBeforeUnmount(() => {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: rgba(190, 210, 255, 0.55);
+}
+
+.cam-btn {
+  position: absolute;
+  top: calc(148px + env(safe-area-inset-top));
+  right: calc(24px + env(safe-area-inset-right));
+  z-index: 4;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(90, 140, 255, 0.4);
+  background: rgba(8, 12, 22, 0.7);
+  color: #cfe0ff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
 }
 
 .pause-hint {
