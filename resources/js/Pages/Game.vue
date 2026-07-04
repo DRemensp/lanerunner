@@ -378,6 +378,7 @@ import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const canvasWrap = ref(null);
 
@@ -740,6 +741,22 @@ const sfx = {
     playTone({ freq: 1318, duration: 0.1, delay: 0.06, gain: 0.25 });
   },
   nearMiss: () => playNoise({ duration: 0.25, from: 2400, to: 400, gain: 0.28 }),
+  slide: () => playNoise({ duration: 0.28, from: 1600, to: 250, gain: 0.22 }),
+  land: () => {
+    playNoise({ duration: 0.12, from: 500, to: 140, gain: 0.22 });
+    playTone({ freq: 95, to: 55, type: 'sine', duration: 0.12, gain: 0.25 });
+  },
+  carPass: (lateral = 2) => {
+    const closeness = Math.max(0.15, 1 - lateral / 4);
+    playNoise({ duration: 0.4, from: 1000, to: 160, gain: 0.3 * closeness });
+    playTone({
+      freq: 130,
+      to: 70,
+      type: 'sawtooth',
+      duration: 0.38,
+      gain: 0.12 * closeness,
+    });
+  },
   powerup: () => {
     [523, 659, 784, 1046].forEach((freq, i) =>
       playTone({ freq, type: 'triangle', duration: 0.09, delay: i * 0.07, gain: 0.26 }),
@@ -1238,6 +1255,7 @@ const requestSlide = () => {
   isSliding = true;
   slideTimer = slideDuration;
   playerVelocityY = 0;
+  sfx.slide();
   player.scale.y = slideScale;
   player.position.y = getGroundCenterForSurface(currentSurfaceY, currentPlayerHeight());
   currentGroundCenter = player.position.y;
@@ -1283,6 +1301,7 @@ const handleKeydown = (event) => {
       moveRight();
       break;
     case 'ArrowUp':
+    case 'KeyW':
     case 'Space':
       attemptJump();
       break;
@@ -1996,6 +2015,8 @@ const getObstacleAssets = () => {
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
     })),
+    beamGeo: track(new THREE.PlaneGeometry(0.55, 3.4)),
+    lightGeo: track(new THREE.BoxGeometry(0.18, 0.09, 0.05)),
     carPaints: [
       0xd7404f, 0x3f7fd6, 0xf0a63a, 0x3fbf7f, 0x9b59d0,
       0xdfe4ec, 0x5a6a80, 0x2ec5c5, 0xe66fb2, 0xf5d547,
@@ -2169,14 +2190,117 @@ const obstacleBuilders = {
 };
 
 const obstacleVariants = {
-  low: ['low-crate', 'low-barrel', 'low-car'],
-  tall: ['tall-stack', 'tall-bus'],
+  low: ['low-crate', 'low-barrel', 'car-any'],
+  tall: ['tall-stack', 'tall-any'],
   over: ['over-sign'],
+};
+
+// Low-poly vehicles from Kenney's CC0 Car Kit (kenney.nl), loaded at runtime.
+// Until a model is ready the procedural fallbacks ('low-car'/'tall-bus') fill in.
+const glbVehicleDefs = [
+  { key: 'sedan', kind: 'car', fitLength: 2.6 },
+  { key: 'sedan-sports', kind: 'car', fitLength: 2.6 },
+  { key: 'hatchback-sports', kind: 'car', fitLength: 2.4 },
+  { key: 'race', kind: 'car', fitLength: 2.5 },
+  { key: 'taxi', kind: 'car', fitLength: 2.6 },
+  { key: 'police', kind: 'car', fitLength: 2.7 },
+  { key: 'suv', kind: 'car', fitLength: 2.6 },
+  { key: 'suv-luxury', kind: 'car', fitLength: 2.7 },
+  { key: 'van', kind: 'car', fitLength: 2.9 },
+  { key: 'delivery', kind: 'car', fitLength: 2.9 },
+  { key: 'ambulance', kind: 'tall', fitLength: 3.2 },
+  { key: 'truck', kind: 'tall', fitLength: 3.4 },
+  { key: 'firetruck', kind: 'tall', fitLength: 3.6 },
+  { key: 'garbage-truck', kind: 'tall', fitLength: 3.5 },
+  { key: 'cone', kind: 'prop', fitHeight: 1.05 },
+  { key: 'box', kind: 'prop', fitHeight: 1.1 },
+];
+
+const glbTemplates = {};
+const glbTraffic = { car: [], tall: [] };
+
+const addVehicleLights = (group, size) => {
+  const assets = getObstacleAssets();
+  const beams = new THREE.Group();
+  [-0.28, 0.28].forEach((f) => {
+    const beam = new THREE.Mesh(assets.beamGeo, assets.beamMat);
+    beam.rotation.x = -Math.PI / 2;
+    beam.position.set(size.w * f, -size.h / 2 + 0.06, size.d / 2 + 1.75);
+    beams.add(beam);
+  });
+  beams.visible = false;
+  group.add(beams);
+  group.userData.beams = beams;
+  [-0.3, 0.3].forEach((f) => {
+    const tail = new THREE.Mesh(assets.lightGeo, assets.tailMat);
+    tail.position.set(size.w * f, -size.h * 0.2, -size.d / 2 - 0.02);
+    group.add(tail);
+  });
+};
+
+const registerVehicleModel = (def, model) => {
+  const rawSize = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+  const scale = def.fitLength ? def.fitLength / rawSize.z : def.fitHeight / rawSize.y;
+  model.scale.setScalar(scale);
+  const box = new THREE.Box3().setFromObject(model);
+  model.position.sub(box.getCenter(new THREE.Vector3()));
+  const dims = box.getSize(new THREE.Vector3());
+  const size = { w: dims.x, h: dims.y, d: dims.z };
+  glbTemplates[def.key] = { model, size };
+
+  obstacleBuilders[def.key] = () => {
+    const mesh = new THREE.Group();
+    const body = model.clone(true);
+    mesh.add(body);
+    const wheels = [];
+    body.traverse((node) => {
+      if (node.name && node.name.startsWith('wheel')) {
+        wheels.push(node);
+      }
+    });
+    mesh.userData.wheels = wheels;
+    if (def.kind !== 'prop') {
+      addVehicleLights(mesh, size);
+    }
+    return { mesh, size: { ...size } };
+  };
+
+  if (def.kind === 'car') {
+    glbTraffic.car.push(def.key);
+  } else if (def.kind === 'tall') {
+    glbTraffic.tall.push(def.key);
+  } else {
+    obstacleVariants.low.push(def.key);
+  }
+};
+
+const loadVehicleModels = () => {
+  const loader = new GLTFLoader();
+  glbVehicleDefs.forEach((def) => {
+    loader.load(
+      `/models/carkit/${def.key}.glb`,
+      (gltf) => registerVehicleModel(def, gltf.scene),
+      undefined,
+      () => {},
+    );
+  });
+};
+
+const pickFrom = (list) => list[Math.floor(Math.random() * list.length)];
+
+const resolveVariantKey = (key) => {
+  if (key === 'car-any') {
+    return glbTraffic.car.length ? pickFrom(glbTraffic.car) : 'low-car';
+  }
+  if (key === 'tall-any') {
+    return glbTraffic.tall.length ? pickFrom(glbTraffic.tall) : 'tall-bus';
+  }
+  return key;
 };
 
 const getObstacle = (type, forcedKey = null) => {
   const keys = obstacleVariants[type];
-  const key = forcedKey || keys[Math.floor(Math.random() * keys.length)];
+  const key = resolveVariantKey(forcedKey || keys[Math.floor(Math.random() * keys.length)]);
 
   let obstacle;
   if (obstaclePools[key]?.length) {
@@ -2212,9 +2336,9 @@ const spawnOncoming = () => {
   const levelFactor = currentLevel.value.baseSpeed / 12;
 
   for (let i = 0; i < count; i += 1) {
-    const isBus = Math.random() < 0.14;
-    const vehicle = getObstacle(isBus ? 'tall' : 'low', isBus ? 'tall-bus' : 'low-car');
-    vehicle.userData.vz = (isBus ? 3 + Math.random() * 3 : 4 + Math.random() * 10) * levelFactor;
+    const isTruck = Math.random() < 0.14;
+    const vehicle = getObstacle(isTruck ? 'tall' : 'low', isTruck ? 'tall-any' : 'car-any');
+    vehicle.userData.vz = (isTruck ? 3 + Math.random() * 3 : 4 + Math.random() * 10) * levelFactor;
     if (vehicle.userData.beams) {
       vehicle.userData.beams.visible = true;
     }
@@ -2335,6 +2459,7 @@ const updateRunner = (delta) => {
   currentGroundCenter = targetGround;
   if (player.position.y <= targetGround) {
     if (playerVelocityY < -6) {
+      sfx.land();
       spawnBurst(
         new THREE.Vector3(player.position.x, targetGround - playerHeight / 2 + 0.06, player.position.z),
         ['dust'],
@@ -2457,17 +2582,21 @@ const updateRunner = (delta) => {
       }
       if (!obstacle.userData.passed && obstacle.position.z > player.position.z + 1.2) {
         obstacle.userData.passed = true;
-        if (
-          state.value === 'running' &&
-          Math.abs(obstacle.position.x - player.position.x) < 2.5
-        ) {
-          triggerNearMiss();
-          spawnBurst(
-            new THREE.Vector3(obstacle.position.x, 1, obstacle.position.z),
-            ['gold'],
-            6,
-            4,
-          );
+        if (state.value === 'running') {
+          const lateral = Math.abs(obstacle.position.x - player.position.x);
+          // A real near miss needs the player to be mid-dodge right next to
+          // the car — standing in the neighbouring lane (2.0 apart) is safe.
+          if (lateral < 1.6) {
+            triggerNearMiss();
+            spawnBurst(
+              new THREE.Vector3(obstacle.position.x, 1, obstacle.position.z),
+              ['gold'],
+              6,
+              4,
+            );
+          } else if (lateral < 3.6) {
+            sfx.carPass(lateral);
+          }
         }
       }
     }
@@ -2612,6 +2741,7 @@ onMounted(() => {
   window.addEventListener('pointerdown', pointerUnlockHandler, { once: true });
   document.addEventListener('visibilitychange', handleVisibility);
   initScene();
+  loadVehicleModels();
   handleResize();
   checkAuthGate();
   loadProfile();
@@ -2657,6 +2787,18 @@ onBeforeUnmount(() => {
     }
   });
   obstacleResources.forEach((resource) => resource?.dispose());
+  Object.values(glbTemplates).forEach(({ model }) => {
+    model.traverse((node) => {
+      if (node.isMesh) {
+        node.geometry?.dispose();
+        const materials = Array.isArray(node.material) ? node.material : [node.material];
+        materials.forEach((material) => {
+          material?.map?.dispose();
+          material?.dispose();
+        });
+      }
+    });
+  });
   if (powerupAssets) {
     Object.values(powerupAssets).forEach((resource) => resource?.dispose?.());
   }
