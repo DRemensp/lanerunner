@@ -580,6 +580,19 @@ const planeKeys = { up: false, down: false, left: false, right: false };
 const joyKnob = ref({ x: 0, y: 0 });
 let joyVec = { x: 0, y: 0 };
 let joyPointerId = null;
+let rampHintShown = false;
+let waterTexture2 = null;
+let clouds = [];
+let cloudAssets = null;
+
+// Zone 3 combat: drones appear ahead and the plane auto-fires at them.
+let enemies = [];
+let enemyPool = [];
+let enemySpawnTimer = 0;
+let projectiles = [];
+let projectilePool = [];
+let fireTimer = 0;
+let enemyAssets = null;
 
 let envMode = 'night'; // night | sunrise | day
 const envSettings = {
@@ -953,6 +966,11 @@ const sfx = {
   dock: () => {
     playNoise({ duration: 0.22, from: 1200, to: 250, gain: 0.34 });
     playTone({ freq: 75, to: 45, type: 'square', duration: 0.2, gain: 0.3 });
+  },
+  shoot: () => playTone({ freq: 880 + Math.random() * 160, to: 320, type: 'square', duration: 0.09, gain: 0.1 }),
+  enemyDown: () => {
+    playNoise({ duration: 0.35, from: 1500, to: 150, gain: 0.35 });
+    playTone({ freq: 200, to: 60, type: 'sawtooth', duration: 0.3, gain: 0.22 });
   },
   land: () => {
     playNoise({ duration: 0.12, from: 500, to: 140, gain: 0.22 });
@@ -3479,14 +3497,19 @@ const buildOcean = () => {
   const ctx = waterCanvas.getContext('2d');
   ctx.fillStyle = '#0d2f52';
   ctx.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 70; i += 1) {
-    ctx.fillStyle = `rgba(190, 225, 255, ${0.05 + Math.random() * 0.12})`;
-    ctx.fillRect(Math.random() * 256, Math.random() * 256, 30 + Math.random() * 70, 1.5 + Math.random() * 2);
+  // Bold wave bands and crests so forward motion actually reads on screen.
+  for (let band = 0; band < 12; band += 1) {
+    ctx.fillStyle = `rgba(8, 30, 58, ${0.25 + Math.random() * 0.3})`;
+    ctx.fillRect(0, band * 22 + Math.random() * 8, 256, 6 + Math.random() * 8);
+  }
+  for (let i = 0; i < 150; i += 1) {
+    ctx.fillStyle = `rgba(190, 225, 255, ${0.1 + Math.random() * 0.25})`;
+    ctx.fillRect(Math.random() * 256, Math.random() * 256, 18 + Math.random() * 60, 2 + Math.random() * 2.5);
   }
   waterTexture = new THREE.CanvasTexture(waterCanvas);
   waterTexture.wrapS = THREE.RepeatWrapping;
   waterTexture.wrapT = THREE.RepeatWrapping;
-  waterTexture.repeat.set(10, 20);
+  waterTexture.repeat.set(10, 26);
 
   waterMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(900, 1100),
@@ -3495,6 +3518,25 @@ const buildOcean = () => {
   waterMesh.rotation.x = -Math.PI / 2;
   waterMesh.position.set(0, -0.8, -360);
   oceanGroup.add(waterMesh);
+
+  // Second, coarser layer scrolling faster for parallax depth.
+  waterTexture2 = new THREE.CanvasTexture(waterCanvas);
+  waterTexture2.wrapS = THREE.RepeatWrapping;
+  waterTexture2.wrapT = THREE.RepeatWrapping;
+  waterTexture2.repeat.set(4, 9);
+  const waterOverlay = new THREE.Mesh(
+    new THREE.PlaneGeometry(900, 1100),
+    new THREE.MeshBasicMaterial({
+      map: waterTexture2,
+      transparent: true,
+      opacity: 0.4,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  waterOverlay.rotation.x = -Math.PI / 2;
+  waterOverlay.position.set(0, -0.72, -360);
+  oceanGroup.add(waterOverlay);
 
   const sun = new THREE.Mesh(
     new THREE.CircleGeometry(48, 30),
@@ -3531,6 +3573,148 @@ const buildOcean = () => {
   oceanGroup.add(streak);
 
   scene.add(oceanGroup);
+};
+
+const getCloudAssets = () => {
+  if (!cloudAssets) {
+    cloudAssets = {
+      geo: new THREE.SphereGeometry(1, 7, 5),
+      mat: new THREE.MeshBasicMaterial({ color: 0xf2f7ff, transparent: true, opacity: 0.82 }),
+    };
+  }
+  return cloudAssets;
+};
+
+const spawnCloud = (zRange = [-380, -120]) => {
+  const assets = getCloudAssets();
+  const cloud = new THREE.Group();
+  const puffs = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < puffs; i += 1) {
+    const puff = new THREE.Mesh(assets.geo, assets.mat);
+    puff.position.set(i * 1.4 - puffs * 0.7, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 1.2);
+    puff.scale.setScalar(0.8 + Math.random() * 0.9);
+    cloud.add(puff);
+  }
+  const size = 2 + Math.random() * 4;
+  cloud.scale.set(size, size * 0.42, size);
+  const side = Math.random() < 0.5 ? -1 : 1;
+  cloud.position.set(
+    side * (14 + Math.random() * 55),
+    3 + Math.random() * 34,
+    zRange[0] + Math.random() * (zRange[1] - zRange[0]),
+  );
+  clouds.push(cloud);
+  scene.add(cloud);
+};
+
+const updateOceanMotion = (delta) => {
+  if (waterTexture) {
+    waterTexture.offset.y -= speed.value * delta * 0.004;
+  }
+  if (waterTexture2) {
+    waterTexture2.offset.y -= speed.value * delta * 0.009;
+  }
+  if (!oceanGroup) return;
+  while (clouds.length < 12) {
+    spawnCloud();
+  }
+  for (let i = clouds.length - 1; i >= 0; i -= 1) {
+    const cloud = clouds[i];
+    cloud.position.z += speed.value * delta;
+    if (cloud.position.z > 40) {
+      scene.remove(cloud);
+      clouds.splice(i, 1);
+      spawnCloud([-380, -260]);
+    }
+  }
+};
+
+const clearClouds = () => {
+  clouds.forEach((cloud) => scene.remove(cloud));
+  clouds = [];
+};
+
+const getEnemyAssets = () => {
+  if (!enemyAssets) {
+    enemyAssets = {
+      coreGeo: new THREE.OctahedronGeometry(1.05),
+      coreMat: new THREE.MeshLambertMaterial({
+        color: 0x2a3350,
+        emissive: 0x131c30,
+        emissiveIntensity: 0.5,
+      }),
+      ringGeo: new THREE.TorusGeometry(1.5, 0.15, 8, 20),
+      ringMat: new THREE.MeshLambertMaterial({ color: 0x50628a }),
+      eyeGeo: new THREE.SphereGeometry(0.34, 10, 8),
+      eyeMat: new THREE.MeshBasicMaterial({ color: 0xff3b57 }),
+      boltGeo: new THREE.BoxGeometry(0.16, 0.16, 1.5),
+      boltMat: new THREE.MeshBasicMaterial({ color: 0x7dffb0 }),
+    };
+  }
+  return enemyAssets;
+};
+
+const spawnEnemy = () => {
+  const assets = getEnemyAssets();
+  let enemy = enemyPool.pop();
+  if (!enemy) {
+    enemy = new THREE.Group();
+    const core = new THREE.Mesh(assets.coreGeo, assets.coreMat);
+    enemy.add(core);
+    const ring = new THREE.Mesh(assets.ringGeo, assets.ringMat);
+    enemy.add(ring);
+    const eye = new THREE.Mesh(assets.eyeGeo, assets.eyeMat);
+    eye.position.z = 1.0;
+    enemy.add(eye);
+    enemy.userData.ring = ring;
+  }
+  enemy.userData.baseX = (Math.random() - 0.5) * 22;
+  enemy.userData.baseY = 8 + Math.random() * 22;
+  enemy.userData.ampX = 2 + Math.random() * 5;
+  enemy.userData.ampY = 1 + Math.random() * 3;
+  enemy.userData.freq = 0.8 + Math.random() * 1.6;
+  enemy.userData.phase = Math.random() * Math.PI * 2;
+  enemy.userData.vz = 8 + Math.random() * 14;
+  enemy.position.set(enemy.userData.baseX, enemy.userData.baseY, -250 - Math.random() * 40);
+  enemies.push(enemy);
+  scene.add(enemy);
+};
+
+const removeEnemy = (index) => {
+  const enemy = enemies[index];
+  scene.remove(enemy);
+  enemyPool.push(enemy);
+  enemies.splice(index, 1);
+};
+
+const clearEnemies = () => {
+  enemies.forEach((enemy) => {
+    scene.remove(enemy);
+    enemyPool.push(enemy);
+  });
+  enemies = [];
+};
+
+const fireProjectiles = () => {
+  const assets = getEnemyAssets();
+  [-1.1, 1.1].forEach((x) => {
+    let bolt = projectilePool.pop();
+    if (!bolt) {
+      bolt = new THREE.Mesh(assets.boltGeo, assets.boltMat);
+    }
+    bolt.position.set(player.position.x + x, player.position.y - 0.2, player.position.z - 2.2);
+    projectiles.push(bolt);
+    scene.add(bolt);
+  });
+  sfx.shoot();
+};
+
+const clearProjectiles = () => {
+  projectiles.forEach((bolt) => {
+    scene.remove(bolt);
+    projectilePool.push(bolt);
+  });
+  projectiles = [];
 };
 
 const buildRamp = () => {
@@ -3581,6 +3765,9 @@ const disposeZone3 = () => {
   waterMesh = null;
   waterTexture?.dispose();
   waterTexture = null;
+  waterTexture2?.dispose();
+  waterTexture2 = null;
+  clearClouds();
 };
 
 const buildFallbackPlaneModel = () => {
@@ -3608,7 +3795,7 @@ const loadPlaneModel = () => {
     (gltf) => {
       const model = gltf.scene;
       const rawSize = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
-      const scale = 8 / rawSize.z;
+      const scale = 5.5 / rawSize.z;
       model.scale.setScalar(scale);
       const box = new THREE.Box3().setFromObject(model);
       model.position.sub(box.getCenter(new THREE.Vector3()));
@@ -3645,7 +3832,7 @@ const buildDockingPlane = () => {
   } else {
     dockingPlane.add(buildFallbackPlaneModel());
   }
-  dockingPlane.position.set(0, 10.5, -110);
+  dockingPlane.position.set(0, 15, -110);
   scene.add(dockingPlane);
 };
 
@@ -3686,7 +3873,7 @@ const enterPlane = () => {
   planeVelY = 0;
   envMode = 'day';
   musicDuckTarget = 0.85;
-  driveHintText.value = 'Zone 3 — joystick or WASD/arrows to fly.';
+  driveHintText.value = 'Zone 3 — joystick or WASD/arrows to fly. Guns fire automatically!';
   driveHint.value = true;
   if (driveHintTimer) {
     clearTimeout(driveHintTimer);
@@ -3716,9 +3903,7 @@ const updateLaunch = (delta) => {
       scene.remove(ramp);
     }
   }
-  if (waterTexture) {
-    waterTexture.offset.y -= speed.value * delta * 0.003;
-  }
+  updateOceanMotion(delta);
 
   launchVy -= 7.5 * delta;
   player.position.y = Math.max(3, player.position.y + launchVy * delta);
@@ -3774,10 +3959,6 @@ const updateLaunch = (delta) => {
 };
 
 const updatePlane = (delta) => {
-  speed.value = THREE.MathUtils.damp(speed.value, 60, 2, delta);
-  updateEngineSound();
-  score.value += speed.value * delta * 2.4;
-
   const inputX = THREE.MathUtils.clamp(
     (planeKeys.right ? 1 : 0) - (planeKeys.left ? 1 : 0) + joyVec.x,
     -1,
@@ -3788,27 +3969,114 @@ const updatePlane = (delta) => {
     -1,
     1,
   );
-  planeVelX = THREE.MathUtils.damp(planeVelX, inputX * 15, 4, delta);
-  planeVelY = THREE.MathUtils.damp(planeVelY, inputY * 11, 4, delta);
-  player.position.x = THREE.MathUtils.clamp(player.position.x + planeVelX * delta, -12, 12);
-  player.position.y = THREE.MathUtils.clamp(player.position.y + planeVelY * delta, 5, 36);
+
+  // Diving picks up a little speed, climbing bleeds some.
+  speed.value = THREE.MathUtils.damp(speed.value, 60 - inputY * 7, 2, delta);
+  updateEngineSound();
+  score.value += speed.value * delta * 2.4;
+
+  planeVelX = THREE.MathUtils.damp(planeVelX, inputX * 22, 6, delta);
+  planeVelY = THREE.MathUtils.damp(planeVelY, inputY * 16, 6, delta);
+  player.position.x = THREE.MathUtils.clamp(player.position.x + planeVelX * delta, -13, 13);
+  player.position.y = THREE.MathUtils.clamp(player.position.y + planeVelY * delta, 4, 36);
   player.position.z = THREE.MathUtils.damp(player.position.z, 2, 0.8, delta);
 
   if (planeVisual) {
-    planeVisual.rotation.z = THREE.MathUtils.damp(planeVisual.rotation.z, -planeVelX * 0.045, 6, delta);
-    planeVisual.rotation.x = THREE.MathUtils.damp(planeVisual.rotation.x, planeVelY * 0.03, 6, delta);
+    planeVisual.rotation.z = THREE.MathUtils.damp(
+      planeVisual.rotation.z,
+      THREE.MathUtils.clamp(-planeVelX * 0.055, -0.85, 0.85),
+      7,
+      delta,
+    );
+    planeVisual.rotation.x = THREE.MathUtils.damp(
+      planeVisual.rotation.x,
+      THREE.MathUtils.clamp(planeVelY * 0.045, -0.6, 0.6),
+      7,
+      delta,
+    );
+    planeVisual.rotation.y = THREE.MathUtils.damp(planeVisual.rotation.y, -planeVelX * 0.014, 6, delta);
+    // Gentle idle bob so the plane never feels frozen.
+    planeVisual.position.y = Math.sin(performance.now() * 0.0016) * 0.15;
   }
   player.rotation.x = THREE.MathUtils.damp(player.rotation.x, 0, 4, delta);
   planeMixer?.update(delta);
 
-  if (waterTexture) {
-    waterTexture.offset.y -= speed.value * delta * 0.003;
+  updateOceanMotion(delta);
+
+  // --- Combat: drones ahead, auto-fire from the wings. ---
+  enemySpawnTimer -= delta;
+  if (enemySpawnTimer <= 0 && enemies.length < 7) {
+    spawnEnemy();
+    enemySpawnTimer = 0.9 + Math.random() * 0.9;
+  }
+
+  fireTimer -= delta;
+  if (fireTimer <= 0) {
+    fireProjectiles();
+    fireTimer = 0.18;
+  }
+
+  for (let i = projectiles.length - 1; i >= 0; i -= 1) {
+    const bolt = projectiles[i];
+    bolt.position.z -= 150 * delta;
+    if (bolt.position.z < -280) {
+      scene.remove(bolt);
+      projectilePool.push(bolt);
+      projectiles.splice(i, 1);
+    }
+  }
+
+  for (let i = enemies.length - 1; i >= 0; i -= 1) {
+    const enemy = enemies[i];
+    enemy.userData.phase += delta * enemy.userData.freq;
+    enemy.position.z += (speed.value + enemy.userData.vz) * delta;
+    enemy.position.x = enemy.userData.baseX + Math.sin(enemy.userData.phase) * enemy.userData.ampX;
+    enemy.position.y = enemy.userData.baseY + Math.cos(enemy.userData.phase * 1.3) * enemy.userData.ampY;
+    enemy.userData.ring.rotation.z += delta * 3;
+    enemy.rotation.y += delta * 0.8;
+
+    if (enemy.position.z > 30) {
+      removeEnemy(i);
+      continue;
+    }
+
+    let destroyed = false;
+    for (let j = projectiles.length - 1; j >= 0; j -= 1) {
+      const bolt = projectiles[j];
+      if (
+        Math.abs(bolt.position.z - enemy.position.z) < 2.2 &&
+        Math.abs(bolt.position.x - enemy.position.x) < 1.9 &&
+        Math.abs(bolt.position.y - enemy.position.y) < 1.9
+      ) {
+        scene.remove(bolt);
+        projectilePool.push(bolt);
+        projectiles.splice(j, 1);
+        destroyed = true;
+        break;
+      }
+    }
+    if (destroyed) {
+      score.value += 150;
+      sfx.enemyDown();
+      spawnBurst(enemy.position, ['red', 'gold', 'dust'], 14, 8);
+      removeEnemy(i);
+      continue;
+    }
+
+    if (
+      Math.abs(enemy.position.z - player.position.z) < 2.6 &&
+      Math.abs(enemy.position.x - player.position.x) < 3.0 &&
+      Math.abs(enemy.position.y - player.position.y) < 1.9
+    ) {
+      startCrash();
+      return;
+    }
   }
 
   camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x * 0.5, 4, delta);
-  camera.position.y = THREE.MathUtils.damp(camera.position.y, player.position.y + 3.4, 4, delta);
-  camera.position.z = THREE.MathUtils.damp(camera.position.z, player.position.z + 10.5, 4, delta);
-  camera.fov = THREE.MathUtils.damp(camera.fov, 62, 3, delta);
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, player.position.y + 3.2, 4, delta);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, player.position.z + 10, 4, delta);
+  camera.fov = THREE.MathUtils.damp(camera.fov, 62 + Math.abs(planeVelX) * 0.2, 3, delta);
   camera.updateProjectionMatrix();
   lookAtTarget.set(player.position.x * 0.85, player.position.y + 0.3, player.position.z - 12);
   camera.lookAt(lookAtTarget);
@@ -3887,7 +4155,12 @@ const exitFinale = () => {
     planeMixer = null;
   }
   disposeZone3();
+  clearEnemies();
+  clearProjectiles();
   rampTriggered = false;
+  rampHintShown = false;
+  enemySpawnTimer = 0;
+  fireTimer = 0;
   launchVy = 0;
   launchTimer = 0;
   planeVelX = 0;
@@ -3939,7 +4212,7 @@ const updateRunner = (delta) => {
   if (driving) {
     if (finalePhase.value === 'ramp') {
       // Scripted approach: ease down to launch speed, ignore pedals.
-      speed.value = THREE.MathUtils.damp(speed.value, 60, 1.1, delta);
+      speed.value = THREE.MathUtils.damp(speed.value, 48, 1.1, delta);
       driveTargetSpeed = speed.value;
     } else {
       if (accelHeld) {
@@ -3969,13 +4242,21 @@ const updateRunner = (delta) => {
       }
     }
 
-    if (
-      finalePhase.value === 'drive' &&
-      godModeActive.value &&
-      !rampTriggered &&
-      score.value >= RAMP_SCORE
-    ) {
-      triggerRamp();
+    if (finalePhase.value === 'drive' && !rampTriggered && score.value >= RAMP_SCORE) {
+      if (godModeActive.value) {
+        triggerRamp();
+      } else if (!rampHintShown) {
+        // Make the requirement discoverable instead of silently failing.
+        rampHintShown = true;
+        driveHintText.value = 'The road ahead only breaks for gods — hold top speed!';
+        driveHint.value = true;
+        if (driveHintTimer) {
+          clearTimeout(driveHintTimer);
+        }
+        driveHintTimer = setTimeout(() => {
+          driveHint.value = false;
+        }, 5200);
+      }
     }
     // No points below cruising speed — crawling along earns nothing.
     if (speed.value >= driveScoreMinSpeed) {
@@ -4021,8 +4302,8 @@ const updateRunner = (delta) => {
         pitch = 0.27;
       }
     }
-    player.position.y = THREE.MathUtils.damp(player.position.y, carY, 10, delta);
-    player.rotation.x = THREE.MathUtils.damp(player.rotation.x, pitch, 6, delta);
+    player.position.y = THREE.MathUtils.damp(player.position.y, carY, 16, delta);
+    player.rotation.x = THREE.MathUtils.damp(player.rotation.x, pitch, 8, delta);
     currentGroundCenter = player.position.y;
     playerVelocityY = 0;
     // Ease the car from the plaza back onto the running line.
@@ -4130,9 +4411,7 @@ const updateRunner = (delta) => {
 
   if (ramp && finalePhase.value === 'ramp') {
     ramp.position.z += speed.value * delta;
-    if (waterTexture) {
-      waterTexture.offset.y -= speed.value * delta * 0.003;
-    }
+    updateOceanMotion(delta);
     // Launch right as the car leaves the top edge of the deck.
     if (ramp.position.z >= 12.5) {
       doLaunch();
@@ -4576,6 +4855,13 @@ onBeforeUnmount(() => {
   window.removeEventListener('touchstart', handleTouchStart);
   disposePlaza();
   disposeZone3();
+  if (cloudAssets) {
+    cloudAssets.geo.dispose();
+    cloudAssets.mat.dispose();
+  }
+  if (enemyAssets) {
+    Object.values(enemyAssets).forEach((resource) => resource?.dispose?.());
+  }
   if (planeTemplate) {
     planeTemplate.model.traverse((node) => {
       if (node.isMesh) {
