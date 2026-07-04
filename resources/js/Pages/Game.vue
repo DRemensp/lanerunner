@@ -370,6 +370,7 @@
           </div>
           <div class="menu-screen-card">
             <template v-if="menuScreen === 'level'">
+            <div class="skin-shop" data-allow-scroll>
             <div class="menu-field">
               <label for="skin">Runner Skin</label>
               <div v-if="authUser" class="shop-balance">
@@ -377,7 +378,7 @@
               </div>
               <div class="skin-row">
                 <button
-                  v-for="skin in skinOptions"
+                  v-for="skin in runnerSkinOptions"
                   :key="skin.id"
                   class="skin-chip"
                   :class="{ active: skin.id === selectedSkin, locked: !canUseSkin(skin) }"
@@ -390,10 +391,49 @@
                   <span v-if="!canUseSkin(skin)" class="skin-price">{{ skin.price }}c</span>
                 </button>
               </div>
-              <div v-if="shopMessage" class="shop-message">{{ shopMessage }}</div>
-              <div class="skin-preview-hint">
-                Tap a skin to preview it live on the right.
+            </div>
+            <div class="menu-field">
+              <label>Zone 2 &mdash; Getaway Car</label>
+              <div v-if="zone2Seen && carSkinOptions.length" class="skin-row">
+                <button
+                  v-for="skin in carSkinOptions"
+                  :key="skin.id"
+                  class="skin-chip"
+                  :class="{ active: skin.slug === selectedCarSlug, locked: !canUseSkin(skin) }"
+                  :style="{ '--skin': skin.color }"
+                  :title="canUseSkin(skin) ? 'Select car' : `Unlock for ${skin.price} coins`"
+                  @click="selectCarSkin(skin)"
+                  type="button"
+                >
+                  {{ skin.label }}
+                  <span v-if="!canUseSkin(skin)" class="skin-price">{{ skin.price }}c</span>
+                </button>
               </div>
+              <div v-else class="zone-locked">??? &mdash; Find the end of the line first.</div>
+            </div>
+            <div class="menu-field">
+              <label>Zone 3 &mdash; Aircraft</label>
+              <div v-if="zone3Seen && planeSkinOptions.length" class="skin-row">
+                <button
+                  v-for="skin in planeSkinOptions"
+                  :key="skin.id"
+                  class="skin-chip"
+                  :class="{ active: skin.slug === selectedPlaneSlug, locked: !canUseSkin(skin) }"
+                  :style="{ '--skin': skin.color }"
+                  :title="canUseSkin(skin) ? 'Select aircraft' : `Unlock for ${skin.price} coins`"
+                  @click="selectPlaneSkin(skin)"
+                  type="button"
+                >
+                  {{ skin.label }}
+                  <span v-if="!canUseSkin(skin)" class="skin-price">{{ skin.price }}c</span>
+                </button>
+              </div>
+              <div v-else class="zone-locked">??? &mdash; Only gods take to the sky.</div>
+            </div>
+            <div v-if="shopMessage" class="shop-message">{{ shopMessage }}</div>
+            <div class="skin-preview-hint">
+              Tap a skin or car to preview it live.
+            </div>
             </div>
           </template>
 
@@ -637,14 +677,41 @@ const setLevel = (levelId) => {
 };
 
 const skinOptions = ref([
-  { id: 1, slug: 'neon', label: 'Neon', color: '#3bffb3', price: 0, is_default: true },
-  { id: 2, slug: 'ember', label: 'Ember', color: '#ff6b3b', price: 300, is_default: false },
-  { id: 3, slug: 'ion', label: 'Ion', color: '#49a8ff', price: 450, is_default: false },
-  { id: 4, slug: 'dusk', label: 'Dusk', color: '#b18cff', price: 600, is_default: false },
-  { id: 5, slug: 'volt', label: 'Volt', color: '#ffe14d', price: 750, is_default: false },
-  { id: 6, slug: 'nova', label: 'Nova', color: '#ff4fd8', price: 900, is_default: false },
+  { id: 1, slug: 'neon', label: 'Neon', category: 'runner', color: '#3bffb3', price: 0, is_default: true },
+  { id: 2, slug: 'ember', label: 'Ember', category: 'runner', color: '#ff6b3b', price: 300, is_default: false },
+  { id: 3, slug: 'ion', label: 'Ion', category: 'runner', color: '#49a8ff', price: 450, is_default: false },
+  { id: 4, slug: 'dusk', label: 'Dusk', category: 'runner', color: '#b18cff', price: 600, is_default: false },
+  { id: 5, slug: 'volt', label: 'Volt', category: 'runner', color: '#ffe14d', price: 750, is_default: false },
+  { id: 6, slug: 'nova', label: 'Nova', category: 'runner', color: '#ff4fd8', price: 900, is_default: false },
 ]);
 const selectedSkin = ref(skinOptions.value[0].id);
+
+const runnerSkinOptions = computed(() =>
+  skinOptions.value.filter((skin) => (skin.category || 'runner') === 'runner'),
+);
+const carSkinOptions = computed(() =>
+  skinOptions.value.filter((skin) => skin.category === 'car'),
+);
+const planeSkinOptions = computed(() =>
+  skinOptions.value.filter((skin) => skin.category === 'plane'),
+);
+
+// Zone 2/3 skin sections stay hidden as "???" until the player has actually
+// reached that section once — the finale stays a secret.
+const zone2Seen = ref(localStorage.getItem('runner_zone2_seen') === '1');
+const zone3Seen = ref(localStorage.getItem('runner_zone3_seen') === '1');
+const markZoneSeen = (zone) => {
+  if (zone === 2 && !zone2Seen.value) {
+    zone2Seen.value = true;
+    localStorage.setItem('runner_zone2_seen', '1');
+  } else if (zone === 3 && !zone3Seen.value) {
+    zone3Seen.value = true;
+    localStorage.setItem('runner_zone3_seen', '1');
+  }
+};
+
+const selectedCarSlug = ref(localStorage.getItem('runner_car_slug') || 'car-sedan-sports');
+const selectedPlaneSlug = ref(localStorage.getItem('runner_plane_slug') || 'plane-cesium');
 
 const buildTrack = (id, title, file) => ({
   id,
@@ -921,6 +988,7 @@ const openMenuScreen = (screen) => {
 };
 
 const backToMainMenu = () => {
+  clearCarPreview();
   menuScreen.value = 'main';
 };
 
@@ -958,17 +1026,25 @@ const normalizeSkins = (skins) =>
     id: skin.id,
     slug: skin.slug,
     label: skin.name,
+    category: skin.category || 'runner',
     color: skin.color || '#3bffb3',
     price: skin.price_coins ?? 0,
     is_default: Boolean(skin.is_default),
   }));
 
 const ensureSelectedSkin = () => {
-  if (!skinOptions.value.length) return;
-  const selected = skinOptions.value.find((skin) => skin.id === selectedSkin.value);
+  const runners = runnerSkinOptions.value;
+  if (!runners.length) return;
+  const selected = runners.find((skin) => skin.id === selectedSkin.value);
   if (!selected || !canUseSkin(selected)) {
-    const fallback = skinOptions.value.find((skin) => canUseSkin(skin)) || skinOptions.value[0];
+    const fallback = runners.find((skin) => canUseSkin(skin)) || runners[0];
     selectedSkin.value = fallback.id;
+  }
+  // A stored car/plane pick the player no longer owns falls back to default.
+  const car = carSkinOptions.value.find((skin) => skin.slug === selectedCarSlug.value);
+  if (car && !canUseSkin(car)) {
+    selectedCarSlug.value = 'car-sedan-sports';
+    localStorage.setItem('runner_car_slug', selectedCarSlug.value);
   }
 };
 
@@ -1486,34 +1562,87 @@ const loadLeaderboard = async () => {
 };
 
 const canUseSkin = (skin) =>
-  skin.is_default || (!isGuest.value && ownedSkinIds.value.includes(skin.id));
+  skin.is_default ||
+  (skin.price ?? 0) === 0 ||
+  (!isGuest.value && ownedSkinIds.value.includes(skin.id));
+
+// Car preview in the skins menu: the car takes the runner's spot on stage.
+let previewCar = null;
+const clearCarPreview = () => {
+  if (previewCar) {
+    if (scene) scene.remove(previewCar);
+    previewCar = null;
+  }
+  if (player && state.value === 'menu') {
+    player.visible = true;
+  }
+};
+
+const showCarPreview = (skin) => {
+  if (!scene) return;
+  clearCarPreview();
+  const template = glbTemplates[skin.slug.replace(/^car-/, '')];
+  if (!template) return;
+  previewCar = template.model.clone(true);
+  previewCar.position.set(
+    player ? player.position.x : 0,
+    template.size.h / 2 + 0.02,
+    player ? player.position.z : 2,
+  );
+  previewCar.rotation.y = Math.PI * 0.85;
+  scene.add(previewCar);
+  if (player) {
+    player.visible = false;
+  }
+};
+
+// Buying is shared across categories; only what happens on success differs.
+const purchaseSkin = async (skin) => {
+  if (canUseSkin(skin)) return true;
+  if (isGuest.value) {
+    showLoginPrompt.value = true;
+    return false;
+  }
+  if (totalCoins.value < (skin.price ?? 0)) {
+    shopMessage.value = `Not enough coins — ${skin.label} costs ${skin.price}.`;
+    return false;
+  }
+  try {
+    const response = await axios.post('/api/runner/skin/buy', { skin_id: skin.id });
+    totalCoins.value = response.data.coins ?? totalCoins.value;
+    ownedSkinIds.value = Array.isArray(response.data.owned_skin_ids)
+      ? response.data.owned_skin_ids.map((id) => Number(id))
+      : ownedSkinIds.value;
+    shopMessage.value = `${skin.label} unlocked!`;
+    return true;
+  } catch (error) {
+    shopMessage.value = error.response?.data?.message || 'Purchase failed.';
+    return false;
+  }
+};
+
+const selectCarSkin = async (skin) => {
+  shopMessage.value = '';
+  showCarPreview(skin);
+  if (!(await purchaseSkin(skin))) return;
+  selectedCarSlug.value = skin.slug;
+  localStorage.setItem('runner_car_slug', skin.slug);
+};
+
+const selectPlaneSkin = async (skin) => {
+  shopMessage.value = '';
+  if (!(await purchaseSkin(skin))) return;
+  selectedPlaneSlug.value = skin.slug;
+  localStorage.setItem('runner_plane_slug', skin.slug);
+};
 
 const selectSkin = async (skin) => {
   shopMessage.value = '';
   // Always preview the clicked character in the scene, even if locked.
+  clearCarPreview();
   applyCharacter(skin);
 
-  if (!canUseSkin(skin)) {
-    if (isGuest.value) {
-      showLoginPrompt.value = true;
-      return;
-    }
-    if (totalCoins.value < (skin.price ?? 0)) {
-      shopMessage.value = `Not enough coins — ${skin.label} costs ${skin.price}.`;
-      return;
-    }
-    try {
-      const response = await axios.post('/api/runner/skin/buy', { skin_id: skin.id });
-      totalCoins.value = response.data.coins ?? totalCoins.value;
-      ownedSkinIds.value = Array.isArray(response.data.owned_skin_ids)
-        ? response.data.owned_skin_ids.map((id) => Number(id))
-        : ownedSkinIds.value;
-      shopMessage.value = `${skin.label} unlocked!`;
-    } catch (error) {
-      shopMessage.value = error.response?.data?.message || 'Purchase failed.';
-      return;
-    }
-  }
+  if (!(await purchaseSkin(skin))) return;
 
   selectedSkin.value = skin.id;
 
@@ -1548,6 +1677,7 @@ const startRunSession = async () => {
 };
 
 const resetRun = () => {
+  clearCarPreview();
   exitFinale();
   devRun.value = false;
   score.value = 0;
@@ -3584,8 +3714,13 @@ const buildPlaza = () => {
     plaza.add(post);
   }
 
-  // The getaway car, waiting with its lights on.
-  const template = glbTemplates['sedan-sports'] || glbTemplates.sedan || glbTemplates.race;
+  // The getaway car, waiting with its lights on — the player's chosen ride.
+  const chosenKey = (selectedCarSlug.value || '').replace(/^car-/, '');
+  const template =
+    glbTemplates[chosenKey] ||
+    glbTemplates['sedan-sports'] ||
+    glbTemplates.sedan ||
+    glbTemplates.race;
   if (template) {
     plazaCar = template.model.clone(true);
     plazaCar.rotation.y = Math.PI;
@@ -3637,6 +3772,7 @@ const triggerFinale = () => {
 
 const startDriving = () => {
   finalePhase.value = 'drive';
+  markZoneSeen(2);
   carVisual = plazaCar;
   carWheels = [];
   if (carVisual) {
@@ -4556,6 +4692,7 @@ const doLaunch = () => {
 
 const enterPlane = () => {
   finalePhase.value = 'plane';
+  markZoneSeen(3);
   sfx.dock();
   if (carVisual) {
     player.remove(carVisual);
@@ -5601,12 +5738,26 @@ const animate = (time) => {
       // phones the menu card fills the width, so frame the runner below it
       // instead by aiming above their head.
       const portrait = camera.aspect < 1;
+      // Cars need more distance than the runner to fit the frame.
+      const carView = Boolean(previewCar);
       camera.position.x = damp(camera.position.x, portrait ? 0 : -1.4);
-      camera.position.y = damp(camera.position.y, portrait ? 1.7 : 1.5);
-      camera.position.z = damp(camera.position.z, portrait ? -2.4 : -1.4);
-      lookAtTarget.set(portrait ? 0 : 1.05, portrait ? 1.95 : 0.95, 2);
+      camera.position.y = damp(
+        camera.position.y,
+        carView ? (portrait ? 2.3 : 2.0) : portrait ? 1.7 : 1.5,
+      );
+      camera.position.z = damp(
+        camera.position.z,
+        carView ? (portrait ? -4.8 : -3.6) : portrait ? -2.4 : -1.4,
+      );
+      lookAtTarget.set(
+        portrait ? 0 : 1.05,
+        carView ? 0.9 : portrait ? 1.95 : 0.95,
+        2,
+      );
       camera.lookAt(lookAtTarget);
-      if (player) {
+      if (previewCar) {
+        previewCar.rotation.y += delta * 0.7;
+      } else if (player) {
         player.rotation.y += delta * 0.7;
       }
     } else {
@@ -6014,6 +6165,17 @@ onBeforeUnmount(() => {
 .event-toast .finale-toast-sub {
   font-size: 0.7rem;
   color: rgba(255, 230, 190, 0.8);
+}
+
+.zone-locked {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(120, 160, 220, 0.35);
+  background: rgba(12, 18, 32, 0.45);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(170, 195, 230, 0.55);
 }
 
 .speed-goal {
@@ -6821,6 +6983,15 @@ onBeforeUnmount(() => {
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: rgba(170, 200, 255, 0.7);
+}
+
+.skin-shop {
+  display: grid;
+  gap: 16px;
+  overflow-y: auto;
+  min-height: 0;
+  max-height: calc(100dvh - 240px);
+  padding-right: 4px;
 }
 
 .skin-row {

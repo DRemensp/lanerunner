@@ -42,6 +42,7 @@ class RunnerController extends Controller
             'id',
             'slug',
             'name',
+            'category',
             'color',
             'price_coins',
             'is_default',

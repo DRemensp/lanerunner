@@ -12,6 +12,7 @@ class Skin extends Model
     protected $fillable = [
         'slug',
         'name',
+        'category',
         'color',
         'price_coins',
         'is_default',
