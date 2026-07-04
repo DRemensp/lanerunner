@@ -3490,7 +3490,7 @@ const buildOcean = () => {
 
   waterMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(900, 1100),
-    new THREE.MeshBasicMaterial({ map: waterTexture }),
+    new THREE.MeshBasicMaterial({ map: waterTexture, side: THREE.DoubleSide }),
   );
   waterMesh.rotation.x = -Math.PI / 2;
   waterMesh.position.set(0, -0.8, -360);
@@ -3651,7 +3651,8 @@ const buildDockingPlane = () => {
 
 const doLaunch = () => {
   finalePhase.value = 'launch';
-  launchVy = 15;
+  // Leave the deck with the velocity the slope actually gives us.
+  launchVy = Math.max(12, speed.value * 0.28);
   launchTimer = 0;
   sfx.launch();
   clearObstacles();
@@ -3659,6 +3660,9 @@ const doLaunch = () => {
   clearPowerups();
   clearFlyingCars();
   buildDockingPlane();
+  if (dockingPlane) {
+    dockingPlane.position.z = player.position.z - 95;
+  }
 };
 
 const enterPlane = () => {
@@ -3693,15 +3697,19 @@ const enterPlane = () => {
 };
 
 const updateLaunch = (delta) => {
-  speed.value = THREE.MathUtils.damp(speed.value, 62, 1.5, delta);
+  speed.value = THREE.MathUtils.damp(speed.value, 60, 1.5, delta);
   updateEngineSound();
   launchTimer += delta;
+  score.value += speed.value * delta * 2.4;
 
-  if (launchTimer > 0.9 && floorSegments[0]?.visible) {
-    floorSegments.forEach((segment) => {
+  // The road keeps sliding past below but never wraps back in — it ends.
+  floorSegments.forEach((segment) => {
+    if (!segment.visible) return;
+    segment.position.z += speed.value * delta;
+    if (segment.position.z > 45) {
       segment.visible = false;
-    });
-  }
+    }
+  });
   if (ramp) {
     ramp.position.z += speed.value * delta;
     if (ramp.position.z > 140) {
@@ -3713,11 +3721,13 @@ const updateLaunch = (delta) => {
   }
 
   launchVy -= 7.5 * delta;
-  player.position.y += launchVy * delta;
+  player.position.y = Math.max(3, player.position.y + launchVy * delta);
   player.position.x = THREE.MathUtils.damp(player.position.x, 0, 3, delta);
+  // Glide forward over the cliff edge instead of hanging in place.
+  player.position.z = THREE.MathUtils.damp(player.position.z, -4.5, 0.7, delta);
   player.rotation.x = THREE.MathUtils.damp(
     player.rotation.x,
-    THREE.MathUtils.clamp(launchVy * 0.035, -0.5, 0.55),
+    THREE.MathUtils.clamp(launchVy * 0.03, -0.45, 0.5),
     3,
     delta,
   );
@@ -3726,20 +3736,32 @@ const updateLaunch = (delta) => {
   }
 
   if (dockingPlane) {
-    dockingPlane.position.z += (speed.value - 26) * delta;
+    // The plane flies to a hold point just ahead of the car and waits there,
+    // so it can never overshoot and drag the car backwards.
+    const holdZ = player.position.z - 4.8;
+    dockingPlane.position.z += Math.max(0, speed.value - 26) * delta;
+    if (dockingPlane.position.z > holdZ) {
+      dockingPlane.position.z = holdZ;
+    }
     planeMixer?.update(delta);
     const dockZ = dockingPlane.position.z + 3.6;
-    const dz = player.position.z - dockZ;
-    if ((launchVy < 2 && dz < 9) || launchTimer > 8) {
-      // Magnetic docking: guide the car into the cargo hold.
+    const planeHolding = dockingPlane.position.z >= holdZ - 0.5;
+    if ((launchVy < 3 && planeHolding) || launchTimer > 7) {
       player.position.x = THREE.MathUtils.damp(player.position.x, dockingPlane.position.x, 8, delta);
       player.position.y = THREE.MathUtils.damp(player.position.y, dockingPlane.position.y, 6, delta);
-      player.position.z = THREE.MathUtils.damp(player.position.z, dockZ, 4, delta);
-      if (Math.abs(player.position.z - dockZ) < 1.4 && Math.abs(player.position.y - dockingPlane.position.y) < 1.2) {
+      player.position.z = THREE.MathUtils.damp(player.position.z, dockZ, 5, delta);
+      const docked =
+        Math.abs(player.position.z - dockZ) < 1.3 &&
+        Math.abs(player.position.y - dockingPlane.position.y) < 1.1;
+      if (docked || launchTimer > 8.5) {
         enterPlane();
         return;
       }
     }
+  } else if (launchTimer > 7) {
+    // Should never happen, but never strand the player mid-air.
+    buildDockingPlane();
+    dockingPlane.position.set(0, player.position.y, player.position.z - 6);
   }
 
   camera.position.x = THREE.MathUtils.damp(camera.position.x, 0, 4, delta);
@@ -3915,13 +3937,19 @@ const updateRunner = (delta) => {
   const scoreMult = multiTime.value > 0 ? 2 : 1;
 
   if (driving) {
-    if (accelHeld) {
-      driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 26 * delta);
+    if (finalePhase.value === 'ramp') {
+      // Scripted approach: ease down to launch speed, ignore pedals.
+      speed.value = THREE.MathUtils.damp(speed.value, 60, 1.1, delta);
+      driveTargetSpeed = speed.value;
+    } else {
+      if (accelHeld) {
+        driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 26 * delta);
+      }
+      if (brakeHeld) {
+        driveTargetSpeed = Math.max(0, driveTargetSpeed - 40 * delta);
+      }
+      speed.value = THREE.MathUtils.damp(speed.value, driveTargetSpeed, 2.2, delta);
     }
-    if (brakeHeld) {
-      driveTargetSpeed = Math.max(0, driveTargetSpeed - 40 * delta);
-    }
-    speed.value = THREE.MathUtils.damp(speed.value, driveTargetSpeed, 2.2, delta);
     updateEngineSound();
 
     if (!godModeActive.value) {
@@ -3978,12 +4006,23 @@ const updateRunner = (delta) => {
     }
   }
 
-  const targetX = activeLanes()[currentLane];
+  const targetX = finalePhase.value === 'ramp' ? 0 : activeLanes()[currentLane];
   player.position.x = THREE.MathUtils.damp(player.position.x, targetX, driving ? 7 : 12, delta);
 
   const playerHeight = currentPlayerHeight();
   if (driving) {
-    player.position.y = carPlayerSize.h / 2 + 0.02;
+    let carY = carPlayerSize.h / 2 + 0.02;
+    let pitch = 0;
+    if (finalePhase.value === 'ramp' && ramp) {
+      // Ride up the ramp deck instead of popping into the air.
+      const t = (9 + ramp.position.z) / 22;
+      if (t > 0) {
+        carY += Math.min(1, t) * 5.9;
+        pitch = 0.27;
+      }
+    }
+    player.position.y = THREE.MathUtils.damp(player.position.y, carY, 10, delta);
+    player.rotation.x = THREE.MathUtils.damp(player.rotation.x, pitch, 6, delta);
     currentGroundCenter = player.position.y;
     playerVelocityY = 0;
     // Ease the car from the plaza back onto the running line.
@@ -4073,7 +4112,12 @@ const updateRunner = (delta) => {
   floorSegments.forEach((segment) => {
     segment.position.z += speed.value * delta;
     if (segment.position.z > 30) {
-      segment.position.z -= segmentLength * floorSegments.length;
+      if (finalePhase.value === 'ramp' && ramp && ramp.position.z > -160) {
+        // The road ends at the ramp — stop recycling segments forward.
+        segment.visible = false;
+      } else {
+        segment.position.z -= segmentLength * floorSegments.length;
+      }
     }
   });
 
@@ -4089,7 +4133,8 @@ const updateRunner = (delta) => {
     if (waterTexture) {
       waterTexture.offset.y -= speed.value * delta * 0.003;
     }
-    if (ramp.position.z > -13) {
+    // Launch right as the car leaves the top edge of the deck.
+    if (ramp.position.z >= 12.5) {
       doLaunch();
     }
   }
