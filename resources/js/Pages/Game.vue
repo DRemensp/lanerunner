@@ -667,6 +667,7 @@ let coinRushEndZ = null;
 let nextMilestone = 2500;
 let smashStreak = 0;
 let recordCelebrated = false;
+let driveEventTimer = 10;
 
 const cameraBase = {
   y: 5.5,
@@ -3990,6 +3991,7 @@ const triggerFinale = () => {
 const startDriving = () => {
   finalePhase.value = 'drive';
   markZoneSeen(2);
+  driveEventTimer = 10;
   carVisual = plazaCar;
   carWheels = [];
   if (carVisual) {
@@ -4095,6 +4097,49 @@ const spawnDriveTraffic = () => {
   );
   obstacles.push(vehicle);
   scene.add(vehicle);
+};
+
+// Zone-2 events: a hot-shot overtaker blasting past from behind, or a slow
+// truck convoy blocking a forward lane.
+const startDriveOvertaker = () => {
+  const laneChoices = [0, 1, 2, 3].filter((index) => index !== currentLane);
+  const laneIndex = laneChoices[Math.floor(Math.random() * laneChoices.length)];
+  const vehicle = getObstacle('low', 'car-any');
+  // Own speed beats the world scroll, so it pulls away toward the horizon.
+  vehicle.userData.vz = -(speed.value + 16 + Math.random() * 12);
+  vehicle.rotation.y = Math.PI;
+  if (vehicle.userData.beams) {
+    vehicle.userData.beams.visible = false;
+  }
+  vehicle.position.set(
+    carLanes[laneIndex],
+    vehicle.userData.size.h / 2 + 0.02,
+    player.position.z + 12,
+  );
+  obstacles.push(vehicle);
+  scene.add(vehicle);
+  sfx.horn();
+};
+
+const startDriveConvoy = () => {
+  const laneIndex = 2 + Math.floor(Math.random() * 2);
+  const ownSpeed = 4 + Math.random() * 3;
+  for (let k = 0; k < 3; k += 1) {
+    const vehicle = getObstacle('tall', 'tall-any');
+    vehicle.userData.vz = -ownSpeed;
+    vehicle.rotation.y = Math.PI;
+    if (vehicle.userData.beams) {
+      vehicle.userData.beams.visible = false;
+    }
+    vehicle.position.set(
+      carLanes[laneIndex],
+      vehicle.userData.size.h / 2 + 0.02,
+      -(150 + Math.min(150, speed.value * 0.9)) - k * 14,
+    );
+    obstacles.push(vehicle);
+    scene.add(vehicle);
+  }
+  showEventToast('Convoy', 'Heavy loads ahead — swing wide!', 1600);
 };
 
 // Zone-2 pickup: a short coin line on one of the four drive lanes.
@@ -5783,6 +5828,15 @@ const updateRunner = (delta) => {
         0.28,
         THREE.MathUtils.randFloat(0.7, 1.5) * (26 / Math.max(14, speed.value)),
       );
+    }
+    driveEventTimer -= delta;
+    if (driveEventTimer <= 0) {
+      if (Math.random() < 0.55) {
+        startDriveOvertaker();
+      } else {
+        startDriveConvoy();
+      }
+      driveEventTimer = THREE.MathUtils.randFloat(9, 15);
     }
   } else if (finalePhase.value === 'none') {
     updateZoneEvents(delta);
