@@ -155,6 +155,16 @@
     </div>
 
     <div
+      v-if="showTutorial && state === 'running' && finalePhase === 'none'"
+      class="drive-hint tutorial-hint"
+    >
+      <template v-if="isTouchDevice">
+        Swipe &#9664;&#9654; to dodge &middot; &#9650; jump &middot; &#9660; slide
+      </template>
+      <template v-else>A / D &mdash; move &middot; W &mdash; jump &middot; S &mdash; slide</template>
+    </div>
+
+    <div
       v-if="finalePhase === 'plane' && (state === 'running' || state === 'paused')"
       class="hp-bar"
     >
@@ -962,6 +972,22 @@ const currentSkin = computed(() =>
   skinOptions.value.find((skin) => skin.id === selectedSkin.value) || skinOptions.value[0],
 );
 
+// One-time control hint for brand-new players; disappears on its own and is
+// never shown again once seen.
+const showTutorial = ref(false);
+let tutorialTimer;
+const maybeShowTutorial = () => {
+  if (localStorage.getItem('runner_tutorial_done') === '1') return;
+  showTutorial.value = true;
+  if (tutorialTimer) {
+    clearTimeout(tutorialTimer);
+  }
+  tutorialTimer = setTimeout(() => {
+    showTutorial.value = false;
+    localStorage.setItem('runner_tutorial_done', '1');
+  }, 8000);
+};
+
 const currentPlayerHeight = () =>
   finalePhase.value === 'drive'
     ? carPlayerSize.h
@@ -977,6 +1003,7 @@ const startRun = () => {
   menuScreen.value = 'main';
   resetRun();
   state.value = 'running';
+  maybeShowTutorial();
   if (authUser.value) {
     // Fire and forget: the run token arrives while the player is already
     // running instead of blocking the start on a slow network round-trip.
@@ -6389,6 +6416,12 @@ onBeforeUnmount(() => {
 .event-toast .finale-toast-sub {
   font-size: 0.7rem;
   color: rgba(255, 230, 190, 0.8);
+}
+
+.tutorial-hint {
+  bottom: calc(110px + env(safe-area-inset-bottom));
+  border-color: rgba(61, 255, 179, 0.45);
+  color: #a9ffe2;
 }
 
 .zone-locked {
