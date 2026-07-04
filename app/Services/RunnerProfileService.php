@@ -30,20 +30,39 @@ class RunnerProfileService
             'price_coins' => 450,
             'is_default' => false,
         ],
+        [
+            'slug' => 'dusk',
+            'name' => 'Dusk',
+            'color' => '#b18cff',
+            'price_coins' => 600,
+            'is_default' => false,
+        ],
+        [
+            'slug' => 'volt',
+            'name' => 'Volt',
+            'color' => '#ffe14d',
+            'price_coins' => 750,
+            'is_default' => false,
+        ],
+        [
+            'slug' => 'nova',
+            'name' => 'Nova',
+            'color' => '#ff4fd8',
+            'price_coins' => 900,
+            'is_default' => false,
+        ],
     ];
 
     public function ensureDefaultSkins(): Skin
     {
-        $defaultSkin = Skin::where('is_default', true)->orderBy('id')->first();
-        if ($defaultSkin) {
-            return $defaultSkin;
-        }
-
-        foreach (self::DEFAULT_SKINS as $skinData) {
-            Skin::updateOrCreate(
-                ['slug' => $skinData['slug']],
-                $skinData,
-            );
+        // Re-seed whenever new skins were added to the catalog above.
+        if (Skin::count() < count(self::DEFAULT_SKINS)) {
+            foreach (self::DEFAULT_SKINS as $skinData) {
+                Skin::updateOrCreate(
+                    ['slug' => $skinData['slug']],
+                    $skinData,
+                );
+            }
         }
 
         return Skin::where('is_default', true)->orderBy('id')->firstOrFail();

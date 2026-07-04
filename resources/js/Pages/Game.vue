@@ -249,6 +249,9 @@
                 </button>
               </div>
               <div v-if="shopMessage" class="shop-message">{{ shopMessage }}</div>
+              <div class="skin-preview-hint">
+                Tap a skin to preview it live on the right.
+              </div>
             </div>
           </template>
 
@@ -431,6 +434,9 @@ const skinOptions = ref([
   { id: 1, slug: 'neon', label: 'Neon', color: '#3bffb3', price: 0, is_default: true },
   { id: 2, slug: 'ember', label: 'Ember', color: '#ff6b3b', price: 300, is_default: false },
   { id: 3, slug: 'ion', label: 'Ion', color: '#49a8ff', price: 450, is_default: false },
+  { id: 4, slug: 'dusk', label: 'Dusk', color: '#b18cff', price: 600, is_default: false },
+  { id: 5, slug: 'volt', label: 'Volt', color: '#ffe14d', price: 750, is_default: false },
+  { id: 6, slug: 'nova', label: 'Nova', color: '#ff4fd8', price: 900, is_default: false },
 ]);
 const selectedSkin = ref(skinOptions.value[0].id);
 
@@ -1079,6 +1085,8 @@ const canUseSkin = (skin) =>
 
 const selectSkin = async (skin) => {
   shopMessage.value = '';
+  // Always preview the clicked character in the scene, even if locked.
+  applyCharacter(skin);
 
   if (!canUseSkin(skin)) {
     if (isGuest.value) {
@@ -1145,6 +1153,7 @@ const resetRun = () => {
     player.position.set(lanes[currentLane], currentGroundCenter, 2);
     player.scale.y = 1;
     player.rotation.z = 0;
+    player.rotation.y = 0;
     player.visible = true;
   }
   if (camera) {
@@ -1608,7 +1617,14 @@ const buildRunner = () => {
 // Animated low-poly runners from Kenney's CC0 Blocky Characters pack. Each
 // GLB ships node-based clips (idle/sprint/...) — no skinning, so plain
 // AnimationMixer on the scene works. The procedural rig stays as fallback.
-const characterSkinMap = { neon: 'character-a', ember: 'character-b', ion: 'character-c' };
+const characterSkinMap = {
+  neon: 'character-a',
+  ember: 'character-b',
+  ion: 'character-c',
+  dusk: 'character-d',
+  volt: 'character-e',
+  nova: 'character-f',
+};
 const characterKeys = [
   'character-a',
   'character-b',
@@ -1636,9 +1652,9 @@ const removeActiveCharacter = () => {
   });
 };
 
-const applyCharacter = () => {
+const applyCharacter = (skin = null) => {
   if (!player) return;
-  const key = characterKeyForSkin(currentSkin.value);
+  const key = characterKeyForSkin(skin || currentSkin.value);
   const template = characterTemplates[key];
   if (!template || activeCharacter?.key === key) return;
   removeActiveCharacter();
@@ -2987,6 +3003,32 @@ const animate = (time) => {
     }
   } else if (state.value !== 'crashing' && state.value !== 'paused') {
     animateIdle(delta);
+    const damp = (current, target) => THREE.MathUtils.damp(current, target, 4, delta);
+    if (state.value === 'menu' && menuScreen.value === 'level') {
+      // Skin preview: swing the camera in front of the runner and spin them.
+      camera.position.x = damp(camera.position.x, -1.4);
+      camera.position.y = damp(camera.position.y, 1.5);
+      camera.position.z = damp(camera.position.z, -1.4);
+      lookAtTarget.set(-1.05, 0.95, 2);
+      camera.lookAt(lookAtTarget);
+      if (player) {
+        player.rotation.y += delta * 0.7;
+      }
+    } else {
+      camera.position.x = damp(camera.position.x, 0);
+      camera.position.y = damp(camera.position.y, cameraBase.y * cameraZoom.value);
+      camera.position.z = damp(camera.position.z, cameraBase.z * cameraZoom.value);
+      lookAtTarget.set(0, 1.2, -12);
+      camera.lookAt(lookAtTarget);
+      if (player) {
+        player.rotation.y = THREE.MathUtils.damp(
+          player.rotation.y % (Math.PI * 2),
+          0,
+          6,
+          delta,
+        );
+      }
+    }
   }
   if (state.value === 'crashing') {
     crashTimer -= delta;
@@ -3051,6 +3093,13 @@ watch(isMuted, () => {
 
 watch(cameraZoom, () => {
   applyCameraZoom();
+});
+
+watch(menuScreen, (screen) => {
+  if (screen !== 'level') {
+    // Leaving the skins screen: drop any preview back to the owned skin.
+    applyCharacter();
+  }
 });
 
 watch(shieldActive, () => {
@@ -3341,6 +3390,14 @@ onBeforeUnmount(() => {
   font-weight: 700;
   letter-spacing: 0.1em;
   cursor: pointer;
+}
+
+.skin-preview-hint {
+  margin-top: 10px;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(190, 210, 255, 0.55);
 }
 
 .pause-hint {
