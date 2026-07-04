@@ -139,6 +139,19 @@
     </div>
 
     <div
+      v-if="finalePhase === 'plane' && (state === 'running' || state === 'paused')"
+      class="hp-bar"
+    >
+      <div
+        class="hp-fill"
+        :class="{ hurt: playerHp < 35 }"
+        :style="{ width: playerHp + '%' }"
+      ></div>
+    </div>
+
+    <div v-if="damageFlash && state === 'running'" class="damage-flash"></div>
+
+    <div
       v-if="state === 'running' && finalePhase === 'plane'"
       class="joystick"
       @pointerdown="joyStart"
@@ -565,8 +578,6 @@ let flyingCars = [];
 const RAMP_SCORE = 20000;
 let rampTriggered = false;
 let ramp = null;
-let waterMesh = null;
-let waterTexture = null;
 let oceanGroup = null;
 let launchVy = 0;
 let launchTimer = 0;
@@ -581,16 +592,23 @@ const joyKnob = ref({ x: 0, y: 0 });
 let joyVec = { x: 0, y: 0 };
 let joyPointerId = null;
 let rampHintShown = false;
-let waterTexture2 = null;
 let clouds = [];
 let cloudAssets = null;
+let terrainChunks = [];
+let terrainAssets = null;
 
-// Zone 3 combat: drones appear ahead and the plane auto-fires at them.
+// Zone 3 combat: single big drones that shoot back; kills restore some HP.
+const playerHp = ref(100);
+const damageFlash = ref(false);
+let damageFlashTimer;
 let enemies = [];
 let enemyPool = [];
 let enemySpawnTimer = 0;
+let bossCount = 0;
 let projectiles = [];
 let projectilePool = [];
+let enemyBolts = [];
+let enemyBoltPool = [];
 let fireTimer = 0;
 let enemyAssets = null;
 
@@ -968,6 +986,11 @@ const sfx = {
     playTone({ freq: 75, to: 45, type: 'square', duration: 0.2, gain: 0.3 });
   },
   shoot: () => playTone({ freq: 880 + Math.random() * 160, to: 320, type: 'square', duration: 0.09, gain: 0.1 }),
+  enemyShoot: () => playTone({ freq: 260, to: 110, type: 'sawtooth', duration: 0.18, gain: 0.16 }),
+  playerHit: () => {
+    playNoise({ duration: 0.25, from: 900, to: 150, gain: 0.4 });
+    playTone({ freq: 140, to: 70, type: 'square', duration: 0.22, gain: 0.26 });
+  },
   enemyDown: () => {
     playNoise({ duration: 0.35, from: 1500, to: 150, gain: 0.35 });
     playTone({ freq: 200, to: 60, type: 'sawtooth', duration: 0.3, gain: 0.22 });
@@ -3488,55 +3511,133 @@ const applyEnvironmentNow = () => {
   dirLight.color.set(target.dirColor);
 };
 
+const getTerrainAssets = () => {
+  if (terrainAssets) return terrainAssets;
+  const lambert = (color) => new THREE.MeshLambertMaterial({ color });
+  terrainAssets = {
+    groundGeo: new THREE.PlaneGeometry(280, 62),
+    groundMats: [lambert(0x2e6b40), lambert(0x2a6339), lambert(0x337044)],
+    fieldGeo: new THREE.PlaneGeometry(1, 1),
+    fieldMats: [lambert(0x8fa24c), lambert(0x3c7a3a), lambert(0x5d8a3c), lambert(0x27583a)],
+    lakeGeo: new THREE.CircleGeometry(1, 18),
+    lakeMat: lambert(0x3f7fc2),
+    trunkGeo: new THREE.CylinderGeometry(0.12, 0.17, 1, 5),
+    trunkMat: lambert(0x4a3526),
+    pineGeo: new THREE.ConeGeometry(0.9, 2.3, 6),
+    pineMat: lambert(0x1d5c38),
+    crownGeo: new THREE.IcosahedronGeometry(0.9, 0),
+    crownMat: lambert(0x2f7a46),
+    houseGeo: new THREE.BoxGeometry(1.7, 1.1, 1.4),
+    houseMats: [lambert(0xe8e2d0), lambert(0xd8c8a8), lambert(0xc9d4dd)],
+    roofGeo: new THREE.ConeGeometry(1.4, 0.95, 4),
+    roofMats: [lambert(0xa8452e), lambert(0x7a4a32)],
+    hillGeo: new THREE.IcosahedronGeometry(1, 0),
+    hillMat: lambert(0x2c6a3e),
+    mtnGeo: new THREE.ConeGeometry(1, 1, 5),
+    mtnMats: [lambert(0x5a6a80), lambert(0x50607a)],
+    snowMat: lambert(0xe8f2fa),
+  };
+  return terrainAssets;
+};
+
+const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+
+// A 62-deep strip of countryside: fields, woods, villages, lakes, and
+// snow-capped mountains at the edges. Chunks recycle like road segments.
+const buildTerrainChunk = () => {
+  const a = getTerrainAssets();
+  const chunk = new THREE.Group();
+
+  const ground = new THREE.Mesh(a.groundGeo, pickOne(a.groundMats));
+  ground.rotation.x = -Math.PI / 2;
+  chunk.add(ground);
+
+  for (let i = 0; i < 6; i += 1) {
+    const field = new THREE.Mesh(a.fieldGeo, pickOne(a.fieldMats));
+    field.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI);
+    field.scale.set(10 + Math.random() * 22, 8 + Math.random() * 16, 1);
+    field.position.set((Math.random() - 0.5) * 230, 0.02, (Math.random() - 0.5) * 52);
+    chunk.add(field);
+  }
+
+  if (Math.random() < 0.35) {
+    const lake = new THREE.Mesh(a.lakeGeo, a.lakeMat);
+    lake.rotation.x = -Math.PI / 2;
+    lake.scale.setScalar(7 + Math.random() * 9);
+    lake.position.set((Math.random() - 0.5) * 180, 0.04, (Math.random() - 0.5) * 40);
+    chunk.add(lake);
+  }
+
+  for (let i = 0; i < 18; i += 1) {
+    const tree = new THREE.Group();
+    const trunk = new THREE.Mesh(a.trunkGeo, a.trunkMat);
+    trunk.position.y = 0.5;
+    tree.add(trunk);
+    if (Math.random() < 0.5) {
+      const pine = new THREE.Mesh(a.pineGeo, a.pineMat);
+      pine.position.y = 1.9;
+      tree.add(pine);
+    } else {
+      const crown = new THREE.Mesh(a.crownGeo, a.crownMat);
+      crown.position.y = 1.6;
+      crown.rotation.y = Math.random() * Math.PI;
+      tree.add(crown);
+    }
+    const treeScale = 1 + Math.random() * 1.3;
+    tree.scale.setScalar(treeScale);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    tree.position.set(side * (12 + Math.random() * 115), 0, (Math.random() - 0.5) * 56);
+    tree.rotation.y = Math.random() * Math.PI;
+    chunk.add(tree);
+  }
+
+  for (let i = 0; i < 4; i += 1) {
+    const house = new THREE.Group();
+    const walls = new THREE.Mesh(a.houseGeo, pickOne(a.houseMats));
+    walls.position.y = 0.55;
+    house.add(walls);
+    const roof = new THREE.Mesh(a.roofGeo, pickOne(a.roofMats));
+    roof.position.y = 1.55;
+    roof.rotation.y = Math.PI / 4;
+    house.add(roof);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    house.position.set(side * (14 + Math.random() * 85), 0, (Math.random() - 0.5) * 50);
+    house.rotation.y = Math.random() * Math.PI;
+    house.scale.setScalar(1 + Math.random() * 0.8);
+    chunk.add(house);
+  }
+
+  if (Math.random() < 0.45) {
+    const hill = new THREE.Mesh(a.hillGeo, a.hillMat);
+    hill.scale.set(9 + Math.random() * 8, 2.5 + Math.random() * 2, 7 + Math.random() * 6);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    hill.position.set(side * (30 + Math.random() * 80), 0, (Math.random() - 0.5) * 40);
+    chunk.add(hill);
+  }
+
+  for (let i = 0; i < 3; i += 1) {
+    const width = 11 + Math.random() * 11;
+    const height = 8 + Math.random() * 9;
+    const mtnMat = pickOne(a.mtnMats);
+    const mountain = new THREE.Mesh(a.mtnGeo, mtnMat);
+    mountain.scale.set(width, height, width);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    mountain.position.set(side * (58 + Math.random() * 65), height / 2, (Math.random() - 0.5) * 50);
+    mountain.rotation.y = Math.random() * Math.PI;
+    chunk.add(mountain);
+    const snow = new THREE.Mesh(a.mtnGeo, a.snowMat);
+    const snowH = height * 0.26;
+    snow.scale.set(width * 0.28, snowH, width * 0.28);
+    snow.position.set(mountain.position.x, height - snowH / 2, mountain.position.z);
+    snow.rotation.y = mountain.rotation.y;
+    chunk.add(snow);
+  }
+
+  return chunk;
+};
+
 const buildOcean = () => {
   oceanGroup = new THREE.Group();
-
-  const waterCanvas = document.createElement('canvas');
-  waterCanvas.width = 256;
-  waterCanvas.height = 256;
-  const ctx = waterCanvas.getContext('2d');
-  ctx.fillStyle = '#0d2f52';
-  ctx.fillRect(0, 0, 256, 256);
-  // Bold wave bands and crests so forward motion actually reads on screen.
-  for (let band = 0; band < 12; band += 1) {
-    ctx.fillStyle = `rgba(8, 30, 58, ${0.25 + Math.random() * 0.3})`;
-    ctx.fillRect(0, band * 22 + Math.random() * 8, 256, 6 + Math.random() * 8);
-  }
-  for (let i = 0; i < 150; i += 1) {
-    ctx.fillStyle = `rgba(190, 225, 255, ${0.1 + Math.random() * 0.25})`;
-    ctx.fillRect(Math.random() * 256, Math.random() * 256, 18 + Math.random() * 60, 2 + Math.random() * 2.5);
-  }
-  waterTexture = new THREE.CanvasTexture(waterCanvas);
-  waterTexture.wrapS = THREE.RepeatWrapping;
-  waterTexture.wrapT = THREE.RepeatWrapping;
-  waterTexture.repeat.set(10, 26);
-
-  waterMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(900, 1100),
-    new THREE.MeshBasicMaterial({ map: waterTexture, side: THREE.DoubleSide }),
-  );
-  waterMesh.rotation.x = -Math.PI / 2;
-  waterMesh.position.set(0, -0.8, -360);
-  oceanGroup.add(waterMesh);
-
-  // Second, coarser layer scrolling faster for parallax depth.
-  waterTexture2 = new THREE.CanvasTexture(waterCanvas);
-  waterTexture2.wrapS = THREE.RepeatWrapping;
-  waterTexture2.wrapT = THREE.RepeatWrapping;
-  waterTexture2.repeat.set(4, 9);
-  const waterOverlay = new THREE.Mesh(
-    new THREE.PlaneGeometry(900, 1100),
-    new THREE.MeshBasicMaterial({
-      map: waterTexture2,
-      transparent: true,
-      opacity: 0.4,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    }),
-  );
-  waterOverlay.rotation.x = -Math.PI / 2;
-  waterOverlay.position.set(0, -0.72, -360);
-  oceanGroup.add(waterOverlay);
 
   const sun = new THREE.Mesh(
     new THREE.CircleGeometry(48, 30),
@@ -3558,21 +3659,14 @@ const buildOcean = () => {
   sunGlow.position.set(0, 28, -561);
   oceanGroup.add(sunGlow);
 
-  const streak = new THREE.Mesh(
-    new THREE.PlaneGeometry(18, 460),
-    new THREE.MeshBasicMaterial({
-      color: 0xffb066,
-      transparent: true,
-      opacity: 0.2,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-  streak.rotation.x = -Math.PI / 2;
-  streak.position.set(0, -0.7, -330);
-  oceanGroup.add(streak);
-
   scene.add(oceanGroup);
+
+  for (let i = 0; i < 7; i += 1) {
+    const chunk = buildTerrainChunk();
+    chunk.position.set(0, -1.4, -340 + i * 62);
+    terrainChunks.push(chunk);
+    scene.add(chunk);
+  }
 };
 
 const getCloudAssets = () => {
@@ -3608,13 +3702,13 @@ const spawnCloud = (zRange = [-380, -120]) => {
 };
 
 const updateOceanMotion = (delta) => {
-  if (waterTexture) {
-    waterTexture.offset.y -= speed.value * delta * 0.004;
-  }
-  if (waterTexture2) {
-    waterTexture2.offset.y -= speed.value * delta * 0.009;
-  }
   if (!oceanGroup) return;
+  terrainChunks.forEach((chunk) => {
+    chunk.position.z += speed.value * delta;
+    if (chunk.position.z > 95) {
+      chunk.position.z -= terrainChunks.length * 62;
+    }
+  });
   while (clouds.length < 12) {
     spawnCloud();
   }
@@ -3649,6 +3743,8 @@ const getEnemyAssets = () => {
       eyeMat: new THREE.MeshBasicMaterial({ color: 0xff3b57 }),
       boltGeo: new THREE.BoxGeometry(0.16, 0.16, 1.5),
       boltMat: new THREE.MeshBasicMaterial({ color: 0x7dffb0 }),
+      enemyBoltGeo: new THREE.BoxGeometry(0.3, 0.3, 1.6),
+      podGeo: new THREE.BoxGeometry(0.5, 0.4, 1.1),
     };
   }
   return enemyAssets;
@@ -3666,18 +3762,76 @@ const spawnEnemy = () => {
     const eye = new THREE.Mesh(assets.eyeGeo, assets.eyeMat);
     eye.position.z = 1.0;
     enemy.add(eye);
+    // Twin gun pods under the ring.
+    [-1.3, 1.3].forEach((x) => {
+      const pod = new THREE.Mesh(assets.podGeo, assets.ringMat);
+      pod.position.set(x, -0.7, 0.5);
+      enemy.add(pod);
+    });
     enemy.userData.ring = ring;
+    enemy.userData.eye = eye;
+    enemy.scale.setScalar(3.1);
   }
-  enemy.userData.baseX = (Math.random() - 0.5) * 22;
-  enemy.userData.baseY = 8 + Math.random() * 22;
-  enemy.userData.ampX = 2 + Math.random() * 5;
-  enemy.userData.ampY = 1 + Math.random() * 3;
-  enemy.userData.freq = 0.8 + Math.random() * 1.6;
+  enemy.userData.hp = Math.min(90, 50 + bossCount * 10);
+  enemy.userData.maxHp = enemy.userData.hp;
+  enemy.userData.baseX = (Math.random() - 0.5) * 16;
+  enemy.userData.baseY = 8 + Math.random() * 8;
+  enemy.userData.ampX = 3 + Math.random() * 4;
+  enemy.userData.ampY = 1 + Math.random() * 2.5;
+  enemy.userData.freq = 0.5 + Math.random() * 0.8;
   enemy.userData.phase = Math.random() * Math.PI * 2;
-  enemy.userData.vz = 8 + Math.random() * 14;
-  enemy.position.set(enemy.userData.baseX, enemy.userData.baseY, -250 - Math.random() * 40);
+  enemy.userData.shootTimer = 2.2;
+  enemy.userData.telegraph = 0;
+  enemy.position.set(enemy.userData.baseX, enemy.userData.baseY, -220);
   enemies.push(enemy);
   scene.add(enemy);
+};
+
+const fireEnemyBolt = (enemy) => {
+  const assets = getEnemyAssets();
+  let bolt = enemyBoltPool.pop();
+  if (!bolt) {
+    bolt = new THREE.Mesh(assets.enemyBoltGeo, assets.eyeMat);
+  }
+  bolt.position.copy(enemy.position);
+  bolt.position.z += 2.5;
+  const dir = new THREE.Vector3()
+    .subVectors(player.position, bolt.position)
+    .normalize()
+    .multiplyScalar(42);
+  bolt.userData.vel = dir;
+  bolt.userData.life = 6;
+  bolt.lookAt(player.position);
+  enemyBolts.push(bolt);
+  scene.add(bolt);
+  sfx.enemyShoot();
+};
+
+const clearEnemyBolts = () => {
+  enemyBolts.forEach((bolt) => {
+    scene.remove(bolt);
+    enemyBoltPool.push(bolt);
+  });
+  enemyBolts = [];
+};
+
+const damagePlayer = (amount) => {
+  playerHp.value = Math.max(0, playerHp.value - amount);
+  sfx.playerHit();
+  bumpShakeTimer = 0.3;
+  damageFlash.value = false;
+  if (damageFlashTimer) {
+    clearTimeout(damageFlashTimer);
+  }
+  requestAnimationFrame(() => {
+    damageFlash.value = true;
+    damageFlashTimer = setTimeout(() => {
+      damageFlash.value = false;
+    }, 450);
+  });
+  if (playerHp.value <= 0) {
+    startCrash();
+  }
 };
 
 const removeEnemy = (index) => {
@@ -3762,11 +3916,9 @@ const disposeZone3 = () => {
   });
   ramp = null;
   oceanGroup = null;
-  waterMesh = null;
-  waterTexture?.dispose();
-  waterTexture = null;
-  waterTexture2?.dispose();
-  waterTexture2 = null;
+  // Terrain chunks only use shared assets — removing them is enough.
+  terrainChunks.forEach((chunk) => scene.remove(chunk));
+  terrainChunks = [];
   clearClouds();
 };
 
@@ -3871,6 +4023,10 @@ const enterPlane = () => {
   dockingPlane = null;
   planeVelX = 0;
   planeVelY = 0;
+  playerHp.value = 100;
+  bossCount = 0;
+  enemySpawnTimer = 2.6;
+  fireTimer = 0.5;
   envMode = 'day';
   musicDuckTarget = 0.85;
   driveHintText.value = 'Zone 3 — joystick or WASD/arrows to fly. Guns fire automatically!';
@@ -3971,14 +4127,14 @@ const updatePlane = (delta) => {
   );
 
   // Diving picks up a little speed, climbing bleeds some.
-  speed.value = THREE.MathUtils.damp(speed.value, 60 - inputY * 7, 2, delta);
+  speed.value = THREE.MathUtils.damp(speed.value, 42 - inputY * 6, 2, delta);
   updateEngineSound();
   score.value += speed.value * delta * 2.4;
 
-  planeVelX = THREE.MathUtils.damp(planeVelX, inputX * 22, 6, delta);
-  planeVelY = THREE.MathUtils.damp(planeVelY, inputY * 16, 6, delta);
+  planeVelX = THREE.MathUtils.damp(planeVelX, inputX * 20, 6, delta);
+  planeVelY = THREE.MathUtils.damp(planeVelY, inputY * 13, 6, delta);
   player.position.x = THREE.MathUtils.clamp(player.position.x + planeVelX * delta, -13, 13);
-  player.position.y = THREE.MathUtils.clamp(player.position.y + planeVelY * delta, 4, 36);
+  player.position.y = THREE.MathUtils.clamp(player.position.y + planeVelY * delta, 4, 20);
   player.position.z = THREE.MathUtils.damp(player.position.z, 2, 0.8, delta);
 
   if (planeVisual) {
@@ -4003,11 +4159,12 @@ const updatePlane = (delta) => {
 
   updateOceanMotion(delta);
 
-  // --- Combat: drones ahead, auto-fire from the wings. ---
-  enemySpawnTimer -= delta;
-  if (enemySpawnTimer <= 0 && enemies.length < 7) {
-    spawnEnemy();
-    enemySpawnTimer = 0.9 + Math.random() * 0.9;
+  // --- Combat: one big boss drone at a time, and it shoots back. ---
+  if (!enemies.length) {
+    enemySpawnTimer -= delta;
+    if (enemySpawnTimer <= 0) {
+      spawnEnemy();
+    }
   }
 
   fireTimer -= delta;
@@ -4029,47 +4186,99 @@ const updatePlane = (delta) => {
   for (let i = enemies.length - 1; i >= 0; i -= 1) {
     const enemy = enemies[i];
     enemy.userData.phase += delta * enemy.userData.freq;
-    enemy.position.z += (speed.value + enemy.userData.vz) * delta;
+    // Fly in from the distance, then hold position and strafe toward the player.
+    enemy.position.z = THREE.MathUtils.damp(enemy.position.z, -52, 0.9, delta);
+    enemy.userData.baseX = THREE.MathUtils.damp(enemy.userData.baseX, player.position.x, 0.35, delta);
+    enemy.userData.baseY = THREE.MathUtils.damp(enemy.userData.baseY, player.position.y, 0.3, delta);
     enemy.position.x = enemy.userData.baseX + Math.sin(enemy.userData.phase) * enemy.userData.ampX;
-    enemy.position.y = enemy.userData.baseY + Math.cos(enemy.userData.phase * 1.3) * enemy.userData.ampY;
-    enemy.userData.ring.rotation.z += delta * 3;
-    enemy.rotation.y += delta * 0.8;
+    enemy.position.y = THREE.MathUtils.clamp(
+      enemy.userData.baseY + Math.cos(enemy.userData.phase * 1.3) * enemy.userData.ampY,
+      5,
+      19,
+    );
+    enemy.userData.ring.rotation.z += delta * 2.2;
 
-    if (enemy.position.z > 30) {
-      removeEnemy(i);
-      continue;
+    // Telegraphed return fire: the eye swells, then it shoots.
+    if (enemy.position.z > -140) {
+      enemy.userData.shootTimer -= delta;
+      if (enemy.userData.shootTimer <= 0.45) {
+        enemy.userData.eye.scale.setScalar(1 + (0.45 - Math.max(0, enemy.userData.shootTimer)) * 1.6);
+      }
+      if (enemy.userData.shootTimer <= 0) {
+        fireEnemyBolt(enemy);
+        enemy.userData.eye.scale.setScalar(1);
+        enemy.userData.shootTimer = 1.3 + Math.random() * 0.9;
+      }
     }
 
-    let destroyed = false;
+    let hit = false;
     for (let j = projectiles.length - 1; j >= 0; j -= 1) {
       const bolt = projectiles[j];
       if (
-        Math.abs(bolt.position.z - enemy.position.z) < 2.2 &&
-        Math.abs(bolt.position.x - enemy.position.x) < 1.9 &&
-        Math.abs(bolt.position.y - enemy.position.y) < 1.9
+        Math.abs(bolt.position.z - enemy.position.z) < 4.4 &&
+        Math.abs(bolt.position.x - enemy.position.x) < 4.2 &&
+        Math.abs(bolt.position.y - enemy.position.y) < 4.0
       ) {
         scene.remove(bolt);
         projectilePool.push(bolt);
         projectiles.splice(j, 1);
-        destroyed = true;
-        break;
+        enemy.userData.hp -= 1;
+        hit = true;
       }
     }
-    if (destroyed) {
-      score.value += 150;
-      sfx.enemyDown();
-      spawnBurst(enemy.position, ['red', 'gold', 'dust'], 14, 8);
-      removeEnemy(i);
-      continue;
+    if (hit) {
+      spawnBurst(enemy.position, ['gold'], 2, 3);
+      if (enemy.userData.hp <= 0) {
+        score.value += 600;
+        playerHp.value = Math.min(100, playerHp.value + 15);
+        bossCount += 1;
+        sfx.enemyDown();
+        spawnBurst(enemy.position, ['red', 'gold', 'dust'], 30, 11);
+        removeEnemy(i);
+        enemySpawnTimer = 2.4;
+        continue;
+      }
     }
 
     if (
-      Math.abs(enemy.position.z - player.position.z) < 2.6 &&
-      Math.abs(enemy.position.x - player.position.x) < 3.0 &&
-      Math.abs(enemy.position.y - player.position.y) < 1.9
+      Math.abs(enemy.position.z - player.position.z) < 4.2 &&
+      Math.abs(enemy.position.x - player.position.x) < 4.4 &&
+      Math.abs(enemy.position.y - player.position.y) < 3.4
     ) {
-      startCrash();
-      return;
+      // Ramming hurts a lot and destroys the drone.
+      damagePlayer(40);
+      spawnBurst(enemy.position, ['red', 'dust'], 20, 9);
+      removeEnemy(i);
+      enemySpawnTimer = 2.4;
+      if (state.value !== 'running') {
+        return;
+      }
+      continue;
+    }
+  }
+
+  for (let i = enemyBolts.length - 1; i >= 0; i -= 1) {
+    const bolt = enemyBolts[i];
+    bolt.position.addScaledVector(bolt.userData.vel, delta);
+    bolt.userData.life -= delta;
+    if (bolt.userData.life <= 0 || bolt.position.z > 24) {
+      scene.remove(bolt);
+      enemyBoltPool.push(bolt);
+      enemyBolts.splice(i, 1);
+      continue;
+    }
+    if (
+      Math.abs(bolt.position.z - player.position.z) < 2.2 &&
+      Math.abs(bolt.position.x - player.position.x) < 2.6 &&
+      Math.abs(bolt.position.y - player.position.y) < 1.7
+    ) {
+      scene.remove(bolt);
+      enemyBoltPool.push(bolt);
+      enemyBolts.splice(i, 1);
+      damagePlayer(25);
+      if (state.value !== 'running') {
+        return;
+      }
     }
   }
 
@@ -4157,6 +4366,10 @@ const exitFinale = () => {
   disposeZone3();
   clearEnemies();
   clearProjectiles();
+  clearEnemyBolts();
+  playerHp.value = 100;
+  damageFlash.value = false;
+  bossCount = 0;
   rampTriggered = false;
   rampHintShown = false;
   enemySpawnTimer = 0;
@@ -4862,6 +5075,15 @@ onBeforeUnmount(() => {
   if (enemyAssets) {
     Object.values(enemyAssets).forEach((resource) => resource?.dispose?.());
   }
+  if (terrainAssets) {
+    Object.values(terrainAssets).forEach((resource) => {
+      if (Array.isArray(resource)) {
+        resource.forEach((item) => item?.dispose?.());
+      } else {
+        resource?.dispose?.();
+      }
+    });
+  }
   if (planeTemplate) {
     planeTemplate.model.traverse((node) => {
       if (node.isMesh) {
@@ -5202,6 +5424,53 @@ onBeforeUnmount(() => {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: rgba(190, 210, 255, 0.55);
+}
+
+.hp-bar {
+  position: absolute;
+  top: calc(96px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(300px, 60vw);
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 180, 255, 0.5);
+  background: rgba(8, 12, 22, 0.7);
+  overflow: hidden;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.hp-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #39f9c0, #6cd85a);
+  transition: width 0.25s ease;
+}
+
+.hp-fill.hurt {
+  background: linear-gradient(90deg, #ff8a5a, #ff4d5e);
+}
+
+.damage-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(255, 45, 65, 0.4) 100%);
+  animation: damageFlash 0.45s ease-out forwards;
+}
+
+@keyframes damageFlash {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .joystick {
