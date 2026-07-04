@@ -6109,7 +6109,7 @@ const updateRunner = (delta) => {
 
 const startCrash = () => {
   state.value = 'crashing';
-  crashTimer = 0.75;
+  crashTimer = 1.0;
   player.visible = false;
   nearMissCombo.value = 0;
   nearMissComboAt = -Infinity;
@@ -6192,6 +6192,13 @@ const animate = (time) => {
   }
   if (state.value === 'crashing') {
     crashTimer -= delta;
+    // Slow dolly toward the wreck while the debris hangs in slow motion.
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, 3.1, 2.0, delta);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, 6.4, 2.0, delta);
+    if (player) {
+      lookAtTarget.set(player.position.x, Math.max(0.8, player.position.y), player.position.z);
+      camera.lookAt(lookAtTarget);
+    }
     camera.position.x += (Math.random() - 0.5) * 0.12 * Math.max(0, crashTimer);
     camera.position.y += (Math.random() - 0.5) * 0.08 * Math.max(0, crashTimer);
     if (crashTimer <= 0) {
@@ -6201,7 +6208,8 @@ const animate = (time) => {
   }
 
   if (state.value !== 'paused') {
-    updateParticles(delta);
+    // Crash debris floats in slow motion for the drama.
+    updateParticles(state.value === 'crashing' ? delta * 0.35 : delta);
   }
 
   if (Math.abs(musicDuckCurrent - musicDuckTarget) > 0.005) {
