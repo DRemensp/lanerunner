@@ -51,3 +51,4 @@ Thumbs.db
 /app/build.gradle
 /manifest-checksum.txt
 /store_icon.png
+/settings.gradle
