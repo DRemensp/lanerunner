@@ -135,7 +135,21 @@
     </div>
 
     <div v-if="driveHint && state === 'running'" class="drive-hint">
-      Zone 2 — W/&#8593; gas, S/&#8595; brake, C camera. No points below speed 15.
+      {{ driveHintText }}
+    </div>
+
+    <div
+      v-if="state === 'running' && finalePhase === 'plane'"
+      class="joystick"
+      @pointerdown="joyStart"
+      @pointermove="joyMove"
+      @pointerup="joyEnd"
+      @pointercancel="joyEnd"
+    >
+      <div
+        class="joystick-knob"
+        :style="{ transform: `translate(${joyKnob.x}px, ${joyKnob.y}px)` }"
+      ></div>
     </div>
 
     <button
@@ -538,12 +552,51 @@ const driveScoreMinSpeed = 15;
 const driveMaxSpeed = 160;
 // Hold near top speed for a moment and the car goes god mode: it smashes
 // straight through traffic (cars go flying) and drags a fire trail.
-const godTriggerSpeed = 152;
+const godTriggerSpeed = 132;
 const godHoldSeconds = 2.5;
 const godFloorSpeed = 120;
 const godModeActive = ref(false);
 let godHoldTimer = 0;
 let flyingCars = [];
+
+// Zone 3: at RAMP_SCORE while in god mode, the road ends in a jump ramp into
+// the sunrise over water; mid-air the car slams into a plane's cargo hold and
+// the player flies on — free movement, no lanes, bright daylight.
+const RAMP_SCORE = 20000;
+let rampTriggered = false;
+let ramp = null;
+let waterMesh = null;
+let waterTexture = null;
+let oceanGroup = null;
+let launchVy = 0;
+let launchTimer = 0;
+let dockingPlane = null;
+let planeVisual = null;
+let planeTemplate = null;
+let planeMixer = null;
+let planeVelX = 0;
+let planeVelY = 0;
+const planeKeys = { up: false, down: false, left: false, right: false };
+const joyKnob = ref({ x: 0, y: 0 });
+let joyVec = { x: 0, y: 0 };
+let joyPointerId = null;
+
+let envMode = 'night'; // night | sunrise | day
+const envSettings = {
+  night: {
+    bg: 0x05070f, fog: 0x05070f, fogNear: 40, fogFar: 165,
+    hemi: 1.6, dir: 1.7, hemiSky: 0x9fc1ff, dirColor: 0xffffff,
+  },
+  sunrise: {
+    bg: 0x2e1f45, fog: 0xb06a4a, fogNear: 60, fogFar: 320,
+    hemi: 1.9, dir: 2.3, hemiSky: 0xffc49a, dirColor: 0xffd9a8,
+  },
+  day: {
+    bg: 0x8ecdf0, fog: 0xaee0f8, fogNear: 90, fogFar: 460,
+    hemi: 2.6, dir: 3.0, hemiSky: 0xeaf6ff, dirColor: 0xfff4e0,
+  },
+};
+const tmpEnvColor = new THREE.Color();
 const finalePhase = ref('none'); // none | approach | walk | enter | drive
 // Dev cheat (F9 during a run): jump straight to the finale trigger. The run
 // is then never persisted, so it cannot flag the account or touch records.
@@ -551,6 +604,7 @@ const devRun = ref(false);
 const driveCamera = ref('chase'); // chase | ego (hood cam, car hidden)
 const finaleToast = ref(false);
 const driveHint = ref(false);
+const driveHintText = ref('');
 let finaleTriggered = false;
 let finaleTimer = 0;
 let finaleToastTimer;
@@ -633,6 +687,10 @@ let buildingMaterials = [];
 let glowTexture;
 let skylineTexture;
 let starPoints;
+let hemiLight;
+let dirLight;
+let moonMesh;
+let skylineMesh;
 
 const obstaclePools = {};
 const obstacleResources = [];
@@ -887,6 +945,14 @@ const sfx = {
   smash: () => {
     playNoise({ duration: 0.3, from: 1800, to: 200, gain: 0.4 });
     playTone({ freq: 90, to: 45, type: 'square', duration: 0.25, gain: 0.3 });
+  },
+  launch: () => {
+    playNoise({ duration: 0.7, from: 700, to: 2600, gain: 0.3 });
+    playTone({ freq: 120, to: 320, type: 'sawtooth', duration: 0.6, gain: 0.2 });
+  },
+  dock: () => {
+    playNoise({ duration: 0.22, from: 1200, to: 250, gain: 0.34 });
+    playTone({ freq: 75, to: 45, type: 'square', duration: 0.2, gain: 0.3 });
   },
   land: () => {
     playNoise({ duration: 0.12, from: 500, to: 140, gain: 0.22 });
@@ -1411,7 +1477,7 @@ const resetFloor = () => {
 
 const moveLeft = () => {
   if (state.value !== 'running') return;
-  if (finalePhase.value === 'walk' || finalePhase.value === 'enter') return;
+  if (['walk', 'enter', 'launch', 'plane'].includes(finalePhase.value)) return;
   const next = Math.max(0, currentLane - 1);
   if (next !== currentLane) {
     laneOrigin = currentLane;
@@ -1421,7 +1487,7 @@ const moveLeft = () => {
 
 const moveRight = () => {
   if (state.value !== 'running') return;
-  if (finalePhase.value === 'walk' || finalePhase.value === 'enter') return;
+  if (['walk', 'enter', 'launch', 'plane'].includes(finalePhase.value)) return;
   const next = Math.min(activeLanes().length - 1, currentLane + 1);
   if (next !== currentLane) {
     laneOrigin = currentLane;
@@ -1501,11 +1567,49 @@ const handleKeydown = (event) => {
     if (!finaleTriggered && finalePhase.value === 'none') {
       devRun.value = true;
       score.value = FINALE_SCORE;
+    } else if (finalePhase.value === 'drive' && !rampTriggered) {
+      // Second F9 press in zone 2: jump straight to the ramp requirements.
+      devRun.value = true;
+      score.value = Math.max(score.value, RAMP_SCORE);
+      driveTargetSpeed = driveMaxSpeed;
+      speed.value = Math.max(speed.value, godTriggerSpeed);
+      if (!godModeActive.value) {
+        activateGodMode();
+      }
     }
     return;
   }
 
-  if (finalePhase.value === 'drive') {
+  if (finalePhase.value === 'plane') {
+    switch (event.code) {
+      case 'ArrowUp':
+      case 'KeyW':
+      case 'Space':
+        planeKeys.up = true;
+        break;
+      case 'ArrowDown':
+      case 'KeyS':
+        planeKeys.down = true;
+        break;
+      case 'ArrowLeft':
+      case 'KeyA':
+        planeKeys.left = true;
+        break;
+      case 'ArrowRight':
+      case 'KeyD':
+        planeKeys.right = true;
+        break;
+      default:
+        break;
+    }
+    return;
+  }
+
+  if (finalePhase.value === 'launch') {
+    return;
+  }
+
+  if (finalePhase.value === 'drive' || finalePhase.value === 'ramp') {
     switch (event.code) {
       case 'ArrowLeft':
       case 'KeyA':
@@ -1568,10 +1672,20 @@ const handleKeyup = (event) => {
     case 'KeyW':
     case 'Space':
       accelHeld = false;
+      planeKeys.up = false;
       break;
     case 'ArrowDown':
     case 'KeyS':
       brakeHeld = false;
+      planeKeys.down = false;
+      break;
+    case 'ArrowLeft':
+    case 'KeyA':
+      planeKeys.left = false;
+      break;
+    case 'ArrowRight':
+    case 'KeyD':
+      planeKeys.right = false;
       break;
     default:
       break;
@@ -1580,6 +1694,7 @@ const handleKeyup = (event) => {
 
 const handleTouchStart = (event) => {
   if (state.value !== 'running') return;
+  if (event.target?.closest?.('.joystick')) return;
   const touch = event.changedTouches[0];
   touchStart = {
     x: touch.clientX,
@@ -1600,7 +1715,12 @@ const triggerSwipe = (dx, dy) => {
     return true;
   }
 
-  if (finalePhase.value === 'drive') {
+  if (finalePhase.value === 'plane' || finalePhase.value === 'launch') {
+    // The plane uses the on-screen joystick instead of swipes.
+    return true;
+  }
+
+  if (finalePhase.value === 'drive' || finalePhase.value === 'ramp') {
     if (dy < 0) {
       driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 10);
       sfx.rev();
@@ -1645,6 +1765,7 @@ const handleTouchMove = (event) => {
   if (event.cancelable) {
     event.preventDefault();
   }
+  if (target?.closest?.('.joystick')) return;
 
   if (state.value !== 'running' || !touchStart) return;
   const touch = event.changedTouches[0];
@@ -2250,7 +2371,7 @@ const initScene = () => {
   scene.background = new THREE.Color(0x05070f);
   scene.fog = new THREE.Fog(0x05070f, 40, 165);
 
-  camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
+  camera = new THREE.PerspectiveCamera(60, 1, 0.1, 700);
   camera.position.set(0, cameraBase.y, cameraBase.z);
   applyCameraZoom();
 
@@ -2266,10 +2387,10 @@ const initScene = () => {
     canvasWrap.value.appendChild(renderer.domElement);
   }
 
-  const hemiLight = new THREE.HemisphereLight(0x9fc1ff, 0x141824, 1.6);
+  hemiLight = new THREE.HemisphereLight(0x9fc1ff, 0x141824, 1.6);
   scene.add(hemiLight);
 
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1.7);
+  dirLight = new THREE.DirectionalLight(0xffffff, 1.7);
   dirLight.position.set(6, 10, 4);
   scene.add(dirLight);
 
@@ -2469,12 +2590,12 @@ const initScene = () => {
   );
   scene.add(starPoints);
 
-  const moon = new THREE.Mesh(
+  moonMesh = new THREE.Mesh(
     new THREE.CircleGeometry(5, 24),
     new THREE.MeshBasicMaterial({ color: 0xf5ecd4, fog: false }),
   );
-  moon.position.set(-45, 55, -140);
-  scene.add(moon);
+  moonMesh.position.set(-45, 55, -140);
+  scene.add(moonMesh);
 
   // Distant city silhouette painted onto a canvas, parked behind the fog.
   const skylineCanvas = document.createElement('canvas');
@@ -2498,7 +2619,7 @@ const initScene = () => {
     cursorX += towerW + 4 + Math.random() * 12;
   }
   skylineTexture = new THREE.CanvasTexture(skylineCanvas);
-  const skyline = new THREE.Mesh(
+  skylineMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(340, 82),
     new THREE.MeshBasicMaterial({
       map: skylineTexture,
@@ -2508,8 +2629,8 @@ const initScene = () => {
       depthWrite: false,
     }),
   );
-  skyline.position.set(0, 34, -155);
-  scene.add(skyline);
+  skylineMesh.position.set(0, 34, -155);
+  scene.add(skylineMesh);
 
   buildRunner();
   player.position.set(lanes[currentLane], currentGroundCenter, 2);
@@ -3165,6 +3286,7 @@ const startDriving = () => {
   setRoadZone(2);
   musicDuckTarget = 0.6;
   sfx.engineStart();
+  driveHintText.value = 'Zone 2 — W/↑ gas, S/↓ brake, C camera. No points below speed 15.';
   driveHint.value = true;
   if (driveHintTimer) {
     clearTimeout(driveHintTimer);
@@ -3321,6 +3443,383 @@ const activateGodMode = () => {
   bumpShakeTimer = 0.3;
 };
 
+const lerpEnvironment = (delta) => {
+  if (!scene || !scene.fog || !hemiLight) return;
+  const target = envSettings[envMode];
+  const k = Math.min(1, delta * 0.9);
+  scene.background.lerp(tmpEnvColor.set(target.bg), k);
+  scene.fog.color.lerp(tmpEnvColor.set(target.fog), k);
+  scene.fog.near = THREE.MathUtils.damp(scene.fog.near, target.fogNear, 0.9, delta);
+  scene.fog.far = THREE.MathUtils.damp(scene.fog.far, target.fogFar, 0.9, delta);
+  hemiLight.intensity = THREE.MathUtils.damp(hemiLight.intensity, target.hemi, 0.9, delta);
+  dirLight.intensity = THREE.MathUtils.damp(dirLight.intensity, target.dir, 0.9, delta);
+  hemiLight.color.lerp(tmpEnvColor.set(target.hemiSky), k);
+  dirLight.color.lerp(tmpEnvColor.set(target.dirColor), k);
+};
+
+const applyEnvironmentNow = () => {
+  if (!scene || !scene.fog || !hemiLight) return;
+  const target = envSettings[envMode];
+  scene.background.set(target.bg);
+  scene.fog.color.set(target.fog);
+  scene.fog.near = target.fogNear;
+  scene.fog.far = target.fogFar;
+  hemiLight.intensity = target.hemi;
+  dirLight.intensity = target.dir;
+  hemiLight.color.set(target.hemiSky);
+  dirLight.color.set(target.dirColor);
+};
+
+const buildOcean = () => {
+  oceanGroup = new THREE.Group();
+
+  const waterCanvas = document.createElement('canvas');
+  waterCanvas.width = 256;
+  waterCanvas.height = 256;
+  const ctx = waterCanvas.getContext('2d');
+  ctx.fillStyle = '#0d2f52';
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 70; i += 1) {
+    ctx.fillStyle = `rgba(190, 225, 255, ${0.05 + Math.random() * 0.12})`;
+    ctx.fillRect(Math.random() * 256, Math.random() * 256, 30 + Math.random() * 70, 1.5 + Math.random() * 2);
+  }
+  waterTexture = new THREE.CanvasTexture(waterCanvas);
+  waterTexture.wrapS = THREE.RepeatWrapping;
+  waterTexture.wrapT = THREE.RepeatWrapping;
+  waterTexture.repeat.set(10, 20);
+
+  waterMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(900, 1100),
+    new THREE.MeshBasicMaterial({ map: waterTexture }),
+  );
+  waterMesh.rotation.x = -Math.PI / 2;
+  waterMesh.position.set(0, -0.8, -360);
+  oceanGroup.add(waterMesh);
+
+  const sun = new THREE.Mesh(
+    new THREE.CircleGeometry(48, 30),
+    new THREE.MeshBasicMaterial({ color: 0xffc46a, fog: false }),
+  );
+  sun.position.set(0, 30, -560);
+  oceanGroup.add(sun);
+  const sunGlow = new THREE.Mesh(
+    new THREE.CircleGeometry(95, 30),
+    new THREE.MeshBasicMaterial({
+      color: 0xff9a50,
+      transparent: true,
+      opacity: 0.3,
+      fog: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  sunGlow.position.set(0, 28, -561);
+  oceanGroup.add(sunGlow);
+
+  const streak = new THREE.Mesh(
+    new THREE.PlaneGeometry(18, 460),
+    new THREE.MeshBasicMaterial({
+      color: 0xffb066,
+      transparent: true,
+      opacity: 0.2,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  streak.rotation.x = -Math.PI / 2;
+  streak.position.set(0, -0.7, -330);
+  oceanGroup.add(streak);
+
+  scene.add(oceanGroup);
+};
+
+const buildRamp = () => {
+  ramp = new THREE.Group();
+  const deck = new THREE.Group();
+  deck.rotation.x = 0.27;
+  deck.position.y = 2.9;
+
+  const surface = new THREE.Mesh(
+    new THREE.BoxGeometry(9, 0.5, 22),
+    new THREE.MeshLambertMaterial({ color: 0x27344e }),
+  );
+  deck.add(surface);
+  const edgeGeo = new THREE.BoxGeometry(0.22, 0.14, 22);
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0x2ee5ff });
+  [-4.4, 4.4].forEach((x) => {
+    const edge = new THREE.Mesh(edgeGeo, edgeMat);
+    edge.position.set(x, 0.3, 0);
+    deck.add(edge);
+  });
+  ramp.add(deck);
+
+  const strutMat = new THREE.MeshLambertMaterial({ color: 0x1c2740 });
+  [[-3, -4, 2.2], [3, -4, 2.2], [-3, -9.5, 4.6], [3, -9.5, 4.6]].forEach(([x, z, h]) => {
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.5, h, 0.5), strutMat);
+    strut.position.set(x, h / 2, z);
+    ramp.add(strut);
+  });
+
+  ramp.position.z = -290;
+  scene.add(ramp);
+};
+
+const disposeZone3 = () => {
+  [ramp, oceanGroup].forEach((group) => {
+    if (!group) return;
+    scene.remove(group);
+    group.traverse((node) => {
+      if (node.isMesh) {
+        node.geometry?.dispose();
+        const materials = Array.isArray(node.material) ? node.material : [node.material];
+        materials.forEach((material) => material?.dispose());
+      }
+    });
+  });
+  ramp = null;
+  oceanGroup = null;
+  waterMesh = null;
+  waterTexture?.dispose();
+  waterTexture = null;
+};
+
+const buildFallbackPlaneModel = () => {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshLambertMaterial({ color: 0xdfe4ec });
+  const accentMat = new THREE.MeshLambertMaterial({ color: 0xd7404f });
+  const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.3, 7), bodyMat);
+  group.add(fuselage);
+  const wings = new THREE.Mesh(new THREE.BoxGeometry(10, 0.18, 1.8), accentMat);
+  wings.position.set(0, 0.3, -0.6);
+  group.add(wings);
+  const tailWing = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.14, 1.1), accentMat);
+  tailWing.position.set(0, 0.4, 3);
+  group.add(tailWing);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.6, 1.3), accentMat);
+  fin.position.set(0, 1, 3.1);
+  group.add(fin);
+  return group;
+};
+
+const loadPlaneModel = () => {
+  const loader = new GLTFLoader();
+  loader.load(
+    '/models/plane/cesium-air.glb',
+    (gltf) => {
+      const model = gltf.scene;
+      const rawSize = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+      const scale = 8 / rawSize.z;
+      model.scale.setScalar(scale);
+      const box = new THREE.Box3().setFromObject(model);
+      model.position.sub(box.getCenter(new THREE.Vector3()));
+      planeTemplate = { model, clips: gltf.animations };
+    },
+    undefined,
+    () => {
+      planeTemplate = { model: buildFallbackPlaneModel(), clips: [] };
+    },
+  );
+};
+
+const triggerRamp = () => {
+  rampTriggered = true;
+  finalePhase.value = 'ramp';
+  buildRamp();
+  buildOcean();
+  envMode = 'sunrise';
+  if (starPoints) starPoints.visible = false;
+  if (moonMesh) moonMesh.visible = false;
+  if (skylineMesh) skylineMesh.visible = false;
+  musicDuckTarget = 0.45;
+};
+
+const buildDockingPlane = () => {
+  dockingPlane = new THREE.Group();
+  if (planeTemplate) {
+    planeTemplate.model.rotation.set(0, Math.PI, 0);
+    dockingPlane.add(planeTemplate.model);
+    if (planeTemplate.clips.length) {
+      planeMixer = new THREE.AnimationMixer(planeTemplate.model);
+      planeTemplate.clips.forEach((clip) => planeMixer.clipAction(clip).play());
+    }
+  } else {
+    dockingPlane.add(buildFallbackPlaneModel());
+  }
+  dockingPlane.position.set(0, 10.5, -110);
+  scene.add(dockingPlane);
+};
+
+const doLaunch = () => {
+  finalePhase.value = 'launch';
+  launchVy = 15;
+  launchTimer = 0;
+  sfx.launch();
+  clearObstacles();
+  clearCoins();
+  clearPowerups();
+  clearFlyingCars();
+  buildDockingPlane();
+};
+
+const enterPlane = () => {
+  finalePhase.value = 'plane';
+  sfx.dock();
+  if (carVisual) {
+    player.remove(carVisual);
+    carVisual = null;
+  }
+  carWheels = [];
+  godModeActive.value = false;
+  godHoldTimer = 0;
+  planeVisual = dockingPlane;
+  scene.remove(dockingPlane);
+  player.position.copy(dockingPlane.position);
+  planeVisual.position.set(0, 0, 0);
+  planeVisual.rotation.set(0, 0, 0);
+  player.add(planeVisual);
+  dockingPlane = null;
+  planeVelX = 0;
+  planeVelY = 0;
+  envMode = 'day';
+  musicDuckTarget = 0.85;
+  driveHintText.value = 'Zone 3 — joystick or WASD/arrows to fly.';
+  driveHint.value = true;
+  if (driveHintTimer) {
+    clearTimeout(driveHintTimer);
+  }
+  driveHintTimer = setTimeout(() => {
+    driveHint.value = false;
+  }, 5200);
+};
+
+const updateLaunch = (delta) => {
+  speed.value = THREE.MathUtils.damp(speed.value, 62, 1.5, delta);
+  updateEngineSound();
+  launchTimer += delta;
+
+  if (launchTimer > 0.9 && floorSegments[0]?.visible) {
+    floorSegments.forEach((segment) => {
+      segment.visible = false;
+    });
+  }
+  if (ramp) {
+    ramp.position.z += speed.value * delta;
+    if (ramp.position.z > 140) {
+      scene.remove(ramp);
+    }
+  }
+  if (waterTexture) {
+    waterTexture.offset.y -= speed.value * delta * 0.003;
+  }
+
+  launchVy -= 7.5 * delta;
+  player.position.y += launchVy * delta;
+  player.position.x = THREE.MathUtils.damp(player.position.x, 0, 3, delta);
+  player.rotation.x = THREE.MathUtils.damp(
+    player.rotation.x,
+    THREE.MathUtils.clamp(launchVy * 0.035, -0.5, 0.55),
+    3,
+    delta,
+  );
+  if (godModeActive.value) {
+    emitFireTrail();
+  }
+
+  if (dockingPlane) {
+    dockingPlane.position.z += (speed.value - 26) * delta;
+    planeMixer?.update(delta);
+    const dockZ = dockingPlane.position.z + 3.6;
+    const dz = player.position.z - dockZ;
+    if ((launchVy < 2 && dz < 9) || launchTimer > 8) {
+      // Magnetic docking: guide the car into the cargo hold.
+      player.position.x = THREE.MathUtils.damp(player.position.x, dockingPlane.position.x, 8, delta);
+      player.position.y = THREE.MathUtils.damp(player.position.y, dockingPlane.position.y, 6, delta);
+      player.position.z = THREE.MathUtils.damp(player.position.z, dockZ, 4, delta);
+      if (Math.abs(player.position.z - dockZ) < 1.4 && Math.abs(player.position.y - dockingPlane.position.y) < 1.2) {
+        enterPlane();
+        return;
+      }
+    }
+  }
+
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, 0, 4, delta);
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, player.position.y + 2.8, 4, delta);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, player.position.z + 10.5, 4, delta);
+  camera.fov = THREE.MathUtils.damp(camera.fov, 66, 3, delta);
+  camera.updateProjectionMatrix();
+  lookAtTarget.set(player.position.x, player.position.y * 0.92, player.position.z - 14);
+  camera.lookAt(lookAtTarget);
+};
+
+const updatePlane = (delta) => {
+  speed.value = THREE.MathUtils.damp(speed.value, 60, 2, delta);
+  updateEngineSound();
+  score.value += speed.value * delta * 2.4;
+
+  const inputX = THREE.MathUtils.clamp(
+    (planeKeys.right ? 1 : 0) - (planeKeys.left ? 1 : 0) + joyVec.x,
+    -1,
+    1,
+  );
+  const inputY = THREE.MathUtils.clamp(
+    (planeKeys.up ? 1 : 0) - (planeKeys.down ? 1 : 0) - joyVec.y,
+    -1,
+    1,
+  );
+  planeVelX = THREE.MathUtils.damp(planeVelX, inputX * 15, 4, delta);
+  planeVelY = THREE.MathUtils.damp(planeVelY, inputY * 11, 4, delta);
+  player.position.x = THREE.MathUtils.clamp(player.position.x + planeVelX * delta, -12, 12);
+  player.position.y = THREE.MathUtils.clamp(player.position.y + planeVelY * delta, 5, 36);
+  player.position.z = THREE.MathUtils.damp(player.position.z, 2, 0.8, delta);
+
+  if (planeVisual) {
+    planeVisual.rotation.z = THREE.MathUtils.damp(planeVisual.rotation.z, -planeVelX * 0.045, 6, delta);
+    planeVisual.rotation.x = THREE.MathUtils.damp(planeVisual.rotation.x, planeVelY * 0.03, 6, delta);
+  }
+  player.rotation.x = THREE.MathUtils.damp(player.rotation.x, 0, 4, delta);
+  planeMixer?.update(delta);
+
+  if (waterTexture) {
+    waterTexture.offset.y -= speed.value * delta * 0.003;
+  }
+
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x * 0.5, 4, delta);
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, player.position.y + 3.4, 4, delta);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, player.position.z + 10.5, 4, delta);
+  camera.fov = THREE.MathUtils.damp(camera.fov, 62, 3, delta);
+  camera.updateProjectionMatrix();
+  lookAtTarget.set(player.position.x * 0.85, player.position.y + 0.3, player.position.z - 12);
+  camera.lookAt(lookAtTarget);
+};
+
+const joyStart = (event) => {
+  joyPointerId = event.pointerId;
+  event.currentTarget.setPointerCapture(event.pointerId);
+  joyMove(event);
+};
+
+const joyMove = (event) => {
+  if (joyPointerId !== event.pointerId) return;
+  const rect = event.currentTarget.getBoundingClientRect();
+  let dx = event.clientX - (rect.left + rect.width / 2);
+  let dy = event.clientY - (rect.top + rect.height / 2);
+  const max = rect.width / 2 - 18;
+  const len = Math.hypot(dx, dy);
+  if (len > max) {
+    dx *= max / len;
+    dy *= max / len;
+  }
+  joyKnob.value = { x: dx, y: dy };
+  joyVec = { x: dx / max, y: dy / max };
+};
+
+const joyEnd = (event) => {
+  if (joyPointerId !== event.pointerId) return;
+  joyPointerId = null;
+  joyKnob.value = { x: 0, y: 0 };
+  joyVec = { x: 0, y: 0 };
+};
+
 const exitFinale = () => {
   finaleTriggered = false;
   finalePhase.value = 'none';
@@ -3351,6 +3850,44 @@ const exitFinale = () => {
   godModeActive.value = false;
   godHoldTimer = 0;
   clearFlyingCars();
+
+  // Zone 3 cleanup: back to the night city.
+  if (planeVisual) {
+    player.remove(planeVisual);
+    planeVisual = null;
+  }
+  if (dockingPlane) {
+    scene.remove(dockingPlane);
+    dockingPlane = null;
+  }
+  if (planeMixer) {
+    planeMixer.stopAllAction();
+    planeMixer = null;
+  }
+  disposeZone3();
+  rampTriggered = false;
+  launchVy = 0;
+  launchTimer = 0;
+  planeVelX = 0;
+  planeVelY = 0;
+  planeKeys.up = false;
+  planeKeys.down = false;
+  planeKeys.left = false;
+  planeKeys.right = false;
+  joyVec = { x: 0, y: 0 };
+  joyKnob.value = { x: 0, y: 0 };
+  joyPointerId = null;
+  floorSegments.forEach((segment) => {
+    segment.visible = true;
+  });
+  if (starPoints) starPoints.visible = true;
+  if (moonMesh) moonMesh.visible = true;
+  if (skylineMesh) skylineMesh.visible = true;
+  if (player) {
+    player.rotation.x = 0;
+  }
+  envMode = 'night';
+  applyEnvironmentNow();
 };
 
 const updateRunner = (delta) => {
@@ -3358,9 +3895,17 @@ const updateRunner = (delta) => {
     updateFinaleWalk(delta);
     return;
   }
+  if (finalePhase.value === 'launch') {
+    updateLaunch(delta);
+    return;
+  }
+  if (finalePhase.value === 'plane') {
+    updatePlane(delta);
+    return;
+  }
 
   const level = currentLevel.value;
-  const driving = finalePhase.value === 'drive';
+  const driving = finalePhase.value === 'drive' || finalePhase.value === 'ramp';
   if (magnetTime.value > 0) {
     magnetTime.value = Math.max(0, magnetTime.value - delta);
   }
@@ -3390,10 +3935,19 @@ const updateRunner = (delta) => {
       }
     } else {
       emitFireTrail();
-      if (speed.value < godFloorSpeed) {
+      if (finalePhase.value !== 'ramp' && speed.value < godFloorSpeed) {
         godModeActive.value = false;
         godHoldTimer = 0;
       }
+    }
+
+    if (
+      finalePhase.value === 'drive' &&
+      godModeActive.value &&
+      !rampTriggered &&
+      score.value >= RAMP_SCORE
+    ) {
+      triggerRamp();
     }
     // No points below cruising speed — crawling along earns nothing.
     if (speed.value >= driveScoreMinSpeed) {
@@ -3530,6 +4084,16 @@ const updateRunner = (delta) => {
     }
   }
 
+  if (ramp && finalePhase.value === 'ramp') {
+    ramp.position.z += speed.value * delta;
+    if (waterTexture) {
+      waterTexture.offset.y -= speed.value * delta * 0.003;
+    }
+    if (ramp.position.z > -13) {
+      doLaunch();
+    }
+  }
+
   if (driving && carVisual) {
     const wheelSpin = (speed.value * delta) / 0.27;
     carWheels.forEach((wheel) => {
@@ -3597,7 +4161,7 @@ const updateRunner = (delta) => {
     }
   }
 
-  if (driving) {
+  if (finalePhase.value === 'drive') {
     driveSpawnTimer -= delta;
     if (driveSpawnTimer <= 0) {
       spawnDriveTraffic();
@@ -3839,7 +4403,13 @@ const animate = (time) => {
     applyAudioVolume();
   }
 
-  if (engineOsc && (state.value !== 'running' || finalePhase.value !== 'drive')) {
+  lerpEnvironment(delta);
+
+  if (
+    engineOsc &&
+    (state.value !== 'running' ||
+      !['drive', 'ramp', 'launch', 'plane'].includes(finalePhase.value))
+  ) {
     silenceEngineSound();
   }
 
@@ -3923,6 +4493,7 @@ onMounted(() => {
   initScene();
   loadVehicleModels();
   loadCharacterModels();
+  loadPlaneModel();
   handleResize();
   checkAuthGate();
   loadProfile();
@@ -3959,6 +4530,19 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', handleKeyup);
   window.removeEventListener('touchstart', handleTouchStart);
   disposePlaza();
+  disposeZone3();
+  if (planeTemplate) {
+    planeTemplate.model.traverse((node) => {
+      if (node.isMesh) {
+        node.geometry?.dispose();
+        const materials = Array.isArray(node.material) ? node.material : [node.material];
+        materials.forEach((material) => {
+          material?.map?.dispose();
+          material?.dispose();
+        });
+      }
+    });
+  }
   window.removeEventListener('touchmove', handleTouchMove);
   window.removeEventListener('touchend', handleTouchEnd);
   if (renderer && renderer.domElement && canvasWrap.value) {
@@ -4287,6 +4871,32 @@ onBeforeUnmount(() => {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: rgba(190, 210, 255, 0.55);
+}
+
+.joystick {
+  position: absolute;
+  bottom: calc(34px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 180, 255, 0.45);
+  background: rgba(8, 12, 22, 0.45);
+  z-index: 5;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.joystick-knob {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(120, 180, 255, 0.55);
+  border: 1px solid rgba(190, 225, 255, 0.7);
+  pointer-events: none;
 }
 
 .cam-btn {

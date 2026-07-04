@@ -1,0 +1,9 @@
+Cesium Air (Cesium_Air.glb)
+
+Created by Cesium (https://cesium.com)
+Source: https://github.com/CesiumGS/cesium (Apps/SampleData/models/CesiumAir)
+
+License: Creative Commons Attribution 4.0 International (CC-BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Attribution: "Cesium Air" by Cesium GS, Inc., used under CC-BY 4.0.
