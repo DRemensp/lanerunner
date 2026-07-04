@@ -134,6 +134,11 @@
       <div class="finale-toast-sub">You found the end of the line</div>
     </div>
 
+    <div v-if="eventToast && state === 'running'" class="finale-toast event-toast">
+      <div class="finale-toast-title">{{ eventToast.title }}</div>
+      <div class="finale-toast-sub">{{ eventToast.sub }}</div>
+    </div>
+
     <div v-if="driveHint && state === 'running'" class="drive-hint">
       {{ driveHintText }}
     </div>
@@ -569,6 +574,14 @@ let bumpProtectUntil = 0;
 let bumpShakeTimer = 0;
 let laneOrigin = 1;
 const bumpWindowMs = 5000;
+
+// Zone-1 event director: periodically breaks up the random rows with scripted
+// moments (traffic-jam walls, wrong-way drivers, coin runs, lane drifters).
+const eventToast = ref(null);
+let eventToastTimer;
+let eventTimer = 8;
+let trafficWave = null;
+let nextMilestone = 2500;
 
 const cameraBase = {
   y: 5.5,
@@ -1561,6 +1574,10 @@ const resetRun = () => {
   bumpShakeTimer = 0;
   laneOrigin = 1;
   bumpToast.value = false;
+  trafficWave = null;
+  eventTimer = 8;
+  nextMilestone = 2500;
+  eventToast.value = null;
   clearObstacles();
   clearCoins();
   clearPowerups();
@@ -3157,6 +3174,8 @@ const getObstacle = (type, forcedKey = null) => {
   }
   obstacle.userData.vz = 0;
   obstacle.userData.passed = false;
+  delete obstacle.userData.driftTo;
+  obstacle.userData.driftHonked = false;
   if (obstacle.userData.beams) {
     obstacle.userData.beams.visible = false;
   }
@@ -3229,6 +3248,165 @@ const spawnRow = () => {
   const powerupLanes = freeLanes.filter((laneIndex) => laneIndex !== coinLane);
   if (powerupLanes.length && Math.random() < 0.08) {
     spawnPowerup(powerupLanes[Math.floor(Math.random() * powerupLanes.length)], baseZ);
+  }
+};
+
+const showEventToast = (title, sub, duration = 1900) => {
+  eventToast.value = { title, sub };
+  if (eventToastTimer) {
+    clearTimeout(eventToastTimer);
+  }
+  eventToastTimer = setTimeout(() => {
+    eventToast.value = null;
+  }, duration);
+};
+
+// Traffic jam: a few walls of parked cars with exactly one gap that wanders
+// between rows. Coins mark the safe lane so the path reads from a distance.
+const spawnWaveRow = () => {
+  const baseZ = -(95 + Math.min(45, speed.value));
+  for (let laneIndex = 0; laneIndex < 3; laneIndex += 1) {
+    if (laneIndex === trafficWave.gapLane) {
+      for (let k = 0; k < 2; k += 1) {
+        const coin = getCoin();
+        coin.position.set(lanes[laneIndex], 1.0, baseZ - k * 1.6);
+        coin.rotation.y = Math.random() * Math.PI;
+        coins.push(coin);
+        scene.add(coin);
+      }
+      continue;
+    }
+    const vehicle = getObstacle('low', 'car-any');
+    vehicle.rotation.y = Math.PI;
+    vehicle.position.set(lanes[laneIndex], vehicle.userData.size.h / 2 + 0.02, baseZ);
+    obstacles.push(vehicle);
+    scene.add(vehicle);
+  }
+  trafficWave.rowsLeft -= 1;
+  if (trafficWave.rowsLeft <= 0) {
+    trafficWave.endZ = baseZ;
+  } else {
+    trafficWave.rowTimer = 22 / speed.value;
+    if (Math.random() < 0.7) {
+      trafficWave.gapLane = THREE.MathUtils.clamp(
+        trafficWave.gapLane + (Math.random() < 0.5 ? -1 : 1),
+        0,
+        2,
+      );
+    }
+  }
+};
+
+const startTrafficWave = () => {
+  trafficWave = {
+    rowsLeft: 3 + Math.min(2, Math.floor(score.value / 4000)),
+    gapLane: Math.floor(Math.random() * 3),
+    rowTimer: 0,
+    endZ: null,
+  };
+  sfx.horn();
+  showEventToast('Rush Hour', 'Follow the coins through the jam!');
+};
+
+const startWrongWayDriver = () => {
+  const levelFactor = currentLevel.value.baseSpeed / 12;
+  const vehicle = getObstacle('low', 'car-any');
+  vehicle.userData.vz = (16 + Math.random() * 8) * levelFactor;
+  if (vehicle.userData.beams) {
+    vehicle.userData.beams.visible = true;
+  }
+  vehicle.rotation.y = 0;
+  vehicle.position.set(
+    lanes[currentLane],
+    vehicle.userData.size.h / 2 + 0.02,
+    -150,
+  );
+  obstacles.push(vehicle);
+  scene.add(vehicle);
+  sfx.horn();
+  showEventToast('Wrong-Way Driver', 'Get out of your lane!');
+};
+
+// A snaking trail of coins weaving across all three lanes.
+const startCoinRush = () => {
+  const baseZ = -(80 + Math.min(45, speed.value));
+  for (let k = 0; k < 18; k += 1) {
+    const coin = getCoin();
+    coin.position.set(Math.sin(k * 0.45) * 2, 1.0, baseZ - k * 2.3);
+    coin.rotation.y = Math.random() * Math.PI;
+    coins.push(coin);
+    scene.add(coin);
+  }
+  showEventToast('Coin Rush', 'Weave for the gold!');
+};
+
+// Oncoming car that swerves into a neighbouring lane mid-approach.
+const startDriftCar = () => {
+  const levelFactor = currentLevel.value.baseSpeed / 12;
+  const fromLane = Math.floor(Math.random() * 3);
+  const shift = fromLane === 0 ? 1 : fromLane === 2 ? -1 : Math.random() < 0.5 ? -1 : 1;
+  const vehicle = getObstacle('low', 'car-any');
+  vehicle.userData.vz = (8 + Math.random() * 6) * levelFactor;
+  vehicle.userData.driftTo = lanes[fromLane + shift];
+  vehicle.userData.driftAt = -(42 + Math.random() * 24);
+  vehicle.userData.driftHonked = false;
+  if (vehicle.userData.beams) {
+    vehicle.userData.beams.visible = true;
+  }
+  vehicle.rotation.y = 0;
+  vehicle.position.set(
+    lanes[fromLane],
+    vehicle.userData.size.h / 2 + 0.02,
+    -125,
+  );
+  obstacles.push(vehicle);
+  scene.add(vehicle);
+};
+
+const startRandomEvent = () => {
+  const roll = Math.random();
+  if (roll < 0.34) {
+    startTrafficWave();
+  } else if (roll < 0.6) {
+    startWrongWayDriver();
+  } else if (roll < 0.82) {
+    startCoinRush();
+  } else {
+    startDriftCar();
+  }
+};
+
+const updateZoneEvents = (delta) => {
+  if (nextMilestone < FINALE_SCORE && score.value >= nextMilestone) {
+    showEventToast(`${nextMilestone.toLocaleString('en-US')} points`, 'Keep it rolling!', 1500);
+    sfx.powerup();
+    spawnBurst(player.position.clone(), ['gold'], 10, 5);
+    nextMilestone += 2500;
+  }
+  if (trafficWave) {
+    if (trafficWave.rowsLeft > 0) {
+      trafficWave.rowTimer -= delta;
+      if (trafficWave.rowTimer <= 0) {
+        spawnWaveRow();
+      }
+    }
+    if (trafficWave.endZ !== null) {
+      trafficWave.endZ += speed.value * delta;
+      if (trafficWave.endZ > player.position.z + 2) {
+        const bonus = 150 * (multiTime.value > 0 ? 2 : 1);
+        score.value += bonus;
+        sfx.nearMiss();
+        showEventToast('Traffic Cleared', `+${bonus} bonus`);
+        trafficWave = null;
+      }
+    }
+    return;
+  }
+  if (finaleTriggered) return;
+  eventTimer -= delta;
+  if (eventTimer <= 0 && score.value > 350 && score.value < FINALE_SCORE - 800) {
+    startRandomEvent();
+    eventTimer = THREE.MathUtils.randFloat(11, 18);
   }
 };
 
@@ -5170,11 +5348,18 @@ const updateRunner = (delta) => {
       );
     }
   } else if (finalePhase.value === 'none') {
-    spawnTimer -= delta;
-    if (spawnTimer <= 0) {
-      spawnRow();
-      const spacingFactor = 1 + Math.min(1.2, speed.value / 24);
-      spawnTimer = THREE.MathUtils.randFloat(0.5, 1.5) * (14 / speed.value) * spacingFactor;
+    updateZoneEvents(delta);
+    // Normal rows pause while a traffic wave rolls through, so the wave's
+    // single gap is never blocked by a random spawn.
+    if (!trafficWave) {
+      spawnTimer -= delta;
+      if (spawnTimer <= 0) {
+        spawnRow();
+        const spacingFactor = 1 + Math.min(1.2, speed.value / 24);
+        spawnTimer = THREE.MathUtils.randFloat(0.5, 1.5) * (14 / speed.value) * spacingFactor;
+      }
+    } else {
+      spawnTimer = Math.max(spawnTimer, 1.1);
     }
   }
 
@@ -5187,6 +5372,21 @@ const updateRunner = (delta) => {
       obstacle.userData.wheels.forEach((wheel) => {
         wheel.rotation.x += spin;
       });
+    }
+    if (obstacle.userData.driftTo !== undefined && obstacle.position.z > obstacle.userData.driftAt) {
+      if (!obstacle.userData.driftHonked) {
+        obstacle.userData.driftHonked = true;
+        sfx.horn();
+      }
+      obstacle.position.x = THREE.MathUtils.damp(
+        obstacle.position.x,
+        obstacle.userData.driftTo,
+        3.5,
+        delta,
+      );
+      if (Math.abs(obstacle.position.x - obstacle.userData.driftTo) < 0.05) {
+        delete obstacle.userData.driftTo;
+      }
     }
     if (vz > 0) {
       if (!obstacle.userData.passed && obstacle.position.z > player.position.z + 1.2) {
@@ -5756,6 +5956,22 @@ onBeforeUnmount(() => {
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: rgba(210, 240, 255, 0.75);
+}
+
+.event-toast {
+  top: 19%;
+  animation: fadeIn 0.35s ease;
+}
+
+.event-toast .finale-toast-title {
+  font-size: 1.7rem;
+  color: #ffcf6b;
+  text-shadow: 0 0 22px rgba(255, 190, 80, 0.55);
+}
+
+.event-toast .finale-toast-sub {
+  font-size: 0.7rem;
+  color: rgba(255, 230, 190, 0.8);
 }
 
 .drive-hint {
