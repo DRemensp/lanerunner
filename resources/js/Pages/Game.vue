@@ -129,6 +129,10 @@
       Near Miss +{{ nearMissAmount }}
     </div>
 
+    <div v-if="bumpToast && state === 'running'" class="bump-warning">
+      &#9888; Careful!
+    </div>
+
     <div v-if="state === 'running' || state === 'paused'" class="power-row">
       <div v-if="shieldActive" class="power-chip shield">Shield</div>
       <div v-if="magnetTime > 0" class="power-chip magnet">Magnet {{ Math.ceil(magnetTime) }}s</div>
@@ -418,6 +422,14 @@ const multiTime = ref(0);
 let invulnUntil = 0;
 let shieldMesh;
 
+const bumpToast = ref(false);
+let bumpToastTimer;
+let lastBumpAt = -Infinity;
+let bumpProtectUntil = 0;
+let bumpShakeTimer = 0;
+let laneOrigin = 1;
+const bumpWindowMs = 5000;
+
 const cameraBase = {
   y: 5.5,
   z: 8,
@@ -482,6 +494,9 @@ let player;
 let playerMaterial;
 let limbMaterial;
 let runnerParts = null;
+let proceduralParts = [];
+const characterTemplates = {};
+let activeCharacter = null;
 let runPhase = 0;
 let playerVelocityY = 0;
 let currentLane = 1;
@@ -742,6 +757,10 @@ const sfx = {
   },
   nearMiss: () => playNoise({ duration: 0.25, from: 2400, to: 400, gain: 0.28 }),
   slide: () => playNoise({ duration: 0.28, from: 1600, to: 250, gain: 0.22 }),
+  bump: () => {
+    playNoise({ duration: 0.16, from: 420, to: 120, gain: 0.32 });
+    playTone({ freq: 150, to: 85, type: 'square', duration: 0.14, gain: 0.2 });
+  },
   land: () => {
     playNoise({ duration: 0.12, from: 500, to: 140, gain: 0.22 });
     playTone({ freq: 95, to: 55, type: 'sine', duration: 0.12, gain: 0.25 });
@@ -1152,6 +1171,11 @@ const resetRun = () => {
   magnetTime.value = 0;
   multiTime.value = 0;
   invulnUntil = 0;
+  lastBumpAt = -Infinity;
+  bumpProtectUntil = 0;
+  bumpShakeTimer = 0;
+  laneOrigin = 1;
+  bumpToast.value = false;
   clearObstacles();
   clearCoins();
   clearPowerups();
@@ -1217,12 +1241,20 @@ const resetFloor = () => {
 
 const moveLeft = () => {
   if (state.value !== 'running') return;
-  currentLane = Math.max(0, currentLane - 1);
+  const next = Math.max(0, currentLane - 1);
+  if (next !== currentLane) {
+    laneOrigin = currentLane;
+    currentLane = next;
+  }
 };
 
 const moveRight = () => {
   if (state.value !== 'running') return;
-  currentLane = Math.min(lanes.length - 1, currentLane + 1);
+  const next = Math.min(lanes.length - 1, currentLane + 1);
+  if (next !== currentLane) {
+    laneOrigin = currentLane;
+    currentLane = next;
+  }
 };
 
 const attemptJump = () => {
@@ -1543,9 +1575,145 @@ const buildRunner = () => {
   player.add(shieldMesh);
 
   runnerParts = { torso, head, legL, legR, armL, armR };
+  proceduralParts = [torso, head, legL.hip, legR.hip, armL.shoulder, armR.shoulder];
+};
+
+// Animated low-poly runners from Kenney's CC0 Blocky Characters pack. Each
+// GLB ships node-based clips (idle/sprint/...) — no skinning, so plain
+// AnimationMixer on the scene works. The procedural rig stays as fallback.
+const characterSkinMap = { neon: 'character-a', ember: 'character-b', ion: 'character-c' };
+const characterKeys = [
+  'character-a',
+  'character-b',
+  'character-c',
+  'character-d',
+  'character-e',
+  'character-f',
+];
+
+const characterKeyForSkin = (skin) => {
+  if (skin?.slug && characterSkinMap[skin.slug]) {
+    return characterSkinMap[skin.slug];
+  }
+  const index = Math.abs(Number(skin?.id) || 0) % characterKeys.length;
+  return characterKeys[index];
+};
+
+const removeActiveCharacter = () => {
+  if (!activeCharacter) return;
+  activeCharacter.mixer.stopAllAction();
+  player.remove(activeCharacter.root);
+  activeCharacter = null;
+  proceduralParts.forEach((part) => {
+    part.visible = true;
+  });
+};
+
+const applyCharacter = () => {
+  if (!player) return;
+  const key = characterKeyForSkin(currentSkin.value);
+  const template = characterTemplates[key];
+  if (!template || activeCharacter?.key === key) return;
+  removeActiveCharacter();
+
+  const root = template.scene;
+  const scale = playerSize.h / template.rawHeight;
+  root.scale.setScalar(scale);
+  root.rotation.set(0, Math.PI, 0);
+  root.position.set(0, -playerSize.h / 2 - template.rawMinY * scale, 0);
+
+  const mixer = new THREE.AnimationMixer(root);
+  const findClip = (...names) => {
+    for (const name of names) {
+      const clip = THREE.AnimationClip.findByName(template.clips, name);
+      if (clip) return clip;
+    }
+    return null;
+  };
+  const runClip = findClip('sprint', 'walk');
+  const idleClip = findClip('idle', 'static');
+  const actions = {
+    run: runClip ? mixer.clipAction(runClip) : null,
+    idle: idleClip ? mixer.clipAction(idleClip) : null,
+  };
+
+  player.add(root);
+  proceduralParts.forEach((part) => {
+    part.visible = false;
+  });
+  activeCharacter = { key, root, mixer, actions, current: null };
+};
+
+const setCharacterAction = (name) => {
+  const character = activeCharacter;
+  if (!character || character.current === name) return;
+  const next = character.actions[name];
+  if (!next) return;
+  if (character.current && character.actions[character.current]) {
+    character.actions[character.current].fadeOut(0.18);
+  }
+  next.reset().fadeIn(0.18).play();
+  character.current = name;
+};
+
+const driveCharacter = (delta, running) => {
+  const character = activeCharacter;
+  const d = (current, target, speedFactor = 10) =>
+    THREE.MathUtils.damp(current, target, speedFactor, delta);
+
+  if (!running) {
+    setCharacterAction('idle');
+    character.mixer.timeScale = 1;
+    character.root.rotation.x = d(character.root.rotation.x, 0);
+    player.rotation.z = d(player.rotation.z, 0, 6);
+    character.mixer.update(delta);
+    return;
+  }
+
+  player.rotation.z = d(player.rotation.z, (player.position.x - lanes[currentLane]) * 0.18);
+  const grounded = player.position.y <= currentGroundCenter + groundedEpsilon;
+  setCharacterAction('run');
+  if (character.actions.run) {
+    // Freeze the stride mid-air and in the slide; lean sells the pose.
+    character.actions.run.paused = isSliding || !grounded;
+  }
+  character.mixer.timeScale = 0.7 + speed.value / 16;
+  let lean = 0.12;
+  if (isSliding) {
+    lean = 0.45;
+  } else if (!grounded) {
+    lean = -0.18;
+  }
+  character.root.rotation.x = d(character.root.rotation.x, lean, 8);
+  character.mixer.update(delta);
+};
+
+const loadCharacterModels = () => {
+  const loader = new GLTFLoader();
+  characterKeys.forEach((key) => {
+    loader.load(
+      `/models/characters/${key}.glb`,
+      (gltf) => {
+        const box = new THREE.Box3().setFromObject(gltf.scene);
+        characterTemplates[key] = {
+          scene: gltf.scene,
+          clips: gltf.animations,
+          rawHeight: box.max.y - box.min.y,
+          rawMinY: box.min.y,
+        };
+        applyCharacter();
+      },
+      undefined,
+      () => {},
+    );
+  });
 };
 
 const animateRunner = (delta) => {
+  if (activeCharacter) {
+    driveCharacter(delta, true);
+    return;
+  }
   if (!runnerParts) return;
   const { torso, head, legL, legR, armL, armR } = runnerParts;
   const grounded = player.position.y <= currentGroundCenter + groundedEpsilon;
@@ -1604,7 +1772,12 @@ const animateRunner = (delta) => {
 let idleTime = 0;
 
 const animateIdle = (delta) => {
-  if (!runnerParts || !player?.visible) return;
+  if (!player?.visible) return;
+  if (activeCharacter) {
+    driveCharacter(delta, false);
+    return;
+  }
+  if (!runnerParts) return;
   const { torso, head, legL, legR, armL, armR } = runnerParts;
   idleTime += delta;
   const d = (current, target) => THREE.MathUtils.damp(current, target, 6, delta);
@@ -2408,6 +2581,52 @@ const checkCollision = (obstacle, playerHeight) => {
   return playerBottom < obstacleTop - 0.05;
 };
 
+const triggerBumpToast = () => {
+  bumpToast.value = false;
+  if (bumpToastTimer) {
+    clearTimeout(bumpToastTimer);
+  }
+  requestAnimationFrame(() => {
+    bumpToast.value = true;
+    bumpToastTimer = setTimeout(() => {
+      bumpToast.value = false;
+    }, 1300);
+  });
+};
+
+// Swiping into a lane that is already blocked bounces the player back instead
+// of killing them — but a second bump within the window is fatal.
+const handleSideBump = (obstacle) => {
+  const now = performance.now();
+  currentLane = laneOrigin;
+  bumpProtectUntil = now + 800;
+  bumpShakeTimer = 0.3;
+  spawnBurst(
+    new THREE.Vector3(
+      (player.position.x + obstacle.position.x) / 2,
+      player.position.y,
+      player.position.z,
+    ),
+    ['dust'],
+    8,
+    4,
+  );
+  if (now - lastBumpAt < bumpWindowMs) {
+    if (shieldActive.value) {
+      shieldActive.value = false;
+      lastBumpAt = now;
+      sfx.shieldBreak();
+      triggerBumpToast();
+      return;
+    }
+    startCrash();
+    return;
+  }
+  lastBumpAt = now;
+  sfx.bump();
+  triggerBumpToast();
+};
+
 const updateRunner = (delta) => {
   const level = currentLevel.value;
   if (magnetTime.value > 0) {
@@ -2610,7 +2829,21 @@ const updateRunner = (delta) => {
       continue;
     }
     if (checkCollision(obstacle, collisionPlayerHeight)) {
-      if (performance.now() < invulnUntil) {
+      const now = performance.now();
+      if (now < invulnUntil || now < bumpProtectUntil) {
+        continue;
+      }
+      // Side bump: the player is still travelling sideways into the target
+      // lane and the obstacle sits in that lane — a frontal hit stays fatal.
+      const sideBump =
+        Math.abs(player.position.x - lanes[currentLane]) > 0.35 &&
+        Math.abs(obstacle.position.x - lanes[currentLane]) < 1.0 &&
+        currentLane !== laneOrigin;
+      if (sideBump) {
+        handleSideBump(obstacle);
+        if (state.value !== 'running') {
+          break;
+        }
         continue;
       }
       if (shieldActive.value) {
@@ -2655,6 +2888,10 @@ const animate = (time) => {
 
   if (state.value === 'running') {
     updateRunner(delta);
+    if (bumpShakeTimer > 0) {
+      bumpShakeTimer -= delta;
+      camera.position.x += (Math.random() - 0.5) * 0.14 * Math.max(0, bumpShakeTimer);
+    }
   } else if (state.value !== 'crashing' && state.value !== 'paused') {
     animateIdle(delta);
   }
@@ -2686,6 +2923,7 @@ watch(selectedSkin, () => {
   if (particleMaterials.skin) {
     particleMaterials.skin.color.set(currentSkin.value.color);
   }
+  applyCharacter();
 });
 
 watch(authUser, () => {
@@ -2742,6 +2980,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', handleVisibility);
   initScene();
   loadVehicleModels();
+  loadCharacterModels();
   handleResize();
   checkAuthGate();
   loadProfile();
@@ -2787,6 +3026,18 @@ onBeforeUnmount(() => {
     }
   });
   obstacleResources.forEach((resource) => resource?.dispose());
+  Object.values(characterTemplates).forEach(({ scene: characterScene }) => {
+    characterScene.traverse((node) => {
+      if (node.isMesh) {
+        node.geometry?.dispose();
+        const materials = Array.isArray(node.material) ? node.material : [node.material];
+        materials.forEach((material) => {
+          material?.map?.dispose();
+          material?.dispose();
+        });
+      }
+    });
+  });
   Object.values(glbTemplates).forEach(({ model }) => {
     model.traverse((node) => {
       if (node.isMesh) {
@@ -2901,6 +3152,49 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   text-shadow: 0 0 18px rgba(255, 190, 70, 0.65);
   animation: nearMissPop 0.95s ease-out forwards;
+}
+
+.bump-warning {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  z-index: 3;
+  pointer-events: none;
+  color: #ffcf3d;
+  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', sans-serif;
+  font-size: 1.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(255, 200, 40, 0.7);
+  animation: bumpShake 1.3s ease-out forwards;
+}
+
+@keyframes bumpShake {
+  0% {
+    transform: translate(-50%, 0) rotate(0deg) scale(0.8);
+    opacity: 0;
+  }
+  10% {
+    transform: translate(calc(-50% - 8px), 0) rotate(-3deg) scale(1.1);
+    opacity: 1;
+  }
+  20% {
+    transform: translate(calc(-50% + 8px), 0) rotate(3deg) scale(1.05);
+  }
+  30% {
+    transform: translate(calc(-50% - 5px), 0) rotate(-2deg) scale(1);
+  }
+  40% {
+    transform: translate(calc(-50% + 5px), 0) rotate(1deg) scale(1);
+  }
+  75% {
+    transform: translate(-50%, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -18px) scale(0.95);
+    opacity: 0;
+  }
 }
 
 .power-row {
