@@ -30,6 +30,11 @@ class RunnerController extends Controller
     private const STEP_DISTANCE = 500;
     private const SCORE_MULTIPLIER = 2.4;
 
+    // Past this distance the run switches to zone 2 (driving), which allows
+    // speeds up to 160 and its own score pacing.
+    private const FINALE_DISTANCE = 10000;
+    private const DRIVE_MAX_SPEED = 160.0;
+
     public function profile(Request $request, RunnerProfileService $service): Response
     {
         $service->ensureDefaultSkins();
@@ -153,13 +158,20 @@ class RunnerController extends Controller
                 $level['speed_step'],
             );
 
-            if ($distance > $maxDistance * 1.2) {
+            // Zone 2 lets skilled players out-earn the runner speed curve for
+            // a while, so grant flat headroom once the finale is reached.
+            $distanceCap = $maxDistance * 1.2
+                + ($distance >= self::FINALE_DISTANCE ? 8000 : 0);
+            if ($distance > $distanceCap) {
                 $cheatReasons[] = 'distance_over_cap';
                 $verified = false;
             }
 
             $expectedSpeed = $level['base_speed']
                 + (int) floor($distance / self::STEP_DISTANCE) * $level['speed_step'];
+            if ($distance >= self::FINALE_DISTANCE) {
+                $expectedSpeed = max($expectedSpeed, self::DRIVE_MAX_SPEED);
+            }
             if ($maxSpeed > $expectedSpeed + 2.5) {
                 $cheatReasons[] = 'speed_over_cap';
                 $verified = false;

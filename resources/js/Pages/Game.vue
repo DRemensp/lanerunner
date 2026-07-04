@@ -157,6 +157,7 @@
     </div>
 
     <div v-if="state === 'running' || state === 'paused'" class="power-row">
+      <div v-if="godModeActive" class="power-chip god">God Mode</div>
       <div v-if="shieldActive" class="power-chip shield">Shield</div>
       <div v-if="magnetTime > 0" class="power-chip magnet">Magnet {{ Math.ceil(magnetTime) }}s</div>
       <div v-if="multiTime > 0" class="power-chip multi">x2 Score {{ Math.ceil(multiTime) }}s</div>
@@ -534,7 +535,15 @@ const FINALE_SCORE = 10000;
 const carLanes = [-3, -1, 1, 3];
 const carPlayerSize = { w: 1.5, h: 1.1, d: 2.6 };
 const driveScoreMinSpeed = 15;
-const driveMaxSpeed = 80;
+const driveMaxSpeed = 160;
+// Hold near top speed for a moment and the car goes god mode: it smashes
+// straight through traffic (cars go flying) and drags a fire trail.
+const godTriggerSpeed = 152;
+const godHoldSeconds = 2.5;
+const godFloorSpeed = 120;
+const godModeActive = ref(false);
+let godHoldTimer = 0;
+let flyingCars = [];
 const finalePhase = ref('none'); // none | approach | walk | enter | drive
 // Dev cheat (F9 during a run): jump straight to the finale trigger. The run
 // is then never persisted, so it cannot flag the account or touch records.
@@ -868,6 +877,16 @@ const sfx = {
     const base = 400 + Math.random() * 80;
     playTone({ freq: base, type: 'square', duration: 0.3, gain: 0.15 });
     playTone({ freq: base * 1.26, type: 'square', duration: 0.3, gain: 0.15 });
+  },
+  godMode: () => {
+    [220, 330, 440, 660, 880].forEach((freq, i) =>
+      playTone({ freq, type: 'sawtooth', duration: 0.22, delay: i * 0.07, gain: 0.22 }),
+    );
+    playNoise({ duration: 0.8, from: 500, to: 3200, gain: 0.2 });
+  },
+  smash: () => {
+    playNoise({ duration: 0.3, from: 1800, to: 200, gain: 0.4 });
+    playTone({ freq: 90, to: 45, type: 'square', duration: 0.25, gain: 0.3 });
   },
   land: () => {
     playNoise({ duration: 0.12, from: 500, to: 140, gain: 0.22 });
@@ -2178,6 +2197,7 @@ const spawnBurst = (position, materialKeys, count, force = 7) => {
       Math.random() * force * 0.9,
       (Math.random() - 0.4) * force,
     );
+    particle.userData.buoyant = false;
     particle.userData.life = 0.55 + Math.random() * 0.35;
     particles.push(particle);
     scene.add(particle);
@@ -2194,7 +2214,11 @@ const updateParticles = (delta) => {
       particles.splice(i, 1);
       continue;
     }
-    particle.userData.velocity.y += gravity * 0.6 * delta;
+    if (particle.userData.buoyant) {
+      particle.userData.velocity.y += 9 * delta;
+    } else {
+      particle.userData.velocity.y += gravity * 0.6 * delta;
+    }
     particle.position.addScaledVector(particle.userData.velocity, delta);
     particle.rotation.x += delta * 6;
     particle.rotation.y += delta * 5;
@@ -2416,6 +2440,7 @@ const initScene = () => {
   particleGeometry = new THREE.BoxGeometry(0.13, 0.13, 0.13);
   particleMaterials.gold = new THREE.MeshBasicMaterial({ color: 0xffcf4d });
   particleMaterials.red = new THREE.MeshBasicMaterial({ color: 0xff3b57 });
+  particleMaterials.flame = new THREE.MeshBasicMaterial({ color: 0xff7a2e });
   particleMaterials.skin = new THREE.MeshBasicMaterial({ color: currentSkin.value.color });
   particleMaterials.dust = new THREE.MeshBasicMaterial({
     color: 0x9fb2cc,
@@ -3201,10 +3226,99 @@ const spawnDriveTraffic = () => {
   vehicle.position.set(
     carLanes[laneIndex],
     vehicle.userData.size.h / 2 + 0.02,
-    -(140 + Math.min(70, speed.value * 0.8)) - Math.random() * 20,
+    -(140 + Math.min(150, speed.value * 0.9)) - Math.random() * 20,
   );
   obstacles.push(vehicle);
   scene.add(vehicle);
+};
+
+const emitFireTrail = () => {
+  const keys = ['flame', 'gold', 'red'];
+  for (let i = 0; i < 3; i += 1) {
+    let particle = particlePool.pop();
+    const key = keys[i % keys.length];
+    if (!particle) {
+      particle = new THREE.Mesh(particleGeometry, particleMaterials[key]);
+    } else {
+      particle.material = particleMaterials[key];
+    }
+    particle.position.set(
+      player.position.x + (Math.random() - 0.5) * 0.9,
+      0.3 + Math.random() * 0.35,
+      player.position.z + 1.3 + Math.random() * 0.5,
+    );
+    particle.scale.setScalar(0.5 + Math.random() * 0.7);
+    particle.userData.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 2,
+      1.5 + Math.random() * 2.5,
+      speed.value * (0.85 + Math.random() * 0.2),
+    );
+    particle.userData.buoyant = true;
+    particle.userData.life = 0.3 + Math.random() * 0.3;
+    particles.push(particle);
+    scene.add(particle);
+  }
+};
+
+const smashObstacle = (obstacle, index) => {
+  obstacles.splice(index, 1);
+  const dir = Math.sign(obstacle.position.x - player.position.x) || (Math.random() < 0.5 ? -1 : 1);
+  obstacle.userData.flyVel = new THREE.Vector3(
+    dir * (6 + Math.random() * 7),
+    9 + Math.random() * 6,
+    -(4 + Math.random() * 10),
+  );
+  obstacle.userData.spin = new THREE.Vector3(
+    (Math.random() - 0.5) * 10,
+    (Math.random() - 0.5) * 8,
+    (Math.random() - 0.5) * 10,
+  );
+  obstacle.userData.flyLife = 1.7;
+  flyingCars.push(obstacle);
+  score.value += 40;
+  sfx.smash();
+  spawnBurst(obstacle.position, ['red', 'gold', 'dust'], 12, 9);
+  bumpShakeTimer = 0.22;
+};
+
+const updateFlyingCars = (delta) => {
+  for (let i = flyingCars.length - 1; i >= 0; i -= 1) {
+    const car = flyingCars[i];
+    car.userData.flyVel.y -= 22 * delta;
+    car.position.addScaledVector(car.userData.flyVel, delta);
+    car.position.z += speed.value * delta;
+    car.rotation.x += car.userData.spin.x * delta;
+    car.rotation.y += car.userData.spin.y * delta;
+    car.rotation.z += car.userData.spin.z * delta;
+    car.userData.flyLife -= delta;
+    if (car.userData.flyLife <= 0 || car.position.y < -6) {
+      scene.remove(car);
+      car.rotation.set(0, 0, 0);
+      const key = car.userData?.poolKey;
+      if (key) {
+        (obstaclePools[key] ||= []).push(car);
+      }
+      flyingCars.splice(i, 1);
+    }
+  }
+};
+
+const clearFlyingCars = () => {
+  flyingCars.forEach((car) => {
+    scene.remove(car);
+    car.rotation.set(0, 0, 0);
+    const key = car.userData?.poolKey;
+    if (key) {
+      (obstaclePools[key] ||= []).push(car);
+    }
+  });
+  flyingCars = [];
+};
+
+const activateGodMode = () => {
+  godModeActive.value = true;
+  sfx.godMode();
+  bumpShakeTimer = 0.3;
 };
 
 const exitFinale = () => {
@@ -3234,6 +3348,9 @@ const exitFinale = () => {
   brakeHeld = false;
   driveTargetSpeed = 24;
   driveSpawnTimer = 0;
+  godModeActive.value = false;
+  godHoldTimer = 0;
+  clearFlyingCars();
 };
 
 const updateRunner = (delta) => {
@@ -3254,13 +3371,30 @@ const updateRunner = (delta) => {
 
   if (driving) {
     if (accelHeld) {
-      driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 22 * delta);
+      driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 26 * delta);
     }
     if (brakeHeld) {
-      driveTargetSpeed = Math.max(0, driveTargetSpeed - 34 * delta);
+      driveTargetSpeed = Math.max(0, driveTargetSpeed - 40 * delta);
     }
     speed.value = THREE.MathUtils.damp(speed.value, driveTargetSpeed, 2.2, delta);
     updateEngineSound();
+
+    if (!godModeActive.value) {
+      if (speed.value >= godTriggerSpeed) {
+        godHoldTimer += delta;
+        if (godHoldTimer >= godHoldSeconds) {
+          activateGodMode();
+        }
+      } else {
+        godHoldTimer = 0;
+      }
+    } else {
+      emitFireTrail();
+      if (speed.value < godFloorSpeed) {
+        godModeActive.value = false;
+        godHoldTimer = 0;
+      }
+    }
     // No points below cruising speed — crawling along earns nothing.
     if (speed.value >= driveScoreMinSpeed) {
       score.value += speed.value * delta * 2.4 * scoreMult;
@@ -3467,7 +3601,10 @@ const updateRunner = (delta) => {
     driveSpawnTimer -= delta;
     if (driveSpawnTimer <= 0) {
       spawnDriveTraffic();
-      driveSpawnTimer = THREE.MathUtils.randFloat(0.7, 1.5) * (26 / Math.max(14, speed.value));
+      driveSpawnTimer = Math.max(
+        0.28,
+        THREE.MathUtils.randFloat(0.7, 1.5) * (26 / Math.max(14, speed.value)),
+      );
     }
   } else if (finalePhase.value === 'none') {
     spawnTimer -= delta;
@@ -3509,7 +3646,7 @@ const updateRunner = (delta) => {
         }
       }
     }
-    if (obstacle.position.z > 18 || obstacle.position.z < -245) {
+    if (obstacle.position.z > 18 || obstacle.position.z < -330) {
       scene.remove(obstacle);
       const key = obstacle.userData?.poolKey;
       if (key) {
@@ -3519,6 +3656,10 @@ const updateRunner = (delta) => {
       continue;
     }
     if (checkCollision(obstacle, collisionPlayerHeight)) {
+      if (godModeActive.value) {
+        smashObstacle(obstacle, i);
+        continue;
+      }
       const now = performance.now();
       if (now < invulnUntil || now < bumpProtectUntil) {
         continue;
@@ -3587,6 +3728,8 @@ const updateRunner = (delta) => {
   if (shieldMesh?.visible) {
     shieldMesh.rotation.y += delta * 1.4;
   }
+
+  updateFlyingCars(delta);
 
   if (egoView) {
     // Hood cam: sit at the top of the windshield so the bonnet stays in
@@ -4102,6 +4245,24 @@ onBeforeUnmount(() => {
 .power-chip.multi {
   color: #9dff8a;
   border-color: rgba(103, 240, 90, 0.6);
+}
+
+.power-chip.god {
+  color: #ffb347;
+  border-color: rgba(255, 140, 40, 0.8);
+  font-weight: 700;
+  animation: godPulse 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes godPulse {
+  from {
+    box-shadow: 0 0 6px rgba(255, 130, 30, 0.4);
+    transform: scale(1);
+  }
+  to {
+    box-shadow: 0 0 22px rgba(255, 150, 50, 0.85);
+    transform: scale(1.06);
+  }
 }
 
 .pause-btn {
