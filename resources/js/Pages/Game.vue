@@ -3006,10 +3006,15 @@ const animate = (time) => {
     const damp = (current, target) => THREE.MathUtils.damp(current, target, 4, delta);
     if (state.value === 'menu' && menuScreen.value === 'level') {
       // Skin preview: swing the camera in front of the runner and spin them.
-      camera.position.x = damp(camera.position.x, -1.4);
-      camera.position.y = damp(camera.position.y, 1.5);
-      camera.position.z = damp(camera.position.z, -1.4);
-      lookAtTarget.set(-1.05, 0.95, 2);
+      // The camera faces +z here, so screen-right is world -x: aiming left of
+      // the player pushes them to the right half of the screen. On portrait
+      // phones the menu card fills the width, so frame the runner below it
+      // instead by aiming above their head.
+      const portrait = camera.aspect < 1;
+      camera.position.x = damp(camera.position.x, portrait ? 0 : -1.4);
+      camera.position.y = damp(camera.position.y, portrait ? 1.7 : 1.5);
+      camera.position.z = damp(camera.position.z, portrait ? -2.4 : -1.4);
+      lookAtTarget.set(portrait ? 0 : 1.05, portrait ? 1.95 : 0.95, 2);
       camera.lookAt(lookAtTarget);
       if (player) {
         player.rotation.y += delta * 0.7;
