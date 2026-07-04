@@ -579,16 +579,17 @@ const currentPlayerHeight = () => (isSliding ? playerSize.h * slideScale : playe
 const getGroundCenterForSurface = (surfaceY, playerHeight) => surfaceY + playerHeight / 2;
 const currentGroundHeight = () => currentGroundCenter;
 
-const startRun = async () => {
+const startRun = () => {
   if (!scene || state.value === 'crashing') return;
   unlockAudio();
   menuScreen.value = 'main';
   resetRun();
-  runToken.value = null;
-  if (authUser.value) {
-    await startRunSession();
-  }
   state.value = 'running';
+  if (authUser.value) {
+    // Fire and forget: the run token arrives while the player is already
+    // running instead of blocking the start on a slow network round-trip.
+    startRunSession();
+  }
 };
 
 const openMenuScreen = (screen) => {
@@ -1123,14 +1124,22 @@ const selectSkin = async (skin) => {
   }
 };
 
+let runSessionSeq = 0;
+
 const startRunSession = async () => {
+  const seq = ++runSessionSeq;
   try {
     const response = await axios.post('/api/runner/run/start', {
       level: selectedLevel.value,
     });
-    runToken.value = response.data.run_id || null;
+    // Ignore responses that arrive after another run has started since.
+    if (seq === runSessionSeq) {
+      runToken.value = response.data.run_id || null;
+    }
   } catch (error) {
-    runToken.value = null;
+    if (seq === runSessionSeq) {
+      runToken.value = null;
+    }
   }
 };
 
