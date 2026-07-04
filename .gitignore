@@ -33,3 +33,21 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Bubblewrap / Android TWA build artifacts (keystore must NEVER be committed)
+/android.keystore
+*.apk
+*.aab
+*.idsig
+/.gradle
+/gradle
+/gradlew
+/gradlew.bat
+/build.gradle
+/gradle.properties
+/build
+/app/build
+/app/src
+/app/build.gradle
+/manifest-checksum.txt
+/store_icon.png

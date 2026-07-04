@@ -3,9 +3,9 @@
         "relation": ["delegate_permission/common.handle_all_urls"],
         "target": {
             "namespace": "android_app",
-            "package_name": "com.lanerunner.app",
+            "package_name": "com.on_forge.lanerunner.twa",
             "sha256_cert_fingerprints": [
-                "REPLACE_WITH_SHA256_FINGERPRINT_FROM_BUBBLEWRAP_OR_PLAY_CONSOLE"
+                "AB:D8:35:5E:A5:29:84:09:72:1C:32:8E:79:14:5C:80:FF:87:8B:1D:48:D8:14:AE:05:3F:B1:C1:51:7F:96:D4"
             ]
         }
     }
