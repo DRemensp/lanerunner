@@ -256,6 +256,13 @@
             </button>
             <Link
               v-if="authUser"
+              class="menu-link"
+              href="/profile"
+            >
+              Account
+            </Link>
+            <Link
+              v-if="authUser"
               class="menu-link danger"
               href="/logout"
               method="post"
