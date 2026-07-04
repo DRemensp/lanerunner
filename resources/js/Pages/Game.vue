@@ -536,6 +536,7 @@
         </div>
         <div class="death-actions">
           <button class="primary-btn" @click="startRun" type="button">Run Again</button>
+          <button class="ghost-btn" @click="shareScore" type="button">{{ shareLabel }}</button>
           <button class="ghost-btn" @click="backToMenu" type="button">Return to Menu</button>
         </div>
       </div>
@@ -639,6 +640,7 @@ let trafficWave = null;
 let coinRushEndZ = null;
 let nextMilestone = 2500;
 let smashStreak = 0;
+let recordCelebrated = false;
 
 const cameraBase = {
   y: 5.5,
@@ -1008,6 +1010,25 @@ const closeLoginPrompt = () => {
 const backToMenu = () => {
   state.value = 'menu';
   menuScreen.value = 'main';
+};
+
+const shareLabel = ref('Share');
+const shareScore = async () => {
+  const text = `I scored ${Math.floor(score.value)} points in Lane Runner — can you beat it?`;
+  const url = 'https://lanerunner.on-forge.com/game';
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: 'Lane Runner', text, url });
+      return;
+    }
+    await navigator.clipboard.writeText(`${text} ${url}`);
+    shareLabel.value = 'Copied!';
+    setTimeout(() => {
+      shareLabel.value = 'Share';
+    }, 1600);
+  } catch (error) {
+    // Share sheet dismissed — nothing to do.
+  }
 };
 
 const toggleDriveCamera = () => {
@@ -1806,6 +1827,7 @@ const resetRun = () => {
   nearMissCombo.value = 0;
   nearMissComboAt = -Infinity;
   smashStreak = 0;
+  recordCelebrated = false;
   trafficWave = null;
   coinRushEndZ = null;
   eventTimer = 8;
@@ -5910,6 +5932,17 @@ const animate = (time) => {
 
   if (state.value === 'running') {
     updateRunner(delta);
+    if (
+      !recordCelebrated &&
+      !devRun.value &&
+      bestScore.value > 400 &&
+      score.value > bestScore.value
+    ) {
+      recordCelebrated = true;
+      showEventToast('New Record!', `${Math.floor(bestScore.value)} beaten — keep going!`, 2400);
+      sfx.powerup();
+      spawnBurst(player.position.clone(), ['gold', 'skin'], 14, 6);
+    }
     if (bumpShakeTimer > 0) {
       bumpShakeTimer -= delta;
       camera.position.x += (Math.random() - 0.5) * 0.14 * Math.max(0, bumpShakeTimer);
