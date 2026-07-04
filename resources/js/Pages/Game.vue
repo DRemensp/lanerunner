@@ -116,8 +116,22 @@
       </div>
       <div class="hud-block">
         <div class="hud-label">Speed</div>
-        <div class="hud-value">{{ speed.toFixed(1) }}</div>
+        <div
+          class="hud-value"
+          :class="{ low: finalePhase === 'drive' && speed < 15 }"
+        >
+          {{ speed.toFixed(1) }}
+        </div>
       </div>
+    </div>
+
+    <div v-if="finaleToast && state === 'running'" class="finale-toast">
+      <div class="finale-toast-title">District Cleared</div>
+      <div class="finale-toast-sub">You found the end of the line</div>
+    </div>
+
+    <div v-if="driveHint && state === 'running'" class="drive-hint">
+      Zone 2 — W/&#8593; gas, S/&#8595; brake. No points below speed 15.
     </div>
 
     <div v-if="nearMissToast && state === 'running'" class="near-miss">
@@ -471,6 +485,34 @@ const playerSize = { w: 0.9, h: 1.4, d: 0.8 };
 const coyoteTimeMs = 50;
 const groundedEpsilon = 0.06;
 
+// Secret finale: at FINALE_SCORE the district ends in an open plaza, the
+// runner boards a car and zone 2 begins — a four-lane road (two lanes each
+// direction) where the only controls are steering, gas, and brake.
+const FINALE_SCORE = 10000;
+const carLanes = [-3, -1, 1, 3];
+const carPlayerSize = { w: 1.5, h: 1.1, d: 2.6 };
+const driveScoreMinSpeed = 15;
+const driveMaxSpeed = 42;
+const finalePhase = ref('none'); // none | approach | walk | enter | drive
+const finaleToast = ref(false);
+const driveHint = ref(false);
+let finaleTriggered = false;
+let finaleTimer = 0;
+let finaleToastTimer;
+let driveHintTimer;
+let plaza = null;
+let plazaCar = null;
+let carVisual = null;
+let carWheels = [];
+let driveTargetSpeed = 24;
+let accelHeld = false;
+let brakeHeld = false;
+let driveSpawnTimer = 0;
+let musicDuckTarget = 1;
+let musicDuckCurrent = 1;
+
+const activeLanes = () => (finalePhase.value === 'drive' ? carLanes : lanes);
+
 let currentSurfaceY = 0;
 let currentGroundCenter = groundY;
 let lastGroundedAt = 0;
@@ -575,7 +617,12 @@ const currentSkin = computed(() =>
   skinOptions.value.find((skin) => skin.id === selectedSkin.value) || skinOptions.value[0],
 );
 
-const currentPlayerHeight = () => (isSliding ? playerSize.h * slideScale : playerSize.h);
+const currentPlayerHeight = () =>
+  finalePhase.value === 'drive'
+    ? carPlayerSize.h
+    : isSliding
+      ? playerSize.h * slideScale
+      : playerSize.h;
 const getGroundCenterForSurface = (surfaceY, playerHeight) => surfaceY + playerHeight / 2;
 const currentGroundHeight = () => currentGroundCenter;
 
@@ -754,6 +801,14 @@ const sfx = {
     playNoise({ duration: 0.16, from: 420, to: 120, gain: 0.32 });
     playTone({ freq: 150, to: 85, type: 'square', duration: 0.14, gain: 0.2 });
   },
+  door: () => {
+    playNoise({ duration: 0.09, from: 900, to: 300, gain: 0.22 });
+    playTone({ freq: 110, to: 70, type: 'sine', duration: 0.12, gain: 0.28 });
+  },
+  engineStart: () => {
+    playTone({ freq: 55, to: 140, type: 'sawtooth', duration: 0.7, gain: 0.22 });
+    playNoise({ duration: 0.5, from: 300, to: 900, gain: 0.12, delay: 0.15 });
+  },
   land: () => {
     playNoise({ duration: 0.12, from: 500, to: 140, gain: 0.22 });
     playTone({ freq: 95, to: 55, type: 'sine', duration: 0.12, gain: 0.25 });
@@ -797,7 +852,7 @@ const initAudio = () => {
 };
 
 const applyAudioVolume = () => {
-  const base = isMuted.value ? 0 : audioVolume.value;
+  const base = (isMuted.value ? 0 : audioVolume.value) * musicDuckCurrent;
   if (activeAudio) {
     activeAudio.volume = base;
   }
@@ -875,7 +930,7 @@ const setActiveTrack = async (track, { recordHistory = true } = {}) => {
   if (!track) return;
   initAudio();
   const token = ++fadeToken;
-  const baseVolume = isMuted.value ? 0 : audioVolume.value;
+  const baseVolume = (isMuted.value ? 0 : audioVolume.value) * musicDuckCurrent;
   const nextAudio = inactiveAudio;
   nextAudio.src = track.src;
   nextAudio.currentTime = 0;
@@ -1144,6 +1199,7 @@ const startRunSession = async () => {
 };
 
 const resetRun = () => {
+  exitFinale();
   score.value = 0;
   runCoins.value = 0;
   speed.value = currentLevel.value.baseSpeed;
@@ -1245,6 +1301,7 @@ const resetFloor = () => {
 
 const moveLeft = () => {
   if (state.value !== 'running') return;
+  if (finalePhase.value === 'walk' || finalePhase.value === 'enter') return;
   const next = Math.max(0, currentLane - 1);
   if (next !== currentLane) {
     laneOrigin = currentLane;
@@ -1254,7 +1311,8 @@ const moveLeft = () => {
 
 const moveRight = () => {
   if (state.value !== 'running') return;
-  const next = Math.min(lanes.length - 1, currentLane + 1);
+  if (finalePhase.value === 'walk' || finalePhase.value === 'enter') return;
+  const next = Math.min(activeLanes().length - 1, currentLane + 1);
   if (next !== currentLane) {
     laneOrigin = currentLane;
     currentLane = next;
@@ -1263,6 +1321,7 @@ const moveRight = () => {
 
 const attemptJump = () => {
   if (state.value !== 'running' || !player) return;
+  if (finalePhase.value !== 'none' && finalePhase.value !== 'approach') return;
   if (isSliding) {
     stopSlide();
   }
@@ -1279,6 +1338,7 @@ const attemptJump = () => {
 
 const requestSlide = () => {
   if (state.value !== 'running' || !player) return;
+  if (finalePhase.value !== 'none' && finalePhase.value !== 'approach') return;
   if (isSliding) {
     slideTimer = slideDuration;
     return;
@@ -1327,6 +1387,31 @@ const handleKeydown = (event) => {
     return;
   }
 
+  if (finalePhase.value === 'drive') {
+    switch (event.code) {
+      case 'ArrowLeft':
+      case 'KeyA':
+        moveLeft();
+        break;
+      case 'ArrowRight':
+      case 'KeyD':
+        moveRight();
+        break;
+      case 'ArrowUp':
+      case 'KeyW':
+      case 'Space':
+        accelHeld = true;
+        break;
+      case 'ArrowDown':
+      case 'KeyS':
+        brakeHeld = true;
+        break;
+      default:
+        break;
+    }
+    return;
+  }
+
   switch (event.code) {
     case 'ArrowLeft':
     case 'KeyA':
@@ -1344,6 +1429,22 @@ const handleKeydown = (event) => {
     case 'ArrowDown':
     case 'KeyS':
       requestSlide();
+      break;
+    default:
+      break;
+  }
+};
+
+const handleKeyup = (event) => {
+  switch (event.code) {
+    case 'ArrowUp':
+    case 'KeyW':
+    case 'Space':
+      accelHeld = false;
+      break;
+    case 'ArrowDown':
+    case 'KeyS':
+      brakeHeld = false;
       break;
     default:
       break;
@@ -1368,6 +1469,15 @@ const triggerSwipe = (dx, dy) => {
       moveRight();
     } else {
       moveLeft();
+    }
+    return true;
+  }
+
+  if (finalePhase.value === 'drive') {
+    if (dy < 0) {
+      driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 7);
+    } else {
+      driveTargetSpeed = Math.max(0, driveTargetSpeed - 7);
     }
     return true;
   }
@@ -2034,6 +2144,8 @@ const initScene = () => {
   const laneDashMaterial = new THREE.MeshBasicMaterial({ color: 0xcfd8ea });
   const edgeLineGeometry = new THREE.BoxGeometry(0.07, 0.02, segmentLength);
   const edgeLineMaterial = new THREE.MeshBasicMaterial({ color: 0x2ee5ff });
+  const centerLineGeometry = new THREE.BoxGeometry(0.06, 0.02, segmentLength);
+  const centerLineMaterial = new THREE.MeshBasicMaterial({ color: 0xffc94d });
   const curbGeometry = new THREE.BoxGeometry(0.34, 0.26, segmentLength);
   const curbMaterial = new THREE.MeshLambertMaterial({ color: 0x39465e });
   const sidewalkGeometry = new THREE.BoxGeometry(2.6, 0.26, segmentLength);
@@ -2106,12 +2218,22 @@ const initScene = () => {
     floor.rotation.x = -Math.PI / 2;
     segment.add(floor);
 
+    const zone1Marks = new THREE.Group();
+    const zone2Marks = new THREE.Group();
     for (let side = -1; side <= 1; side += 2) {
       for (let dash = 0; dash < 5; dash += 1) {
         const laneDash = new THREE.Mesh(laneDashGeometry, laneDashMaterial);
         laneDash.position.set(side, 0.01, -segmentLength / 2 + 2 + dash * 4);
-        segment.add(laneDash);
+        zone1Marks.add(laneDash);
+
+        const zone2Dash = new THREE.Mesh(laneDashGeometry, laneDashMaterial);
+        zone2Dash.position.set(side * 2, 0.01, -segmentLength / 2 + 2 + dash * 4);
+        zone2Marks.add(zone2Dash);
       }
+
+      const centerLine = new THREE.Mesh(centerLineGeometry, centerLineMaterial);
+      centerLine.position.set(side * 0.09, 0.011, 0);
+      zone2Marks.add(centerLine);
 
       const edgeLine = new THREE.Mesh(edgeLineGeometry, edgeLineMaterial);
       edgeLine.position.set(side * 3.15, 0.012, 0);
@@ -2125,6 +2247,10 @@ const initScene = () => {
       sidewalk.position.set(side * 4.92, 0.13, 0);
       segment.add(sidewalk);
     }
+    zone2Marks.visible = false;
+    segment.add(zone1Marks, zone2Marks);
+    segment.userData.zone1Marks = zone1Marks;
+    segment.userData.zone2Marks = zone2Marks;
 
     for (let side = -1; side <= 1; side += 2) {
       for (let b = 0; b < 2; b += 1) {
@@ -2256,6 +2382,7 @@ const initScene = () => {
 
   window.addEventListener('resize', handleResize);
   window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('keyup', handleKeyup);
   window.addEventListener('touchstart', handleTouchStart, { passive: true });
   window.addEventListener('touchmove', handleTouchMove, { passive: false });
   window.addEventListener('touchend', handleTouchEnd, { passive: true });
@@ -2681,14 +2808,15 @@ const spawnRow = () => {
 
 const checkCollision = (obstacle, playerHeight) => {
   const oSize = obstacle.userData.size;
+  const box = finalePhase.value === 'drive' ? carPlayerSize : playerSize;
   const dx = Math.abs(player.position.x - obstacle.position.x);
   const dy = Math.abs(player.position.y - obstacle.position.y);
   const dz = Math.abs(player.position.z - obstacle.position.z);
 
   if (
-    dx >= (playerSize.w + oSize.w) / 2 ||
+    dx >= (box.w + oSize.w) / 2 ||
     dy >= (playerHeight + oSize.h) / 2 ||
-    dz >= (playerSize.d + oSize.d) / 2
+    dz >= (box.d + oSize.d) / 2
   ) {
     return false;
   }
@@ -2745,8 +2873,262 @@ const handleSideBump = (obstacle) => {
   triggerBumpToast();
 };
 
+const setRoadZone = (zone) => {
+  floorSegments.forEach((segment) => {
+    if (segment.userData.zone1Marks) {
+      segment.userData.zone1Marks.visible = zone === 1;
+    }
+    if (segment.userData.zone2Marks) {
+      segment.userData.zone2Marks.visible = zone === 2;
+    }
+  });
+};
+
+const buildPlaza = () => {
+  plaza = new THREE.Group();
+
+  const ground = new THREE.Mesh(
+    new THREE.BoxGeometry(46, 0.12, 70),
+    new THREE.MeshLambertMaterial({ color: 0x1a2438 }),
+  );
+  ground.position.y = 0.06;
+  plaza.add(ground);
+
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(5.6, 6, 40),
+    new THREE.MeshBasicMaterial({ color: 0x2ee5ff, side: THREE.DoubleSide }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(0, 0.135, -4);
+  plaza.add(ring);
+
+  const trunkGeo = new THREE.CylinderGeometry(0.16, 0.22, 1.2, 7);
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3526 });
+  const crownGeo = new THREE.IcosahedronGeometry(1.05, 0);
+  const crownMat = new THREE.MeshLambertMaterial({ color: 0x1d4d3b });
+  for (let i = 0; i < 10; i += 1) {
+    const angle = (i / 10) * Math.PI * 2;
+    const radius = 13 + Math.random() * 6;
+    const tree = new THREE.Group();
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    trunk.position.y = 0.72;
+    tree.add(trunk);
+    const crown = new THREE.Mesh(crownGeo, crownMat);
+    crown.position.y = 1.9;
+    crown.rotation.y = Math.random() * Math.PI;
+    tree.add(crown);
+    tree.position.set(Math.cos(angle) * radius, 0, -4 + Math.sin(angle) * radius * 0.8);
+    plaza.add(tree);
+  }
+
+  const postGeo = new THREE.BoxGeometry(0.1, 2.6, 0.1);
+  const postMat = new THREE.MeshLambertMaterial({ color: 0x24304a });
+  const orbGeo = new THREE.SphereGeometry(0.18, 10, 8);
+  const orbMat = new THREE.MeshBasicMaterial({ color: 0xffdfa6 });
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2 + 0.3;
+    const post = new THREE.Group();
+    const pole = new THREE.Mesh(postGeo, postMat);
+    pole.position.y = 1.3;
+    post.add(pole);
+    const orb = new THREE.Mesh(orbGeo, orbMat);
+    orb.position.y = 2.7;
+    post.add(orb);
+    post.position.set(Math.cos(angle) * 8, 0.1, -4 + Math.sin(angle) * 8);
+    plaza.add(post);
+  }
+
+  // The getaway car, waiting with its lights on.
+  const template = glbTemplates['sedan-sports'] || glbTemplates.sedan || glbTemplates.race;
+  if (template) {
+    plazaCar = template.model.clone(true);
+    plazaCar.rotation.y = Math.PI;
+    plazaCar.position.set(carLanes[2], template.size.h / 2 + 0.12, -4);
+  } else {
+    const { mesh } = obstacleBuilders['low-car']();
+    plazaCar = mesh;
+    plazaCar.rotation.y = Math.PI;
+    plazaCar.position.set(carLanes[2], 0.57 + 0.12, -4);
+  }
+  plaza.add(plazaCar);
+
+  plaza.position.z = -170;
+  scene.add(plaza);
+};
+
+const disposePlaza = () => {
+  if (!plaza) return;
+  if (plazaCar && plazaCar.parent === plaza) {
+    // The car clone shares geometry/materials with the GLB templates —
+    // detach it so the traversal below never disposes shared resources.
+    plaza.remove(plazaCar);
+  }
+  scene.remove(plaza);
+  plaza.traverse((node) => {
+    if (node.isMesh) {
+      node.geometry?.dispose();
+      const materials = Array.isArray(node.material) ? node.material : [node.material];
+      materials.forEach((material) => material?.dispose());
+    }
+  });
+  plaza = null;
+  plazaCar = null;
+};
+
+const triggerFinale = () => {
+  finaleTriggered = true;
+  finalePhase.value = 'approach';
+  buildPlaza();
+  musicDuckTarget = 0.3;
+  finaleToast.value = true;
+  if (finaleToastTimer) {
+    clearTimeout(finaleToastTimer);
+  }
+  finaleToastTimer = setTimeout(() => {
+    finaleToast.value = false;
+  }, 4200);
+};
+
+const startDriving = () => {
+  finalePhase.value = 'drive';
+  carVisual = plazaCar;
+  carWheels = [];
+  if (carVisual) {
+    plaza.remove(carVisual);
+    carVisual.position.set(0, 0, 0);
+    carVisual.rotation.set(0, Math.PI, 0);
+    player.add(carVisual);
+    carVisual.traverse((node) => {
+      if (node.name && node.name.startsWith('wheel')) {
+        carWheels.push(node);
+      }
+    });
+  }
+  player.visible = true;
+  if (activeCharacter) {
+    activeCharacter.root.visible = false;
+  }
+  proceduralParts.forEach((part) => {
+    part.visible = false;
+  });
+  player.position.y = carPlayerSize.h / 2 + 0.02;
+  currentGroundCenter = player.position.y;
+  playerVelocityY = 0;
+  isSliding = false;
+  player.scale.y = 1;
+  currentLane = 2;
+  laneOrigin = 2;
+  driveTargetSpeed = 24;
+  speed.value = 2;
+  driveSpawnTimer = 1.6;
+  clearObstacles();
+  clearCoins();
+  clearPowerups();
+  setRoadZone(2);
+  musicDuckTarget = 0.6;
+  sfx.engineStart();
+  driveHint.value = true;
+  if (driveHintTimer) {
+    clearTimeout(driveHintTimer);
+  }
+  driveHintTimer = setTimeout(() => {
+    driveHint.value = false;
+  }, 5200);
+};
+
+const updateFinaleWalk = (delta) => {
+  speed.value = 0;
+
+  if (finalePhase.value === 'enter') {
+    finaleTimer -= delta;
+    if (finaleTimer <= 0) {
+      startDriving();
+    }
+    return;
+  }
+
+  const carWorldZ = plaza.position.z + plazaCar.position.z;
+  const targetZ = carWorldZ + 2.1;
+  player.position.x = THREE.MathUtils.damp(player.position.x, carLanes[2], 4, delta);
+  player.position.z = Math.max(targetZ, player.position.z - 3.4 * delta);
+
+  if (activeCharacter) {
+    setCharacterAction('run');
+    if (activeCharacter.actions.run) {
+      activeCharacter.actions.run.paused = false;
+    }
+    activeCharacter.mixer.timeScale = 0.9;
+    activeCharacter.mixer.update(delta);
+  }
+
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x * 0.3, 4, delta);
+  lookAtTarget.set(player.position.x * 0.5, 1.0, player.position.z - 8);
+  camera.lookAt(lookAtTarget);
+
+  if (player.position.z <= targetZ + 0.05) {
+    finalePhase.value = 'enter';
+    finaleTimer = 0.7;
+    player.visible = false;
+    sfx.door();
+  }
+};
+
+const spawnDriveTraffic = () => {
+  const oncoming = Math.random() < 0.45;
+  const lanePair = oncoming ? [0, 1] : [2, 3];
+  const laneIndex = lanePair[Math.floor(Math.random() * lanePair.length)];
+  const isTruck = Math.random() < 0.12;
+  const vehicle = getObstacle(isTruck ? 'tall' : 'low', isTruck ? 'tall-any' : 'car-any');
+  const ownSpeed = oncoming ? 10 + Math.random() * 12 : 8 + Math.random() * 10;
+  vehicle.userData.vz = oncoming ? ownSpeed : -ownSpeed;
+  vehicle.rotation.y = oncoming ? 0 : Math.PI;
+  if (vehicle.userData.beams) {
+    vehicle.userData.beams.visible = oncoming;
+  }
+  vehicle.position.set(
+    carLanes[laneIndex],
+    vehicle.userData.size.h / 2 + 0.02,
+    -150 - Math.random() * 20,
+  );
+  obstacles.push(vehicle);
+  scene.add(vehicle);
+};
+
+const exitFinale = () => {
+  finaleTriggered = false;
+  finalePhase.value = 'none';
+  finaleTimer = 0;
+  finaleToast.value = false;
+  driveHint.value = false;
+  if (carVisual) {
+    player.remove(carVisual);
+    carVisual = null;
+  }
+  carWheels = [];
+  if (activeCharacter) {
+    activeCharacter.root.visible = true;
+  } else {
+    proceduralParts.forEach((part) => {
+      part.visible = true;
+    });
+  }
+  disposePlaza();
+  setRoadZone(1);
+  musicDuckTarget = 1;
+  accelHeld = false;
+  brakeHeld = false;
+  driveTargetSpeed = 24;
+  driveSpawnTimer = 0;
+};
+
 const updateRunner = (delta) => {
+  if (finalePhase.value === 'walk' || finalePhase.value === 'enter') {
+    updateFinaleWalk(delta);
+    return;
+  }
+
   const level = currentLevel.value;
+  const driving = finalePhase.value === 'drive';
   if (magnetTime.value > 0) {
     magnetTime.value = Math.max(0, magnetTime.value - delta);
   }
@@ -2754,75 +3136,120 @@ const updateRunner = (delta) => {
     multiTime.value = Math.max(0, multiTime.value - delta);
   }
   const scoreMult = multiTime.value > 0 ? 2 : 1;
-  score.value += speed.value * delta * 2.4 * scoreMult;
-  const stepIndex = Math.floor(score.value / level.stepDistance);
-  const targetSpeed = level.baseSpeed + stepIndex * level.speedStep;
-  speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, 4, delta);
 
-  const targetX = lanes[currentLane];
-  player.position.x = THREE.MathUtils.damp(player.position.x, targetX, 12, delta);
+  if (driving) {
+    if (accelHeld) {
+      driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 22 * delta);
+    }
+    if (brakeHeld) {
+      driveTargetSpeed = Math.max(0, driveTargetSpeed - 34 * delta);
+    }
+    speed.value = THREE.MathUtils.damp(speed.value, driveTargetSpeed, 2.2, delta);
+    // No points below cruising speed — crawling along earns nothing.
+    if (speed.value >= driveScoreMinSpeed) {
+      score.value += speed.value * delta * 2.4 * scoreMult;
+    }
+  } else if (finalePhase.value === 'approach') {
+    const plazaNear = plaza && plaza.position.z > -30;
+    speed.value = THREE.MathUtils.damp(speed.value, plazaNear ? 0 : 18, plazaNear ? 1.8 : 0.9, delta);
+    if (plaza && plaza.position.z > -6 && speed.value < 0.6) {
+      finalePhase.value = 'walk';
+      clearObstacles();
+      clearCoins();
+      clearPowerups();
+    }
+  } else {
+    score.value += speed.value * delta * 2.4 * scoreMult;
+    const stepIndex = Math.floor(score.value / level.stepDistance);
+    const targetSpeed = level.baseSpeed + stepIndex * level.speedStep;
+    speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, 4, delta);
+    if (!finaleTriggered && score.value >= FINALE_SCORE) {
+      triggerFinale();
+    }
+  }
+
+  const targetX = activeLanes()[currentLane];
+  player.position.x = THREE.MathUtils.damp(player.position.x, targetX, driving ? 7 : 12, delta);
 
   const playerHeight = currentPlayerHeight();
-  const prevY = player.position.y;
-  playerVelocityY += gravity * delta;
-  player.position.y += playerVelocityY * delta;
-
-  let surfaceY = 0;
-  const prevBottom = prevY - playerHeight / 2;
-  const nextBottom = player.position.y - playerHeight / 2;
-  let bestTop = -Infinity;
-  for (const obstacle of obstacles) {
-    const oSize = obstacle.userData.size;
-    const dx = Math.abs(player.position.x - obstacle.position.x);
-    const dz = Math.abs(player.position.z - obstacle.position.z);
-    if (dx >= (playerSize.w + oSize.w) / 2 || dz >= (playerSize.d + oSize.d) / 2) {
-      continue;
-    }
-    const top = obstacle.position.y + oSize.h / 2;
-    const landing =
-      playerVelocityY <= 0 &&
-      prevBottom >= top - 0.05 &&
-      nextBottom <= top + 0.12;
-    if (landing && top > bestTop) {
-      bestTop = top;
-    }
-  }
-  if (bestTop > -Infinity) {
-    surfaceY = bestTop;
-  }
-
-  const targetGround = getGroundCenterForSurface(surfaceY, playerHeight);
-  currentSurfaceY = surfaceY;
-  currentGroundCenter = targetGround;
-  if (player.position.y <= targetGround) {
-    if (playerVelocityY < -6) {
-      sfx.land();
-      spawnBurst(
-        new THREE.Vector3(player.position.x, targetGround - playerHeight / 2 + 0.06, player.position.z),
-        ['dust'],
-        5,
-        2.5,
-      );
-    }
-    player.position.y = targetGround;
+  if (driving) {
+    player.position.y = carPlayerSize.h / 2 + 0.02;
+    currentGroundCenter = player.position.y;
     playerVelocityY = 0;
-    lastGroundedAt = performance.now();
-    if (pendingSlide && !isSliding) {
-      pendingSlide = false;
-      requestSlide();
-    }
+    // Ease the car from the plaza back onto the running line.
+    player.position.z = THREE.MathUtils.damp(player.position.z, 2, 0.9, delta);
+    player.rotation.z = THREE.MathUtils.damp(
+      player.rotation.z,
+      (player.position.x - targetX) * 0.08,
+      10,
+      delta,
+    );
   }
 
-  if (isSliding) {
-    slideTimer -= delta;
-    if (slideTimer <= 0) {
-      stopSlide();
+  const prevY = player.position.y;
+  if (!driving) {
+    playerVelocityY += gravity * delta;
+    player.position.y += playerVelocityY * delta;
+  }
+
+  if (!driving) {
+    let surfaceY = 0;
+    const prevBottom = prevY - playerHeight / 2;
+    const nextBottom = player.position.y - playerHeight / 2;
+    let bestTop = -Infinity;
+    for (const obstacle of obstacles) {
+      const oSize = obstacle.userData.size;
+      const dx = Math.abs(player.position.x - obstacle.position.x);
+      const dz = Math.abs(player.position.z - obstacle.position.z);
+      if (dx >= (playerSize.w + oSize.w) / 2 || dz >= (playerSize.d + oSize.d) / 2) {
+        continue;
+      }
+      const top = obstacle.position.y + oSize.h / 2;
+      const landing =
+        playerVelocityY <= 0 &&
+        prevBottom >= top - 0.05 &&
+        nextBottom <= top + 0.12;
+      if (landing && top > bestTop) {
+        bestTop = top;
+      }
     }
+    if (bestTop > -Infinity) {
+      surfaceY = bestTop;
+    }
+
+    const targetGround = getGroundCenterForSurface(surfaceY, playerHeight);
+    currentSurfaceY = surfaceY;
+    currentGroundCenter = targetGround;
+    if (player.position.y <= targetGround) {
+      if (playerVelocityY < -6) {
+        sfx.land();
+        spawnBurst(
+          new THREE.Vector3(player.position.x, targetGround - playerHeight / 2 + 0.06, player.position.z),
+          ['dust'],
+          5,
+          2.5,
+        );
+      }
+      player.position.y = targetGround;
+      playerVelocityY = 0;
+      lastGroundedAt = performance.now();
+      if (pendingSlide && !isSliding) {
+        pendingSlide = false;
+        requestSlide();
+      }
+    }
+
+    if (isSliding) {
+      slideTimer -= delta;
+      if (slideTimer <= 0) {
+        stopSlide();
+      }
+    }
+
+    animateRunner(delta);
   }
 
   const collisionPlayerHeight = currentPlayerHeight();
-
-  animateRunner(delta);
 
   camera.fov = THREE.MathUtils.damp(
     camera.fov,
@@ -2838,6 +3265,20 @@ const updateRunner = (delta) => {
       segment.position.z -= segmentLength * floorSegments.length;
     }
   });
+
+  if (plaza) {
+    plaza.position.z += speed.value * delta;
+    if (driving && plaza.position.z > 110) {
+      disposePlaza();
+    }
+  }
+
+  if (driving && carVisual) {
+    const wheelSpin = (speed.value * delta) / 0.27;
+    carWheels.forEach((wheel) => {
+      wheel.rotation.x -= wheelSpin;
+    });
+  }
 
   for (let i = coins.length - 1; i >= 0; i -= 1) {
     const coin = coins[i];
@@ -2899,24 +3340,32 @@ const updateRunner = (delta) => {
     }
   }
 
-  spawnTimer -= delta;
-  if (spawnTimer <= 0) {
-    spawnRow();
-    const spacingFactor = 1 + Math.min(1.2, speed.value / 24);
-    spawnTimer = THREE.MathUtils.randFloat(0.5, 1.5) * (14 / speed.value) * spacingFactor;
+  if (driving) {
+    driveSpawnTimer -= delta;
+    if (driveSpawnTimer <= 0) {
+      spawnDriveTraffic();
+      driveSpawnTimer = THREE.MathUtils.randFloat(0.7, 1.5) * (26 / Math.max(14, speed.value));
+    }
+  } else if (finalePhase.value === 'none') {
+    spawnTimer -= delta;
+    if (spawnTimer <= 0) {
+      spawnRow();
+      const spacingFactor = 1 + Math.min(1.2, speed.value / 24);
+      spawnTimer = THREE.MathUtils.randFloat(0.5, 1.5) * (14 / speed.value) * spacingFactor;
+    }
   }
 
   for (let i = obstacles.length - 1; i >= 0; i -= 1) {
     const obstacle = obstacles[i];
     const vz = obstacle.userData.vz || 0;
     obstacle.position.z += (speed.value + vz) * delta;
+    if (vz !== 0 && obstacle.userData.wheels) {
+      const spin = (Math.abs(vz) * delta) / 0.27;
+      obstacle.userData.wheels.forEach((wheel) => {
+        wheel.rotation.x += spin;
+      });
+    }
     if (vz > 0) {
-      if (obstacle.userData.wheels) {
-        const spin = (vz * delta) / 0.27;
-        obstacle.userData.wheels.forEach((wheel) => {
-          wheel.rotation.x += spin;
-        });
-      }
       if (!obstacle.userData.passed && obstacle.position.z > player.position.z + 1.2) {
         obstacle.userData.passed = true;
         if (state.value === 'running') {
@@ -2937,7 +3386,7 @@ const updateRunner = (delta) => {
         }
       }
     }
-    if (obstacle.position.z > 18) {
+    if (obstacle.position.z > 18 || obstacle.position.z < -230) {
       scene.remove(obstacle);
       const key = obstacle.userData?.poolKey;
       if (key) {
@@ -2953,9 +3402,10 @@ const updateRunner = (delta) => {
       }
       // Side bump: the player is still travelling sideways into the target
       // lane and the obstacle sits in that lane — a frontal hit stays fatal.
+      const laneX = activeLanes()[currentLane];
       const sideBump =
-        Math.abs(player.position.x - lanes[currentLane]) > 0.35 &&
-        Math.abs(obstacle.position.x - lanes[currentLane]) < 1.0 &&
+        Math.abs(player.position.x - laneX) > 0.35 &&
+        Math.abs(obstacle.position.x - laneX) < 1.0 &&
         currentLane !== laneOrigin;
       if (sideBump) {
         handleSideBump(obstacle);
@@ -3058,6 +3508,11 @@ const animate = (time) => {
     updateParticles(delta);
   }
 
+  if (Math.abs(musicDuckCurrent - musicDuckTarget) > 0.005) {
+    musicDuckCurrent = THREE.MathUtils.damp(musicDuckCurrent, musicDuckTarget, 1.2, delta);
+    applyAudioVolume();
+  }
+
   renderer.render(scene, camera);
 };
 
@@ -3149,9 +3604,11 @@ onBeforeUnmount(() => {
   if (animationId) {
     cancelAnimationFrame(animationId);
   }
-  if (nearMissTimer) {
-    clearTimeout(nearMissTimer);
-  }
+  [nearMissTimer, bumpToastTimer, finaleToastTimer, driveHintTimer].forEach((timer) => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  });
   if (pointerUnlockHandler) {
     window.removeEventListener('pointerdown', pointerUnlockHandler);
   }
@@ -3168,7 +3625,9 @@ onBeforeUnmount(() => {
   }
   window.removeEventListener('resize', handleResize);
   window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('keyup', handleKeyup);
   window.removeEventListener('touchstart', handleTouchStart);
+  disposePlaza();
   window.removeEventListener('touchmove', handleTouchMove);
   window.removeEventListener('touchend', handleTouchEnd);
   if (renderer && renderer.domElement && canvasWrap.value) {
@@ -3309,6 +3768,57 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   text-shadow: 0 0 18px rgba(255, 190, 70, 0.65);
   animation: nearMissPop 0.95s ease-out forwards;
+}
+
+.hud-value.low {
+  color: #ff6b6e;
+}
+
+.finale-toast {
+  position: absolute;
+  top: 26%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+  text-align: center;
+  animation: fadeIn 1.2s ease;
+}
+
+.finale-toast-title {
+  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', sans-serif;
+  font-size: 2.6rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #7dfce0;
+  text-shadow: 0 0 26px rgba(60, 255, 200, 0.6);
+}
+
+.finale-toast-sub {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(210, 240, 255, 0.75);
+}
+
+.drive-hint {
+  position: absolute;
+  bottom: calc(48px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(8, 12, 22, 0.78);
+  border: 1px solid rgba(90, 140, 255, 0.4);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(220, 235, 255, 0.9);
+  white-space: nowrap;
+  animation: fadeIn 0.5s ease;
 }
 
 .bump-warning {
