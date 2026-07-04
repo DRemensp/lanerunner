@@ -139,6 +139,17 @@
       <div class="finale-toast-sub">{{ eventToast.sub }}</div>
     </div>
 
+    <div
+      v-if="state === 'running' && finalePhase === 'drive' && score >= RAMP_SCORE && !godModeActive"
+      class="speed-goal"
+      :class="{ ok: speed >= godTriggerSpeed }"
+    >
+      <div class="speed-goal-title">
+        {{ speed >= godTriggerSpeed ? 'HOLD IT!' : 'SPEED UP!' }}
+      </div>
+      <div class="speed-goal-value">{{ Math.round(speed) }} / {{ godTriggerSpeed }}</div>
+    </div>
+
     <div v-if="driveHint && state === 'running'" class="drive-hint">
       {{ driveHintText }}
     </div>
@@ -581,6 +592,7 @@ const eventToast = ref(null);
 let eventToastTimer;
 let eventTimer = 8;
 let trafficWave = null;
+let coinRushEndZ = null;
 let nextMilestone = 2500;
 
 const cameraBase = {
@@ -1575,6 +1587,7 @@ const resetRun = () => {
   laneOrigin = 1;
   bumpToast.value = false;
   trafficWave = null;
+  coinRushEndZ = null;
   eventTimer = 8;
   nextMilestone = 2500;
   eventToast.value = null;
@@ -3327,17 +3340,38 @@ const startWrongWayDriver = () => {
   showEventToast('Wrong-Way Driver', 'Get out of your lane!');
 };
 
-// A snaking trail of coins weaving across all three lanes.
+// A snaking trail of coins weaving across all three lanes. The trail spawns
+// deeper than any in-flight row and normal spawns pause until it has passed,
+// so following it is always safe. Two jump arcs curve over their own crate.
+const coinRushStep = 2.3;
 const startCoinRush = () => {
-  const baseZ = -(80 + Math.min(45, speed.value));
-  for (let k = 0; k < 18; k += 1) {
+  const baseZ = -(120 + Math.min(45, speed.value));
+  const count = 20;
+  const arcCenters = [8, 15];
+  const arcLift = [0, 1.2, 1.9, 1.2, 0];
+  const snapToLane = (x) =>
+    lanes.reduce((best, lane) => (Math.abs(lane - x) < Math.abs(best - x) ? lane : best), lanes[0]);
+  const arcX = arcCenters.map((c) => snapToLane(Math.sin(c * 0.45) * 2));
+
+  for (let k = 0; k < count; k += 1) {
+    const arcIndex = arcCenters.findIndex((c) => Math.abs(k - c) <= 2);
+    const x = arcIndex >= 0 ? arcX[arcIndex] : Math.sin(k * 0.45) * 2;
+    const lift = arcIndex >= 0 ? arcLift[k - arcCenters[arcIndex] + 2] : 0;
     const coin = getCoin();
-    coin.position.set(Math.sin(k * 0.45) * 2, 1.0, baseZ - k * 2.3);
+    coin.position.set(x, 1.0 + lift, baseZ - k * coinRushStep);
     coin.rotation.y = Math.random() * Math.PI;
     coins.push(coin);
     scene.add(coin);
   }
-  showEventToast('Coin Rush', 'Weave for the gold!');
+  arcCenters.forEach((c, i) => {
+    const obstacle = getObstacle('low', Math.random() < 0.5 ? 'low-crate' : 'low-barrel');
+    obstacle.rotation.y = 0;
+    obstacle.position.set(arcX[i], obstacle.userData.size.h / 2 + 0.02, baseZ - c * coinRushStep);
+    obstacles.push(obstacle);
+    scene.add(obstacle);
+  });
+  coinRushEndZ = baseZ - (count - 1) * coinRushStep;
+  showEventToast('Coin Rush', 'Follow the trail — jump the arcs!');
 };
 
 // Oncoming car that swerves into a neighbouring lane mid-approach.
@@ -3401,6 +3435,14 @@ const updateZoneEvents = (delta) => {
       }
     }
     return;
+  }
+  if (coinRushEndZ !== null) {
+    coinRushEndZ += speed.value * delta;
+    if (coinRushEndZ > player.position.z + 2) {
+      coinRushEndZ = null;
+    } else {
+      return;
+    }
   }
   if (finaleTriggered) return;
   eventTimer -= delta;
@@ -5349,9 +5391,9 @@ const updateRunner = (delta) => {
     }
   } else if (finalePhase.value === 'none') {
     updateZoneEvents(delta);
-    // Normal rows pause while a traffic wave rolls through, so the wave's
-    // single gap is never blocked by a random spawn.
-    if (!trafficWave) {
+    // Normal rows pause while a traffic wave or coin-rush trail rolls
+    // through, so their safe route is never blocked by a random spawn.
+    if (!trafficWave && coinRushEndZ === null) {
       spawnTimer -= delta;
       if (spawnTimer <= 0) {
         spawnRow();
@@ -5972,6 +6014,59 @@ onBeforeUnmount(() => {
 .event-toast .finale-toast-sub {
   font-size: 0.7rem;
   color: rgba(255, 230, 190, 0.8);
+}
+
+.speed-goal {
+  position: absolute;
+  top: calc(76px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+  text-align: center;
+  padding: 7px 20px 9px;
+  border-radius: 14px;
+  background: rgba(22, 10, 6, 0.55);
+  border: 1px solid rgba(255, 160, 70, 0.55);
+  animation: speedGoalPulse 0.85s ease-in-out infinite;
+}
+
+.speed-goal-title {
+  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', sans-serif;
+  font-size: 1.35rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: #ffb056;
+  text-shadow: 0 0 18px rgba(255, 165, 70, 0.6);
+}
+
+.speed-goal-value {
+  margin-top: 2px;
+  font-size: 0.85rem;
+  letter-spacing: 0.2em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 228, 195, 0.9);
+}
+
+.speed-goal.ok {
+  border-color: rgba(90, 255, 170, 0.6);
+  background: rgba(6, 22, 14, 0.55);
+  animation: none;
+}
+
+.speed-goal.ok .speed-goal-title {
+  color: #5cffa8;
+  text-shadow: 0 0 18px rgba(80, 255, 170, 0.6);
+}
+
+@keyframes speedGoalPulse {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.07);
+  }
 }
 
 .drive-hint {
