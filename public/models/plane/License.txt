@@ -7,3 +7,27 @@ License: Creative Commons Attribution 4.0 International (CC-BY 4.0)
 https://creativecommons.org/licenses/by/4.0/
 
 Attribution: "Cesium Air" by Cesium GS, Inc., used under CC-BY 4.0.
+
+============================================
+
+Sky Jet (sky-jet.glb)
+
+Created by Poly by Google
+Source: https://poly.pizza/m/3B3Pa6BHXn1
+
+License: Creative Commons Attribution 3.0 (CC-BY)
+https://creativecommons.org/licenses/by/3.0/
+
+Attribution: "Jet" by Poly by Google, used under CC-BY.
+
+============================================
+
+Prop Plane (prop-plane.glb)
+
+Created by Poly by Google
+Source: https://poly.pizza/m/0ZVPPr6X6gM
+
+License: Creative Commons Attribution 3.0 (CC-BY)
+https://creativecommons.org/licenses/by/3.0/
+
+Attribution: "Airplane" by Poly by Google, used under CC-BY.

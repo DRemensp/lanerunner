@@ -772,7 +772,7 @@ let launchVy = 0;
 let launchTimer = 0;
 let dockingPlane = null;
 let planeVisual = null;
-let planeTemplate = null;
+const planeTemplates = {};
 let planeMixer = null;
 let planeVelX = 0;
 let planeVelY = 0;
@@ -2322,6 +2322,10 @@ const characterSkinMap = {
   dusk: 'character-d',
   volt: 'character-e',
   nova: 'character-f',
+  astro: 'character-astro',
+  ninja: 'character-ninja',
+  robo: 'character-robot',
+  alien: 'character-alien',
 };
 const characterKeys = [
   'character-a',
@@ -2330,6 +2334,10 @@ const characterKeys = [
   'character-d',
   'character-e',
   'character-f',
+  'character-astro',
+  'character-ninja',
+  'character-robot',
+  'character-alien',
 ];
 
 const characterKeyForSkin = (skin) => {
@@ -2364,15 +2372,24 @@ const applyCharacter = (skin = null) => {
   root.position.set(0, -playerSize.h / 2 - template.rawMinY * scale, 0);
 
   const mixer = new THREE.AnimationMixer(root);
+  // Kenney names clips plainly ('sprint'); Quaternius prefixes them with the
+  // armature ('CharacterArmature|Run', 'AlienArmature|Alien_Run').
+  const stripClipName = (name) => name.split('|').pop().toLowerCase();
   const findClip = (...names) => {
     for (const name of names) {
-      const clip = THREE.AnimationClip.findByName(template.clips, name);
+      const clip = template.clips.find((c) => stripClipName(c.name) === name);
       if (clip) return clip;
     }
     return null;
   };
-  const runClip = findClip('sprint', 'walk');
-  const idleClip = findClip('idle', 'static');
+  const runClip =
+    findClip('sprint', 'run', 'walk') ||
+    template.clips.find((c) => stripClipName(c.name).includes('run')) ||
+    null;
+  const idleClip =
+    findClip('idle', 'idle_neutral', 'static') ||
+    template.clips.find((c) => stripClipName(c.name).includes('idle')) ||
+    null;
   const actions = {
     run: runClip ? mixer.clipAction(runClip) : null,
     idle: idleClip ? mixer.clipAction(idleClip) : null,
@@ -2435,6 +2452,13 @@ const loadCharacterModels = () => {
     loader.load(
       `/models/characters/${key}.glb`,
       (gltf) => {
+        // Skinned meshes can vanish to frustum culling once bones move the
+        // mesh away from its bind-pose bounds.
+        gltf.scene.traverse((node) => {
+          if (node.isSkinnedMesh) {
+            node.frustumCulled = false;
+          }
+        });
         const box = new THREE.Box3().setFromObject(gltf.scene);
         characterTemplates[key] = {
           scene: gltf.scene,
@@ -4626,24 +4650,39 @@ const buildFallbackPlaneModel = () => {
   return group;
 };
 
+const planeDefs = [
+  { key: 'cesium', file: 'cesium-air.glb' },
+  { key: 'jet', file: 'sky-jet.glb' },
+  { key: 'prop', file: 'prop-plane.glb' },
+];
+
 const loadPlaneModel = () => {
   const loader = new GLTFLoader();
-  loader.load(
-    '/models/plane/cesium-air.glb',
-    (gltf) => {
-      const model = gltf.scene;
-      const rawSize = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
-      const scale = 5.5 / rawSize.z;
-      model.scale.setScalar(scale);
-      const box = new THREE.Box3().setFromObject(model);
-      model.position.sub(box.getCenter(new THREE.Vector3()));
-      planeTemplate = { model, clips: gltf.animations };
-    },
-    undefined,
-    () => {
-      planeTemplate = { model: buildFallbackPlaneModel(), clips: [] };
-    },
-  );
+  planeDefs.forEach((def) => {
+    loader.load(
+      `/models/plane/${def.file}`,
+      (gltf) => {
+        const model = gltf.scene;
+        const rawSize = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+        const scale = 5.5 / Math.max(rawSize.z, rawSize.x);
+        model.scale.setScalar(scale);
+        const box = new THREE.Box3().setFromObject(model);
+        model.position.sub(box.getCenter(new THREE.Vector3()));
+        planeTemplates[def.key] = { model, clips: gltf.animations };
+      },
+      undefined,
+      () => {
+        if (def.key === 'cesium') {
+          planeTemplates.cesium = { model: buildFallbackPlaneModel(), clips: [] };
+        }
+      },
+    );
+  });
+};
+
+const activePlaneTemplate = () => {
+  const key = (selectedPlaneSlug.value || '').replace(/^plane-/, '');
+  return planeTemplates[key] || planeTemplates.cesium || null;
 };
 
 const triggerRamp = () => {
@@ -4660,12 +4699,13 @@ const triggerRamp = () => {
 
 const buildDockingPlane = () => {
   dockingPlane = new THREE.Group();
-  if (planeTemplate) {
-    planeTemplate.model.rotation.set(0, Math.PI, 0);
-    dockingPlane.add(planeTemplate.model);
-    if (planeTemplate.clips.length) {
-      planeMixer = new THREE.AnimationMixer(planeTemplate.model);
-      planeTemplate.clips.forEach((clip) => planeMixer.clipAction(clip).play());
+  const template = activePlaneTemplate();
+  if (template) {
+    template.model.rotation.set(0, Math.PI, 0);
+    dockingPlane.add(template.model);
+    if (template.clips.length) {
+      planeMixer = new THREE.AnimationMixer(template.model);
+      template.clips.forEach((clip) => planeMixer.clipAction(clip).play());
     }
   } else {
     dockingPlane.add(buildFallbackPlaneModel());
@@ -5949,8 +5989,8 @@ onBeforeUnmount(() => {
       }
     });
   }
-  if (planeTemplate) {
-    planeTemplate.model.traverse((node) => {
+  Object.values(planeTemplates).forEach((template) => {
+    template.model.traverse((node) => {
       if (node.isMesh) {
         node.geometry?.dispose();
         const materials = Array.isArray(node.material) ? node.material : [node.material];
@@ -5960,7 +6000,7 @@ onBeforeUnmount(() => {
         });
       }
     });
-  }
+  });
   window.removeEventListener('touchmove', handleTouchMove);
   window.removeEventListener('touchend', handleTouchEnd);
   if (renderer && renderer.domElement && canvasWrap.value) {

@@ -26,3 +26,19 @@
 	• Twitter:	 twitter.com/KenneyNL
 	• BlueSky:	 kenney.bsky.social
 	• Instagram: instagram.com/kenney_nl
+============================================
+
+Quaternius Characters (character-astro.glb, character-ninja.glb,
+character-robot.glb, character-alien.glb)
+
+Created by Quaternius (https://quaternius.com)
+Downloaded via Poly Pizza:
+- Astronaut: https://poly.pizza/m/3hC2i0CTuO
+- Ninja: https://poly.pizza/m/xGYmeDpfTu
+- Robot Enemy: https://poly.pizza/m/1gNo5ezvmr
+- Alien: https://poly.pizza/m/HYUUkdugoP
+
+License: Creative Commons Zero (CC0 / Public Domain)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Credit is not required but appreciated: 'Quaternius' (quaternius.com)

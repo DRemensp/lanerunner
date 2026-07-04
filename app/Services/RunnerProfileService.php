@@ -180,6 +180,55 @@ class RunnerProfileService
             'price_coins' => 0,
             'is_default' => false,
         ],
+        [
+            'slug' => 'plane-prop',
+            'name' => 'Prop Plane',
+            'category' => 'plane',
+            'color' => '#ff8b4d',
+            'price_coins' => 1000,
+            'is_default' => false,
+        ],
+        [
+            'slug' => 'plane-jet',
+            'name' => 'Sky Jet',
+            'category' => 'plane',
+            'color' => '#cfd9e4',
+            'price_coins' => 1500,
+            'is_default' => false,
+        ],
+        // Quaternius CC0 characters (skinned + animated, non-blocky).
+        [
+            'slug' => 'astro',
+            'name' => 'Astronaut',
+            'category' => 'runner',
+            'color' => '#e9eef5',
+            'price_coins' => 1000,
+            'is_default' => false,
+        ],
+        [
+            'slug' => 'ninja',
+            'name' => 'Ninja',
+            'category' => 'runner',
+            'color' => '#3a4252',
+            'price_coins' => 1100,
+            'is_default' => false,
+        ],
+        [
+            'slug' => 'robo',
+            'name' => 'Robot',
+            'category' => 'runner',
+            'color' => '#9fb7c9',
+            'price_coins' => 1200,
+            'is_default' => false,
+        ],
+        [
+            'slug' => 'alien',
+            'name' => 'Alien',
+            'category' => 'runner',
+            'color' => '#7dff5e',
+            'price_coins' => 1500,
+            'is_default' => false,
+        ],
     ];
 
     public function ensureDefaultSkins(): Skin
