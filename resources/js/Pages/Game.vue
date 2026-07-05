@@ -712,6 +712,38 @@ import { Link, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import {
+  cameraBase,
+  levelOptions,
+  lanes,
+  groundY,
+  gravity,
+  jumpVelocity,
+  slideScale,
+  slideDuration,
+  dropBoost,
+  swipeThreshold,
+  swipeTimeLimit,
+  segmentLength,
+  playerSize,
+  coyoteTimeMs,
+  groundedEpsilon,
+  bumpWindowMs,
+  FINALE_SCORE,
+  carLanes,
+  carPlayerSize,
+  driveScoreMinSpeed,
+  driveMaxSpeed,
+  godTriggerSpeed,
+  godHoldSeconds,
+  godFloorSpeed,
+  RAMP_SCORE,
+  envSettings,
+  nightDistricts,
+  rowPatterns,
+} from '../game/constants';
+import { createAudioSystem } from '../game/audio';
+import { createMissions, missionRewards } from '../game/missions';
 
 const canvasWrap = ref(null);
 
@@ -737,12 +769,6 @@ const inventoryItems = ref([]);
 const menuScreen = ref('main');
 const showLoginPrompt = ref(false);
 const showAuthGate = ref(false);
-const showPlaylist = ref(false);
-const audioVolume = ref(0.7);
-const isMuted = ref(false);
-const isPaused = ref(false);
-const currentTrackName = ref('');
-const showTrackToast = ref(false);
 const cameraZoom = ref(1);
 // Handedness decides which side the gas/brake pedals sit on: the dominant
 // hand stays free for lane swipes, pedals go to the other thumb.
@@ -770,7 +796,6 @@ let lastBumpAt = -Infinity;
 let bumpProtectUntil = 0;
 let bumpShakeTimer = 0;
 let laneOrigin = 1;
-const bumpWindowMs = 5000;
 
 // Zone-1 event director: periodically breaks up the random rows with scripted
 // moments (traffic-jam walls, wrong-way drivers, coin runs, lane drifters).
@@ -789,18 +814,55 @@ let smashStreak = 0;
 let recordCelebrated = false;
 let driveEventTimer = 10;
 
-const cameraBase = {
-  y: 5.5,
-  z: 8,
-};
-
-// Speed jumps once per 2,500-point checkpoint (5x the old per-500 step), so
-// every checkpoint is a distinct tempo change.
-const levelOptions = [
-  { id: 'rush', label: 'City Rush', baseSpeed: 12, stepDistance: 2500, speedStep: 10 },
-  { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 2500, speedStep: 20 },
-];
 const selectedLevel = ref(levelOptions[0].id);
+
+// Audio subsystem (music playlist, SFX synth, engine drone) — see game/audio.js.
+const {
+  audioVolume,
+  isMuted,
+  isPaused,
+  currentTrackName,
+  showTrackToast,
+  showPlaylist,
+  playlistTracks,
+  sfx,
+  updateEngineSound,
+  silenceEngineSound,
+  isEngineActive,
+  initAudio,
+  loadAudioPrefs,
+  setMusicDuck,
+  updateMusicDuck,
+  unlockAudio,
+  syncPlaylist,
+  handleAudioButton,
+  playNext,
+  playPrev,
+  togglePause,
+  toggleTrack,
+  playSpecific,
+  disposeAudio,
+} = createAudioSystem({ state, speed });
+
+// Daily missions + local daily stats — see game/missions.js.
+const {
+  dailyMissions,
+  claimedMissions,
+  completedMissionCount,
+  missionProgress,
+  claimMission,
+  loadDailyStats,
+  recordDailyStats,
+} = createMissions({
+  isGuest,
+  showLoginPrompt,
+  shopMessage,
+  totalCoins,
+  runCoins,
+  runNearMisses,
+  score,
+  sfx,
+});
 
 const loadHandednessPref = () => {
   isTouchDevice.value =
@@ -869,62 +931,14 @@ const markZoneSeen = (zone) => {
 const selectedCarSlug = ref(localStorage.getItem('runner_car_slug') || 'car-sedan-sports');
 const selectedPlaneSlug = ref(localStorage.getItem('runner_plane_slug') || 'plane-cesium');
 
-const buildTrack = (id, title, file) => ({
-  id,
-  title,
-  src: encodeURI(`/audio/${file}`),
-  enabled: true,
-});
-
-const tracks = ref([
-  buildTrack('new-school', 'The New School', 'Nick Petrov - The New School.mp3'),
-  buildTrack('golden', 'Golden', 'DEVMO - Golden.mp3'),
-  buildTrack('bring-it-back', 'Bring It Back', 'Notize - Bring It Back.mp3'),
-  buildTrack('soul-swingin', 'Soul Swingin', 'Richard Farrell - Soul Swingin.mp3'),
-  buildTrack('sugarsweet', 'Sugarsweet', 'Zach Sorgen - Sugarsweet.mp3'),
-]);
-
-const playlistTracks = computed(() => tracks.value);
-
-const lanes = [-2, 0, 2];
-const groundY = 0.7;
-const gravity = -28;
-const jumpVelocity = 12;
-const slideScale = 0.55;
-const slideDuration = 0.6;
-const dropBoost = 1.6;
-const swipeThreshold = 40;
-const swipeTimeLimit = 650;
-const segmentLength = 20;
-const playerSize = { w: 0.9, h: 1.4, d: 0.8 };
-const coyoteTimeMs = 50;
-const groundedEpsilon = 0.06;
-
-// Secret finale: at FINALE_SCORE the district ends in an open plaza, the
-// runner boards a car and zone 2 begins — a four-lane road (two lanes each
-// direction) where the only controls are steering, gas, and brake.
-const FINALE_SCORE = 10000;
-const carLanes = [-3, -1, 1, 3];
-const carPlayerSize = { w: 1.5, h: 1.1, d: 2.6 };
-const driveScoreMinSpeed = 15;
-const driveMaxSpeed = 160;
-// Hold near top speed for a moment and the car goes god mode: it smashes
-// straight through traffic (cars go flying) and drags a fire trail.
-// God mode: hold a medium-high speed for a sustained stretch (not a short
-// top-speed burst). Dropping below the trigger drains progress at 1.5x
-// instead of resetting — challenging, but never cheap.
-const godTriggerSpeed = 110;
-const godHoldSeconds = 20;
-const godFloorSpeed = 100;
+// Gameplay tuning constants (physics, zone thresholds, palettes) live in
+// ../game/constants.js and are imported above.
 const godHoldProgress = ref(0);
 const godModeActive = ref(false);
 let godHoldTimer = 0;
 let flyingCars = [];
 
-// Zone 3: at RAMP_SCORE while in god mode, the road ends in a jump ramp into
-// the sunrise over water; mid-air the car slams into a plane's cargo hold and
-// the player flies on — free movement, no lanes, bright daylight.
-const RAMP_SCORE = 20000;
+// Zone 3 runtime state (trigger score: RAMP_SCORE in game/constants.js).
 let rampTriggered = false;
 let ramp = null;
 let oceanGroup = null;
@@ -965,30 +979,6 @@ let fireTimer = 0;
 let enemyAssets = null;
 
 let envMode = 'night'; // night | sunrise | day
-const envSettings = {
-  night: {
-    bg: 0x05070f, fog: 0x05070f, fogNear: 40, fogFar: 165,
-    hemi: 1.6, dir: 1.7, hemiSky: 0x9fc1ff, dirColor: 0xffffff,
-  },
-  sunrise: {
-    bg: 0x2e1f45, fog: 0xb06a4a, fogNear: 60, fogFar: 320,
-    hemi: 1.9, dir: 2.3, hemiSky: 0xffc49a, dirColor: 0xffd9a8,
-  },
-  day: {
-    bg: 0x8ecdf0, fog: 0xaee0f8, fogNear: 90, fogFar: 460,
-    hemi: 2.6, dir: 3.0, hemiSky: 0xeaf6ff, dirColor: 0xfff4e0,
-  },
-};
-
-// Zone-1 districts: each milestone nudges the night palette, so a long run
-// visibly travels through different parts of the city. lerpEnvironment
-// blends the change in smoothly.
-const nightDistricts = [
-  { bg: 0x05070f, fog: 0x05070f, hemiSky: 0x9fc1ff },
-  { bg: 0x0a0618, fog: 0x120a26, hemiSky: 0xbfa8ff },
-  { bg: 0x04120f, fog: 0x07211c, hemiSky: 0x8fffd9 },
-  { bg: 0x120609, fog: 0x220b12, hemiSky: 0xff9fb0 },
-];
 let districtIndex = 0;
 const applyDistrict = (index) => {
   districtIndex = index % nightDistricts.length;
@@ -1018,8 +1008,6 @@ let driveTargetSpeed = 24;
 let accelHeld = false;
 let brakeHeld = false;
 let driveSpawnTimer = 0;
-let musicDuckTarget = 1;
-let musicDuckCurrent = 1;
 
 const activeLanes = () => (finalePhase.value === 'drive' ? carLanes : lanes);
 
@@ -1047,16 +1035,6 @@ let isSliding = false;
 let slideTimer = 0;
 let touchStart = null;
 let pendingSlide = false;
-let audioPrimary;
-let audioSecondary;
-let activeAudio;
-let inactiveAudio;
-let currentTrack = null;
-let shuffleQueue = [];
-let playHistory = [];
-let audioUnlocked = false;
-let fadeToken = 0;
-let toastTimer;
 let pointerUnlockHandler;
 
 let floorSegments = [];
@@ -1071,11 +1049,6 @@ let coinMaterial;
 let powerups = [];
 const powerupPool = { shield: [], magnet: [], multi: [] };
 let powerupAssets = null;
-
-let sfxCtx = null;
-let sfxGain = null;
-let engineOsc = null;
-let engineGain = null;
 
 let particles = [];
 let particlePool = [];
@@ -1096,33 +1069,6 @@ let skylineMesh;
 const obstaclePools = {};
 const obstacleResources = [];
 let obstacleAssets = null;
-
-const rowPatterns = [
-  ['low', 'none', 'none'],
-  ['none', 'low', 'none'],
-  ['none', 'none', 'low'],
-  ['over', 'none', 'none'],
-  ['none', 'over', 'none'],
-  ['none', 'none', 'over'],
-  ['low', 'over', 'none'],
-  ['over', 'low', 'none'],
-  ['low', 'none', 'over'],
-  ['over', 'none', 'low'],
-  ['none', 'low', 'over'],
-  ['none', 'over', 'low'],
-  ['low', 'tall', 'tall'],
-  ['tall', 'low', 'tall'],
-  ['tall', 'tall', 'low'],
-  ['over', 'tall', 'tall'],
-  ['tall', 'over', 'tall'],
-  ['tall', 'tall', 'over'],
-  ['low', 'over', 'tall'],
-  ['over', 'low', 'tall'],
-  ['tall', 'low', 'over'],
-  ['tall', 'over', 'low'],
-  ['low', 'tall', 'over'],
-  ['over', 'tall', 'low'],
-];
 
 const lookAtTarget = new THREE.Vector3();
 
@@ -1266,111 +1212,6 @@ const ensureSelectedSkin = () => {
   }
 };
 
-// --- Daily missions: three per day, deterministically seeded from the date.
-// Progress is tracked locally; claiming rewards goes through the backend
-// (one claim per slot per day, fixed rewards).
-const missionRewards = [60, 80, 100];
-const missionPool = [
-  { id: 'coins', text: (n) => `Collect ${n} coins today`, targets: [80, 130, 200], stat: 'coins' },
-  { id: 'near', text: (n) => `${n} near misses today`, targets: [10, 18, 30], stat: 'nearMisses' },
-  { id: 'score', text: (n) => `Reach ${n} points in one run`, targets: [2000, 3500, 5500], stat: 'bestScore' },
-  { id: 'runs', text: (n) => `Finish ${n} runs today`, targets: [3, 5, 8], stat: 'runs' },
-];
-const todayKey = () => new Date().toISOString().slice(0, 10);
-const mulberry32 = (seed) => {
-  let a = seed | 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-};
-const hashString = (input) => {
-  let h = 0;
-  for (const ch of input) h = (h * 31 + ch.charCodeAt(0)) | 0;
-  return h;
-};
-
-const dailyMissions = computed(() => {
-  const rng = mulberry32(hashString(todayKey()));
-  const pool = [...missionPool];
-  // Fisher-Yates with the seeded rng keeps the pick deterministic per day.
-  for (let i = pool.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(rng() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, 3).map((mission, slot) => {
-    const target = mission.targets[Math.floor(rng() * mission.targets.length)];
-    return {
-      key: `${todayKey()}-${mission.id}`,
-      label: mission.text(target),
-      stat: mission.stat,
-      target,
-      slot,
-    };
-  });
-});
-
-const emptyDailyStats = () => ({
-  date: todayKey(),
-  coins: 0,
-  nearMisses: 0,
-  bestScore: 0,
-  runs: 0,
-});
-const dailyStats = ref(emptyDailyStats());
-const loadDailyStats = () => {
-  try {
-    const raw = JSON.parse(localStorage.getItem('runner_daily_stats') || 'null');
-    if (raw && raw.date === todayKey()) {
-      dailyStats.value = { ...emptyDailyStats(), ...raw };
-    }
-  } catch (error) {
-    // Corrupt storage — start fresh.
-  }
-};
-const recordDailyStats = () => {
-  if (dailyStats.value.date !== todayKey()) {
-    dailyStats.value = emptyDailyStats();
-  }
-  const stats = dailyStats.value;
-  stats.coins += runCoins.value;
-  stats.nearMisses += runNearMisses.value;
-  stats.bestScore = Math.max(stats.bestScore, Math.floor(score.value));
-  stats.runs += 1;
-  localStorage.setItem('runner_daily_stats', JSON.stringify(stats));
-};
-
-const missionProgress = (mission) => Math.floor(dailyStats.value[mission.stat] || 0);
-const claimedMissions = ref([]);
-const completedMissionCount = computed(
-  () =>
-    dailyMissions.value.filter(
-      (mission, index) =>
-        missionProgress(mission) >= mission.target && !claimedMissions.value.includes(index),
-    ).length,
-);
-
-const claimMission = async (index) => {
-  shopMessage.value = '';
-  if (isGuest.value) {
-    showLoginPrompt.value = true;
-    return;
-  }
-  try {
-    const response = await axios.post('/api/runner/mission/claim', { mission_index: index });
-    totalCoins.value = response.data.coins ?? totalCoins.value;
-    claimedMissions.value = Array.isArray(response.data.claimed)
-      ? response.data.claimed.map((i) => Number(i))
-      : claimedMissions.value;
-    shopMessage.value = `Reward claimed — +${missionRewards[index]} coins!`;
-    sfx.powerup();
-  } catch (error) {
-    shopMessage.value = error.response?.data?.message || 'Claim failed.';
-  }
-};
-
 const loadGuestPrefs = () => {
   const storedBest = Number.parseInt(localStorage.getItem('runner_best_distance') || '0', 10);
   bestScore.value = Number.isFinite(storedBest) ? storedBest : 0;
@@ -1383,450 +1224,6 @@ const loadGuestPrefs = () => {
   }
   inventoryItems.value = [];
   ensureSelectedSkin();
-};
-
-const loadAudioPrefs = () => {
-  const storedVolume = Number.parseFloat(localStorage.getItem('runner_audio_volume') || '0.7');
-  audioVolume.value = Number.isFinite(storedVolume) ? storedVolume : 0.7;
-  isMuted.value = localStorage.getItem('runner_audio_muted') === '1';
-
-  const disabled = localStorage.getItem('runner_audio_disabled');
-  if (disabled) {
-    const disabledIds = JSON.parse(disabled);
-    if (Array.isArray(disabledIds)) {
-      tracks.value = tracks.value.map((track) => ({
-        ...track,
-        enabled: !disabledIds.includes(track.id),
-      }));
-    }
-  }
-};
-
-const persistAudioPrefs = () => {
-  localStorage.setItem('runner_audio_volume', String(audioVolume.value));
-  localStorage.setItem('runner_audio_muted', isMuted.value ? '1' : '0');
-  const disabledIds = tracks.value.filter((track) => !track.enabled).map((track) => track.id);
-  localStorage.setItem('runner_audio_disabled', JSON.stringify(disabledIds));
-};
-
-// Tiny WebAudio synth for game SFX — no audio assets needed.
-const getSfxContext = () => {
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) return null;
-  if (!sfxCtx) {
-    sfxCtx = new Ctx();
-    sfxGain = sfxCtx.createGain();
-    sfxGain.connect(sfxCtx.destination);
-  }
-  if (sfxCtx.state === 'suspended') {
-    sfxCtx.resume().catch(() => {});
-  }
-  sfxGain.gain.value = isMuted.value ? 0 : audioVolume.value * 0.5;
-  return sfxCtx;
-};
-
-const playTone = ({ freq = 440, to = null, type = 'sine', duration = 0.12, delay = 0, gain = 0.4 }) => {
-  const ctx = getSfxContext();
-  if (!ctx) return;
-  const t0 = ctx.currentTime + delay;
-  const osc = ctx.createOscillator();
-  const env = ctx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t0);
-  if (to) {
-    osc.frequency.exponentialRampToValueAtTime(to, t0 + duration);
-  }
-  env.gain.setValueAtTime(0.0001, t0);
-  env.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
-  env.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
-  osc.connect(env).connect(sfxGain);
-  osc.start(t0);
-  osc.stop(t0 + duration + 0.05);
-};
-
-const playNoise = ({ duration = 0.3, from = 1200, to = 200, gain = 0.35, delay = 0 }) => {
-  const ctx = getSfxContext();
-  if (!ctx) return;
-  const t0 = ctx.currentTime + delay;
-  const length = Math.max(1, Math.floor(ctx.sampleRate * duration));
-  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < length; i += 1) {
-    data[i] = (Math.random() * 2 - 1) * (1 - i / length);
-  }
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(from, t0);
-  filter.frequency.exponentialRampToValueAtTime(Math.max(40, to), t0 + duration);
-  const env = ctx.createGain();
-  env.gain.setValueAtTime(gain, t0);
-  env.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
-  source.connect(filter).connect(env).connect(sfxGain);
-  source.start(t0);
-};
-
-const sfx = {
-  jump: () => playTone({ freq: 320, to: 620, type: 'triangle', duration: 0.16, gain: 0.3 }),
-  coin: () => {
-    playTone({ freq: 880, duration: 0.07, gain: 0.25 });
-    playTone({ freq: 1318, duration: 0.1, delay: 0.06, gain: 0.25 });
-  },
-  nearMiss: () => playNoise({ duration: 0.25, from: 2400, to: 400, gain: 0.28 }),
-  slide: () => playNoise({ duration: 0.28, from: 1600, to: 250, gain: 0.22 }),
-  bump: () => {
-    playNoise({ duration: 0.16, from: 420, to: 120, gain: 0.32 });
-    playTone({ freq: 150, to: 85, type: 'square', duration: 0.14, gain: 0.2 });
-  },
-  door: () => {
-    playNoise({ duration: 0.09, from: 900, to: 300, gain: 0.22 });
-    playTone({ freq: 110, to: 70, type: 'sine', duration: 0.12, gain: 0.28 });
-  },
-  engineStart: () => {
-    playTone({ freq: 55, to: 140, type: 'sawtooth', duration: 0.7, gain: 0.22 });
-    playNoise({ duration: 0.5, from: 300, to: 900, gain: 0.12, delay: 0.15 });
-  },
-  rev: () => playTone({ freq: 70, to: 150, type: 'sawtooth', duration: 0.35, gain: 0.16 }),
-  brakeScreech: () => playNoise({ duration: 0.45, from: 2600, to: 900, gain: 0.22 }),
-  horn: () => {
-    const base = 400 + Math.random() * 80;
-    playTone({ freq: base, type: 'square', duration: 0.3, gain: 0.15 });
-    playTone({ freq: base * 1.26, type: 'square', duration: 0.3, gain: 0.15 });
-  },
-  godMode: () => {
-    [220, 330, 440, 660, 880].forEach((freq, i) =>
-      playTone({ freq, type: 'sawtooth', duration: 0.22, delay: i * 0.07, gain: 0.22 }),
-    );
-    playNoise({ duration: 0.8, from: 500, to: 3200, gain: 0.2 });
-  },
-  smash: () => {
-    playNoise({ duration: 0.3, from: 1800, to: 200, gain: 0.4 });
-    playTone({ freq: 90, to: 45, type: 'square', duration: 0.25, gain: 0.3 });
-  },
-  launch: () => {
-    playNoise({ duration: 0.7, from: 700, to: 2600, gain: 0.3 });
-    playTone({ freq: 120, to: 320, type: 'sawtooth', duration: 0.6, gain: 0.2 });
-  },
-  dock: () => {
-    playNoise({ duration: 0.22, from: 1200, to: 250, gain: 0.34 });
-    playTone({ freq: 75, to: 45, type: 'square', duration: 0.2, gain: 0.3 });
-  },
-  shoot: () => playTone({ freq: 880 + Math.random() * 160, to: 320, type: 'square', duration: 0.09, gain: 0.1 }),
-  enemyShoot: () => playTone({ freq: 260, to: 110, type: 'sawtooth', duration: 0.18, gain: 0.16 }),
-  shotgun: () => {
-    playNoise({ duration: 0.3, from: 1400, to: 300, gain: 0.3 });
-    playTone({ freq: 180, to: 90, type: 'sawtooth', duration: 0.25, gain: 0.2 });
-  },
-  motherSpawn: () => {
-    [70, 55, 85, 65].forEach((freq, i) =>
-      playTone({ freq, type: 'sawtooth', duration: 0.5, delay: i * 0.3, gain: 0.24 }),
-    );
-    playNoise({ duration: 1.2, from: 200, to: 900, gain: 0.16 });
-  },
-  shieldUp: () => playTone({ freq: 420, to: 980, type: 'sine', duration: 0.5, gain: 0.2 }),
-  absorb: () => playTone({ freq: 700, to: 220, type: 'sine', duration: 0.35, gain: 0.18 }),
-  playerHit: () => {
-    playNoise({ duration: 0.25, from: 900, to: 150, gain: 0.4 });
-    playTone({ freq: 140, to: 70, type: 'square', duration: 0.22, gain: 0.26 });
-  },
-  enemyDown: () => {
-    playNoise({ duration: 0.35, from: 1500, to: 150, gain: 0.35 });
-    playTone({ freq: 200, to: 60, type: 'sawtooth', duration: 0.3, gain: 0.22 });
-  },
-  land: () => {
-    playNoise({ duration: 0.12, from: 500, to: 140, gain: 0.22 });
-    playTone({ freq: 95, to: 55, type: 'sine', duration: 0.12, gain: 0.25 });
-  },
-  carPass: (lateral = 2) => {
-    const closeness = Math.max(0.15, 1 - lateral / 4);
-    playNoise({ duration: 0.4, from: 1000, to: 160, gain: 0.3 * closeness });
-    playTone({
-      freq: 130,
-      to: 70,
-      type: 'sawtooth',
-      duration: 0.38,
-      gain: 0.12 * closeness,
-    });
-  },
-  powerup: () => {
-    [523, 659, 784, 1046].forEach((freq, i) =>
-      playTone({ freq, type: 'triangle', duration: 0.09, delay: i * 0.07, gain: 0.26 }),
-    );
-  },
-  shieldBreak: () => {
-    playNoise({ duration: 0.2, from: 3000, to: 800, gain: 0.32 });
-    playTone({ freq: 220, to: 120, type: 'sawtooth', duration: 0.25, gain: 0.22 });
-  },
-  crash: () => {
-    playNoise({ duration: 0.5, from: 900, to: 90, gain: 0.55 });
-    playTone({ freq: 160, to: 50, type: 'sawtooth', duration: 0.5, gain: 0.35 });
-  },
-};
-
-// Looping engine drone for zone 2 — pitch and volume follow the car speed.
-const updateEngineSound = () => {
-  const ctx = getSfxContext();
-  if (!ctx) return;
-  if (!engineOsc) {
-    engineOsc = ctx.createOscillator();
-    engineOsc.type = 'sawtooth';
-    engineGain = ctx.createGain();
-    engineGain.gain.value = 0;
-    engineOsc.connect(engineGain).connect(sfxGain);
-    engineOsc.start();
-  }
-  engineGain.gain.setTargetAtTime(
-    0.045 + (speed.value / driveMaxSpeed) * 0.06,
-    ctx.currentTime,
-    0.1,
-  );
-  engineOsc.frequency.setTargetAtTime(38 + speed.value * 1.9, ctx.currentTime, 0.08);
-};
-
-const silenceEngineSound = () => {
-  if (engineGain && sfxCtx) {
-    engineGain.gain.setTargetAtTime(0, sfxCtx.currentTime, 0.15);
-  }
-};
-
-const initAudio = () => {
-  if (audioPrimary) return;
-  audioPrimary = new Audio();
-  audioSecondary = new Audio();
-  [audioPrimary, audioSecondary].forEach((audio) => {
-    audio.preload = 'auto';
-    audio.loop = false;
-  });
-  activeAudio = audioPrimary;
-  inactiveAudio = audioSecondary;
-};
-
-const applyAudioVolume = () => {
-  const base = (isMuted.value ? 0 : audioVolume.value) * musicDuckCurrent;
-  if (activeAudio) {
-    activeAudio.volume = base;
-  }
-  if (inactiveAudio) {
-    inactiveAudio.volume = 0;
-  }
-};
-
-const triggerTrackToast = (title) => {
-  currentTrackName.value = title;
-  showTrackToast.value = true;
-  if (toastTimer) {
-    clearTimeout(toastTimer);
-  }
-  toastTimer = setTimeout(() => {
-    showTrackToast.value = false;
-  }, 2600);
-};
-
-const getEnabledTracks = () => tracks.value.filter((track) => track.enabled);
-
-const shuffleList = (list) => {
-  const array = [...list];
-  for (let i = array.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-};
-
-const rebuildShuffleQueue = () => {
-  const list = getEnabledTracks();
-  if (!list.length) {
-    shuffleQueue = [];
-    return;
-  }
-
-  const pool = [...list];
-  if (pool.length > 1 && currentTrack) {
-    const lastIndex = pool.findIndex((track) => track.id === currentTrack.id);
-    if (lastIndex !== -1) {
-      const [last] = pool.splice(lastIndex, 1);
-      shuffleQueue = shuffleList(pool);
-      shuffleQueue.push(last);
-      return;
-    }
-  }
-
-  shuffleQueue = shuffleList(pool);
-};
-
-const pickNextTrack = () => {
-  const list = getEnabledTracks();
-  if (!list.length) return null;
-  if (!shuffleQueue.length) {
-    rebuildShuffleQueue();
-  }
-  if (!shuffleQueue.length) {
-    return list[0];
-  }
-  return shuffleQueue.shift();
-};
-
-const rememberTrack = (track) => {
-  if (!track) return;
-  if (!playHistory.length || playHistory[playHistory.length - 1].id !== track.id) {
-    playHistory.push(track);
-    if (playHistory.length > 40) {
-      playHistory.shift();
-    }
-  }
-};
-
-const setActiveTrack = async (track, { recordHistory = true } = {}) => {
-  if (!track) return;
-  initAudio();
-  const token = ++fadeToken;
-  const baseVolume = (isMuted.value ? 0 : audioVolume.value) * musicDuckCurrent;
-  const nextAudio = inactiveAudio;
-  nextAudio.src = track.src;
-  nextAudio.currentTime = 0;
-  nextAudio.volume = 0;
-
-  try {
-    await nextAudio.play();
-  } catch (error) {
-    return;
-  }
-
-  if (token !== fadeToken) {
-    nextAudio.pause();
-    return;
-  }
-
-  const prevAudio = activeAudio;
-  const fadeStart = performance.now();
-  const fadeDuration = 700;
-
-  const step = (now) => {
-    if (token !== fadeToken) return;
-    const t = Math.min(1, (now - fadeStart) / fadeDuration);
-    if (prevAudio) {
-      prevAudio.volume = baseVolume * (1 - t);
-    }
-    nextAudio.volume = baseVolume * t;
-    if (t < 1) {
-      requestAnimationFrame(step);
-      } else {
-        if (prevAudio) {
-          prevAudio.pause();
-          prevAudio.currentTime = 0;
-        }
-        activeAudio = nextAudio;
-        inactiveAudio = prevAudio;
-        currentTrack = track;
-        if (recordHistory) {
-          rememberTrack(track);
-        }
-        activeAudio.onended = () => {
-          if (!isPaused.value) {
-            playNext(true);
-          }
-      };
-      if (isPaused.value) {
-        activeAudio.pause();
-      }
-      triggerTrackToast(track.title);
-    }
-  };
-
-  requestAnimationFrame(step);
-};
-
-const syncPlaylist = (forceStart = false) => {
-  if (!audioUnlocked && !forceStart) return;
-  const list = getEnabledTracks();
-  if (!list.length) {
-    if (activeAudio) {
-      activeAudio.pause();
-    }
-    return;
-  }
-
-  if (!currentTrack || !currentTrack.enabled) {
-    shuffleQueue = [];
-    const next = pickNextTrack();
-    if (next) {
-      setActiveTrack(next);
-    }
-  }
-};
-
-const unlockAudio = () => {
-  if (audioUnlocked) return;
-  audioUnlocked = true;
-  syncPlaylist(true);
-};
-
-const handleAudioButton = () => {
-  unlockAudio();
-  if (state.value === 'running') {
-    isMuted.value = !isMuted.value;
-    applyAudioVolume();
-    persistAudioPrefs();
-    return;
-  }
-  showPlaylist.value = !showPlaylist.value;
-};
-
-const playNext = (auto = false) => {
-  if (!auto && state.value === 'running') return;
-  const next = pickNextTrack();
-  if (!next) return;
-  setActiveTrack(next);
-};
-
-const playPrev = () => {
-  if (state.value === 'running') return;
-  if (playHistory.length <= 1) return;
-  playHistory.pop();
-  while (playHistory.length && !playHistory[playHistory.length - 1].enabled) {
-    playHistory.pop();
-  }
-  const prevTrack = playHistory[playHistory.length - 1];
-  if (!prevTrack) {
-    playNext(true);
-    return;
-  }
-  setActiveTrack(prevTrack, { recordHistory: false });
-};
-
-const togglePause = () => {
-  if (state.value === 'running') return;
-  isPaused.value = !isPaused.value;
-  if (!activeAudio) {
-    syncPlaylist(true);
-    return;
-  }
-  if (isPaused.value) {
-    activeAudio.pause();
-  } else {
-    activeAudio.play().catch(() => {});
-  }
-};
-
-const toggleTrack = (track) => {
-  track.enabled = !track.enabled;
-  persistAudioPrefs();
-  shuffleQueue = [];
-  if (!track.enabled && currentTrack?.id === track.id) {
-    playNext(true);
-    return;
-  }
-  if (track.enabled && (!currentTrack || !currentTrack.enabled)) {
-    syncPlaylist(true);
-  }
-};
-
-const playSpecific = (track) => {
-  if (state.value === 'running') return;
-  if (!track.enabled) return;
-  shuffleQueue = [];
-  setActiveTrack(track);
 };
 
 const acceptGuest = () => {
@@ -4416,7 +3813,7 @@ const triggerFinale = () => {
   finaleTriggered = true;
   finalePhase.value = 'approach';
   buildPlaza();
-  musicDuckTarget = 0.3;
+  setMusicDuck(0.3);
   finaleToast.value = true;
   if (finaleToastTimer) {
     clearTimeout(finaleToastTimer);
@@ -4465,7 +3862,7 @@ const startDriving = () => {
   clearCoins();
   clearPowerups();
   setRoadZone(2);
-  musicDuckTarget = 0.6;
+  setMusicDuck(0.6);
   sfx.engineStart();
   driveHintText.value = isTouchDevice.value
     ? 'Zone 2 — hold the pedals, swipe to steer. No points below speed 15.'
@@ -5390,7 +4787,7 @@ const triggerRamp = () => {
   if (starPoints) starPoints.visible = false;
   if (moonMesh) moonMesh.visible = false;
   if (skylineMesh) skylineMesh.visible = false;
-  musicDuckTarget = 0.45;
+  setMusicDuck(0.45);
 };
 
 const buildDockingPlane = () => {
@@ -5453,7 +4850,7 @@ const enterPlane = () => {
   enemySpawnTimer = 2.6;
   fireTimer = 0.5;
   envMode = 'day';
-  musicDuckTarget = 0.85;
+  setMusicDuck(0.85);
   driveHintText.value = 'Zone 3 — joystick or WASD/arrows to fly. Guns fire automatically!';
   driveHint.value = true;
   if (driveHintTimer) {
@@ -5978,7 +5375,7 @@ const exitFinale = () => {
   }
   disposePlaza();
   setRoadZone(1);
-  musicDuckTarget = 1;
+  setMusicDuck(1);
   accelHeld = false;
   brakeHeld = false;
   driveTargetSpeed = 24;
@@ -6692,15 +6089,12 @@ const animate = (time) => {
     updateShootingStars(delta);
   }
 
-  if (Math.abs(musicDuckCurrent - musicDuckTarget) > 0.005) {
-    musicDuckCurrent = THREE.MathUtils.damp(musicDuckCurrent, musicDuckTarget, 1.2, delta);
-    applyAudioVolume();
-  }
+  updateMusicDuck(delta);
 
   lerpEnvironment(delta);
 
   if (
-    engineOsc &&
+    isEngineActive() &&
     (state.value !== 'running' ||
       !['drive', 'ramp', 'launch', 'plane'].includes(finalePhase.value))
   ) {
@@ -6742,16 +6136,6 @@ watch(state, () => {
     menuScreen.value = 'main';
   }
   syncPlaylist();
-});
-
-watch(audioVolume, () => {
-  applyAudioVolume();
-  persistAudioPrefs();
-});
-
-watch(isMuted, () => {
-  applyAudioVolume();
-  persistAudioPrefs();
 });
 
 watch(cameraZoom, () => {
@@ -6810,17 +6194,8 @@ onBeforeUnmount(() => {
   if (pointerUnlockHandler) {
     window.removeEventListener('pointerdown', pointerUnlockHandler);
   }
-  fadeToken += 1;
-  [audioPrimary, audioSecondary].forEach((audio) => {
-    if (!audio) return;
-    audio.onended = null;
-    audio.pause();
-    audio.removeAttribute('src');
-  });
+  disposeAudio();
   document.removeEventListener('visibilitychange', handleVisibility);
-  if (sfxCtx) {
-    sfxCtx.close().catch(() => {});
-  }
   window.removeEventListener('resize', handleResize);
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('keyup', handleKeyup);

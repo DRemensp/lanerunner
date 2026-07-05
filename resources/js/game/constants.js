@@ -1,0 +1,107 @@
+// Gameplay tuning constants shared across the game modules. Values here must
+// stay in sync with the server-side anti-cheat bounds in RunnerController.
+
+export const cameraBase = {
+  y: 5.5,
+  z: 8,
+};
+
+// Speed jumps once per 2,500-point checkpoint (5x the old per-500 step), so
+// every checkpoint is a distinct tempo change.
+export const levelOptions = [
+  { id: 'rush', label: 'City Rush', baseSpeed: 12, stepDistance: 2500, speedStep: 10 },
+  { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 2500, speedStep: 20 },
+];
+
+export const lanes = [-2, 0, 2];
+export const groundY = 0.7;
+export const gravity = -28;
+export const jumpVelocity = 12;
+export const slideScale = 0.55;
+export const slideDuration = 0.6;
+export const dropBoost = 1.6;
+export const swipeThreshold = 40;
+export const swipeTimeLimit = 650;
+export const segmentLength = 20;
+export const playerSize = { w: 0.9, h: 1.4, d: 0.8 };
+export const coyoteTimeMs = 50;
+export const groundedEpsilon = 0.06;
+
+// How long a side bump keeps protecting the player from another bump.
+export const bumpWindowMs = 5000;
+
+// Secret finale: at FINALE_SCORE the district ends in an open plaza, the
+// runner boards a car and zone 2 begins — a four-lane road (two lanes each
+// direction) where the only controls are steering, gas, and brake.
+export const FINALE_SCORE = 10000;
+export const carLanes = [-3, -1, 1, 3];
+export const carPlayerSize = { w: 1.5, h: 1.1, d: 2.6 };
+export const driveScoreMinSpeed = 15;
+export const driveMaxSpeed = 160;
+// Hold near top speed for a moment and the car goes god mode: it smashes
+// straight through traffic (cars go flying) and drags a fire trail.
+// God mode: hold a medium-high speed for a sustained stretch (not a short
+// top-speed burst). Dropping below the trigger drains progress at 1.5x
+// instead of resetting — challenging, but never cheap.
+export const godTriggerSpeed = 110;
+export const godHoldSeconds = 20;
+export const godFloorSpeed = 100;
+
+// Zone 3: at RAMP_SCORE while in god mode, the road ends in a jump ramp into
+// the sunrise over water; mid-air the car slams into a plane's cargo hold and
+// the player flies on — free movement, no lanes, bright daylight.
+export const RAMP_SCORE = 20000;
+
+// Environment palettes per phase. envSettings.night is mutated at runtime by
+// applyDistrict() as the run travels through city districts.
+export const envSettings = {
+  night: {
+    bg: 0x05070f, fog: 0x05070f, fogNear: 40, fogFar: 165,
+    hemi: 1.6, dir: 1.7, hemiSky: 0x9fc1ff, dirColor: 0xffffff,
+  },
+  sunrise: {
+    bg: 0x2e1f45, fog: 0xb06a4a, fogNear: 60, fogFar: 320,
+    hemi: 1.9, dir: 2.3, hemiSky: 0xffc49a, dirColor: 0xffd9a8,
+  },
+  day: {
+    bg: 0x8ecdf0, fog: 0xaee0f8, fogNear: 90, fogFar: 460,
+    hemi: 2.6, dir: 3.0, hemiSky: 0xeaf6ff, dirColor: 0xfff4e0,
+  },
+};
+
+// Zone-1 districts: each milestone nudges the night palette, so a long run
+// visibly travels through different parts of the city. lerpEnvironment
+// blends the change in smoothly.
+export const nightDistricts = [
+  { bg: 0x05070f, fog: 0x05070f, hemiSky: 0x9fc1ff },
+  { bg: 0x0a0618, fog: 0x120a26, hemiSky: 0xbfa8ff },
+  { bg: 0x04120f, fog: 0x07211c, hemiSky: 0x8fffd9 },
+  { bg: 0x120609, fog: 0x220b12, hemiSky: 0xff9fb0 },
+];
+
+export const rowPatterns = [
+  ['low', 'none', 'none'],
+  ['none', 'low', 'none'],
+  ['none', 'none', 'low'],
+  ['over', 'none', 'none'],
+  ['none', 'over', 'none'],
+  ['none', 'none', 'over'],
+  ['low', 'over', 'none'],
+  ['over', 'low', 'none'],
+  ['low', 'none', 'over'],
+  ['over', 'none', 'low'],
+  ['none', 'low', 'over'],
+  ['none', 'over', 'low'],
+  ['low', 'tall', 'tall'],
+  ['tall', 'low', 'tall'],
+  ['tall', 'tall', 'low'],
+  ['over', 'tall', 'tall'],
+  ['tall', 'over', 'tall'],
+  ['tall', 'tall', 'over'],
+  ['low', 'over', 'tall'],
+  ['over', 'low', 'tall'],
+  ['tall', 'low', 'over'],
+  ['tall', 'over', 'low'],
+  ['low', 'tall', 'over'],
+  ['over', 'tall', 'low'],
+];
