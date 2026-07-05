@@ -11,23 +11,25 @@ use Illuminate\Validation\Rule;
 
 class RunnerController extends Controller
 {
-    // Must match levelOptions in resources/js/Pages/Game.vue.
+    // Must match levelOptions in resources/js/Pages/Game.vue: one big speed
+    // jump per 2,500-point checkpoint. The growth ratio speed_step/STEP
+    // stays identical to the old per-500 curve, so the duration model holds.
     private const LEVELS = [
         'casual' => [
             'base_speed' => 10,
-            'speed_step' => 1,
+            'speed_step' => 5,
         ],
         'rush' => [
             'base_speed' => 12,
-            'speed_step' => 2,
+            'speed_step' => 10,
         ],
         'night' => [
             'base_speed' => 14,
-            'speed_step' => 4,
+            'speed_step' => 20,
         ],
     ];
 
-    private const STEP_DISTANCE = 500;
+    private const STEP_DISTANCE = 2500;
     private const SCORE_MULTIPLIER = 2.4;
 
     // Past this distance the run switches to zone 2 (driving), which allows

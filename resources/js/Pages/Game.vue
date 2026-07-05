@@ -767,7 +767,6 @@ const bumpWindowMs = 5000;
 // moments (traffic-jam walls, wrong-way drivers, coin runs, lane drifters).
 const eventToast = ref(null);
 let eventToastTimer;
-let eventTimer = 8;
 let trafficWave = null;
 let coinRushEndZ = null;
 let nextMilestone = 2500;
@@ -780,9 +779,11 @@ const cameraBase = {
   z: 8,
 };
 
+// Speed jumps once per 2,500-point checkpoint (5x the old per-500 step), so
+// every checkpoint is a distinct tempo change.
 const levelOptions = [
-  { id: 'rush', label: 'City Rush', baseSpeed: 12, stepDistance: 500, speedStep: 2 },
-  { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 500, speedStep: 4 },
+  { id: 'rush', label: 'City Rush', baseSpeed: 12, stepDistance: 2500, speedStep: 10 },
+  { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 2500, speedStep: 20 },
 ];
 const selectedLevel = ref(levelOptions[0].id);
 
@@ -2117,7 +2118,7 @@ const resetRun = () => {
   runTopSpeedRaw = 0;
   trafficWave = null;
   coinRushEndZ = null;
-  eventTimer = 8;
+
   nextMilestone = 2500;
   eventToast.value = null;
   clearObstacles();
@@ -3852,6 +3853,7 @@ const getObstacle = (type, forcedKey = null) => {
   }
   obstacle.userData.vz = 0;
   obstacle.userData.passed = false;
+  obstacle.userData.jam = false;
   delete obstacle.userData.driftTo;
   obstacle.userData.driftHonked = false;
   if (obstacle.userData.beams) {
@@ -3939,51 +3941,54 @@ const showEventToast = (title, sub, duration = 1900) => {
   }, duration);
 };
 
-// Traffic jam: a few walls of parked cars with exactly one gap that wanders
-// between rows. Coins mark the safe lane so the path reads from a distance.
+// Rush hour: a solid, tightly packed jam of mixed vehicles (cars, police,
+// trucks, fire engines) filling ALL three lanes. There is no gap — the only
+// way through is jumping onto the roofs and bouncing car to car. The first
+// row is low cars so the entry jump always works from the ground; taller
+// trucks appear deeper in, reachable from a car roof.
 const spawnWaveRow = () => {
   const baseZ = -(95 + Math.min(45, speed.value));
   for (let laneIndex = 0; laneIndex < 3; laneIndex += 1) {
-    if (laneIndex === trafficWave.gapLane) {
-      for (let k = 0; k < 2; k += 1) {
-        const coin = getCoin();
-        coin.position.set(lanes[laneIndex], 1.0, baseZ - k * 1.6);
-        coin.rotation.y = Math.random() * Math.PI;
-        coins.push(coin);
-        scene.add(coin);
-      }
-      continue;
-    }
-    const vehicle = getObstacle('low', 'car-any');
+    const useTall = !trafficWave.first && Math.random() < 0.35;
+    const vehicle = getObstacle(useTall ? 'tall' : 'low', useTall ? 'tall-any' : 'car-any');
+    vehicle.userData.jam = true;
     vehicle.rotation.y = Math.PI;
-    vehicle.position.set(lanes[laneIndex], vehicle.userData.size.h / 2 + 0.02, baseZ);
+    vehicle.position.set(
+      lanes[laneIndex],
+      vehicle.userData.size.h / 2 + 0.02,
+      baseZ - Math.random() * 0.3,
+    );
     obstacles.push(vehicle);
     scene.add(vehicle);
   }
+  // Guide coins above the roofline sell the "go up" route.
+  if (trafficWave.rowsLeft % 2 === 1) {
+    const coin = getCoin();
+    coin.position.set(lanes[Math.floor(Math.random() * 3)], 3.1, baseZ);
+    coin.rotation.y = Math.random() * Math.PI;
+    coins.push(coin);
+    scene.add(coin);
+  }
+  trafficWave.first = false;
   trafficWave.rowsLeft -= 1;
   if (trafficWave.rowsLeft <= 0) {
     trafficWave.endZ = baseZ;
   } else {
-    trafficWave.rowTimer = 22 / speed.value;
-    if (Math.random() < 0.7) {
-      trafficWave.gapLane = THREE.MathUtils.clamp(
-        trafficWave.gapLane + (Math.random() < 0.5 ? -1 : 1),
-        0,
-        2,
-      );
-    }
+    // Bumper to bumper: 3.2 units apart — collision boxes overlap along z,
+    // so the roof-bounce surface is continuous and you can't fall through.
+    trafficWave.rowTimer = 3.2 / speed.value;
   }
 };
 
 const startTrafficWave = () => {
   trafficWave = {
-    rowsLeft: 3 + Math.min(2, Math.floor(score.value / 4000)),
-    gapLane: Math.floor(Math.random() * 3),
+    rowsLeft: 7 + Math.min(3, Math.floor(score.value / 3000)),
     rowTimer: 0,
     endZ: null,
+    first: true,
   };
   sfx.horn();
-  showEventToast('Rush Hour', 'Follow the coins through the jam!');
+  showEventToast('Rush Hour', 'Jump the jam — roof to roof!');
 };
 
 const startWrongWayDriver = () => {
@@ -4081,7 +4086,9 @@ const startRandomEvent = () => {
 // Spawns only hold while an event's tail is still deeper than where new
 // rows appear; once the tail is closer, fresh rows spawn safely behind it.
 const eventSpawnHoldActive = () => {
-  const spawnDepth = -(70 + Math.min(45, speed.value)) + 6;
+  // Speed-scaled margin: the landing arc after the final roof bounce must
+  // never come down on a freshly spawned row.
+  const spawnDepth = -(70 + Math.min(45, speed.value)) + 6 + speed.value * 0.45;
   if (
     trafficWave &&
     (trafficWave.rowsLeft > 0 ||
@@ -4094,10 +4101,15 @@ const eventSpawnHoldActive = () => {
 
 const updateZoneEvents = (delta) => {
   if (nextMilestone < FINALE_SCORE && score.value >= nextMilestone) {
-    showEventToast(`${nextMilestone.toLocaleString('en-US')} points`, 'Keep it rolling!', 1500);
+    showEventToast(`Checkpoint ${nextMilestone.toLocaleString('en-US')}`, 'Speed up!', 1800);
     sfx.powerup();
     spawnBurst(player.position.clone(), ['gold'], 10, 5);
     applyDistrict(districtIndex + 1);
+    // Every checkpoint rolls one random event — repeats are allowed, so an
+    // event stays a set piece instead of background noise.
+    if (!trafficWave && !finaleTriggered && nextMilestone <= FINALE_SCORE - 2500) {
+      startRandomEvent();
+    }
     nextMilestone += 2500;
   }
   if (trafficWave) {
@@ -4124,12 +4136,6 @@ const updateZoneEvents = (delta) => {
     if (coinRushEndZ > player.position.z + 2) {
       coinRushEndZ = null;
     }
-  }
-  if (finaleTriggered) return;
-  eventTimer -= delta;
-  if (eventTimer <= 0 && score.value > 350 && score.value < FINALE_SCORE - 800) {
-    startRandomEvent();
-    eventTimer = THREE.MathUtils.randFloat(7, 12);
   }
 };
 
@@ -6270,10 +6276,9 @@ const updateRunner = (delta) => {
       spawnTimer -= delta;
       if (spawnTimer <= 0) {
         spawnRow();
-        // Constant ~1s time-gap between rows regardless of speed (slightly
-        // tighter past speed 31): low speeds used to feel empty at 1.75s.
-        const spacingFactor = Math.min(2.2, speed.value / 14);
-        spawnTimer = THREE.MathUtils.randFloat(0.5, 1.5) * (14 / speed.value) * spacingFactor;
+        // ~0.7s between rows at low speed, tapering to 0.58s late game.
+        const baseGap = Math.max(0.58, 0.7 - (speed.value - 12) * 0.003);
+        spawnTimer = THREE.MathUtils.randFloat(0.6, 1.4) * baseGap;
       }
     } else {
       spawnTimer = Math.max(spawnTimer, 0.7);
@@ -6336,6 +6341,28 @@ const updateRunner = (delta) => {
       continue;
     }
     if (checkCollision(obstacle, collisionPlayerHeight)) {
+      // Jam vehicles are trampolines: landing on a roof bounces the player
+      // onward instead of crashing — the intended way through rush hour.
+      if (
+        obstacle.userData.jam &&
+        playerVelocityY < 0 &&
+        player.position.y - collisionPlayerHeight / 2 >
+          obstacle.position.y + obstacle.userData.size.h / 2 - 0.65
+      ) {
+        const roofY = obstacle.position.y + obstacle.userData.size.h / 2;
+        player.position.y = roofY + collisionPlayerHeight / 2 + 0.02;
+        playerVelocityY = jumpVelocity * 0.95;
+        score.value += 20;
+        sfx.land();
+        vibrate(12);
+        spawnBurst(
+          new THREE.Vector3(player.position.x, roofY, player.position.z),
+          ['dust'],
+          5,
+          3,
+        );
+        continue;
+      }
       if (godModeActive.value) {
         smashObstacle(obstacle, i);
         continue;
