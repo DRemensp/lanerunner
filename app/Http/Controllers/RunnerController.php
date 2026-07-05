@@ -161,7 +161,10 @@ class RunnerController extends Controller
 
             // Zone 2 lets skilled players out-earn the runner speed curve for
             // a while, so grant flat headroom once the finale is reached.
-            $distanceCap = $maxDistance * 1.2
+            // The 1.35 factor also absorbs skill bonuses on top of raw
+            // distance: near-miss combo chains, traffic-wave clears and
+            // god-mode smash streaks.
+            $distanceCap = $maxDistance * 1.35
                 + ($distance >= self::FINALE_DISTANCE ? 8000 : 0);
             if ($distance > $distanceCap) {
                 $cheatReasons[] = 'distance_over_cap';
