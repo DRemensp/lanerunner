@@ -3879,41 +3879,70 @@ const getObstacle = (type, forcedKey = null) => {
   return obstacle;
 };
 
-// Oncoming traffic: one or two vehicles in distinct lanes, each with its own
-// speed. Occasionally a slow bus rolls toward the player instead of a car.
-const spawnOncoming = () => {
-  const laneOrder = shuffleList([0, 1, 2]);
-  const count = Math.random() < 0.3 ? 2 : 1;
-  const levelFactor = currentLevel.value.baseSpeed / 12;
-
-  for (let i = 0; i < count; i += 1) {
-    const isTruck = Math.random() < 0.14;
-    const vehicle = getObstacle(isTruck ? 'tall' : 'low', isTruck ? 'tall-any' : 'car-any');
-    vehicle.userData.vz = (isTruck ? 3 + Math.random() * 3 : 4 + Math.random() * 10) * levelFactor;
-    if (vehicle.userData.beams) {
-      vehicle.userData.beams.visible = true;
+// Lane reservation (standard endless-runner technique): every moving
+// vehicle owns its lane exclusively for its whole approach. Static rows
+// never spawn into a reserved lane, and moving vehicles never spawn into a
+// lane that has static obstacles ahead — nothing can clip through anything.
+const movingBlockedLanes = () => {
+  const blocked = new Set();
+  obstacles.forEach((obstacle) => {
+    const moving =
+      (obstacle.userData.vz || 0) > 0 || obstacle.userData.driftTo !== undefined;
+    if (!moving) return;
+    lanes.forEach((laneX, index) => {
+      if (Math.abs(obstacle.position.x - laneX) < 0.9) blocked.add(index);
+    });
+    if (obstacle.userData.driftTo !== undefined) {
+      lanes.forEach((laneX, index) => {
+        if (Math.abs(obstacle.userData.driftTo - laneX) < 0.9) blocked.add(index);
+      });
     }
-    vehicle.rotation.y = 0;
-    // Arrival-normalized depth: spawn proportionally deeper by the closing
-    // speed, so the travel time to the player equals a normal row's. This
-    // keeps the spawn cadence and the ARRIVAL cadence identical — oncoming
-    // cars can no longer catch up and bunch onto a row.
-    const rowDepth = 72 + Math.min(45, speed.value);
-    const travelDepth = rowDepth * ((speed.value + vehicle.userData.vz) / speed.value);
-    vehicle.position.set(
-      lanes[laneOrder[i]],
-      vehicle.userData.size.h / 2 + 0.02,
-      -travelDepth - i * 18 - Math.random() * 4,
+  });
+  return blocked;
+};
+
+// Oncoming traffic: a single vehicle, only into a lane that is completely
+// clear of static obstacles. Returns false when no lane qualifies.
+const spawnOncoming = () => {
+  const blocked = movingBlockedLanes();
+  const laneIsClear = (index) =>
+    !blocked.has(index) &&
+    !obstacles.some(
+      (obstacle) =>
+        (obstacle.userData.vz || 0) === 0 &&
+        Math.abs(obstacle.position.x - lanes[index]) < 0.9 &&
+        obstacle.position.z < 0,
     );
-    obstacles.push(vehicle);
-    scene.add(vehicle);
+  const candidates = [0, 1, 2].filter(laneIsClear);
+  if (!candidates.length) return false;
+
+  const laneIndex = candidates[Math.floor(Math.random() * candidates.length)];
+  const levelFactor = currentLevel.value.baseSpeed / 12;
+  const isTruck = Math.random() < 0.14;
+  const vehicle = getObstacle(isTruck ? 'tall' : 'low', isTruck ? 'tall-any' : 'car-any');
+  vehicle.userData.vz = (isTruck ? 3 + Math.random() * 3 : 4 + Math.random() * 10) * levelFactor;
+  if (vehicle.userData.beams) {
+    vehicle.userData.beams.visible = true;
   }
+  vehicle.rotation.y = 0;
+  // Arrival-normalized depth: travel time to the player equals a normal
+  // row's, so spawn cadence and arrival cadence stay identical.
+  const rowDepth = 72 + Math.min(45, speed.value);
+  const travelDepth = rowDepth * ((speed.value + vehicle.userData.vz) / speed.value);
+  vehicle.position.set(
+    lanes[laneIndex],
+    vehicle.userData.size.h / 2 + 0.02,
+    -travelDepth - Math.random() * 4,
+  );
+  obstacles.push(vehicle);
+  scene.add(vehicle);
+  return true;
 };
 
 const spawnRow = () => {
-  // Sometimes oncoming traffic instead of a full row.
-  if (Math.random() < 0.28) {
-    spawnOncoming();
+  // Occasionally oncoming traffic instead of a row — far less often than
+  // before, and only when a fully clear lane exists for it.
+  if (Math.random() < 0.12 && spawnOncoming()) {
     return;
   }
 
@@ -3923,6 +3952,11 @@ const spawnRow = () => {
   if (lastRowFull && !pattern.includes('none')) {
     const openPatterns = rowPatterns.filter((candidate) => candidate.includes('none'));
     pattern = openPatterns[Math.floor(Math.random() * openPatterns.length)];
+  }
+  // Lanes owned by moving vehicles stay empty in static rows.
+  const blocked = movingBlockedLanes();
+  if (blocked.size) {
+    pattern = pattern.map((type, laneIndex) => (blocked.has(laneIndex) ? 'none' : type));
   }
   lastRowFull = !pattern.includes('none');
   // Spawn farther out the faster we go, so there is always time to react.
