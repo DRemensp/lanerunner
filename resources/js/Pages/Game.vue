@@ -148,6 +148,15 @@
         {{ speed >= godTriggerSpeed ? 'HOLD IT!' : 'SPEED UP!' }}
       </div>
       <div class="speed-goal-value">{{ Math.round(speed) }} / {{ godTriggerSpeed }}</div>
+      <div v-if="godHoldProgress > 0" class="speed-goal-track">
+        <div
+          class="speed-goal-fill"
+          :style="{ width: Math.min(100, (godHoldProgress / godHoldSeconds) * 100) + '%' }"
+        ></div>
+      </div>
+      <div v-if="godHoldProgress > 0" class="speed-goal-value">
+        {{ godHoldProgress.toFixed(1) }}s / {{ godHoldSeconds }}s
+      </div>
     </div>
 
     <div v-if="driveHint && state === 'running'" class="drive-hint">
@@ -901,9 +910,13 @@ const driveScoreMinSpeed = 15;
 const driveMaxSpeed = 160;
 // Hold near top speed for a moment and the car goes god mode: it smashes
 // straight through traffic (cars go flying) and drags a fire trail.
-const godTriggerSpeed = 132;
-const godHoldSeconds = 2.5;
-const godFloorSpeed = 120;
+// God mode: hold a medium-high speed for a sustained stretch (not a short
+// top-speed burst). Dropping below the trigger drains progress at 1.5x
+// instead of resetting — challenging, but never cheap.
+const godTriggerSpeed = 110;
+const godHoldSeconds = 20;
+const godFloorSpeed = 100;
+const godHoldProgress = ref(0);
 const godModeActive = ref(false);
 let godHoldTimer = 0;
 let flyingCars = [];
@@ -2396,7 +2409,10 @@ const handleKeydown = (event) => {
   }
 };
 
-const pedalGasDown = () => {
+const pedalGasDown = (event) => {
+  // Capture keeps the pointer bound to the pedal even when the thumb
+  // drifts off the button — pointerup always reaches us.
+  event?.currentTarget?.setPointerCapture?.(event.pointerId);
   if (!accelHeld) {
     sfx.rev();
   }
@@ -2407,7 +2423,8 @@ const pedalGasUp = () => {
   accelHeld = false;
 };
 
-const pedalBrakeDown = () => {
+const pedalBrakeDown = (event) => {
+  event?.currentTarget?.setPointerCapture?.(event.pointerId);
   if (!brakeHeld && speed.value > 12) {
     sfx.brakeScreech();
   }
@@ -5420,6 +5437,7 @@ const enterPlane = () => {
   carWheels = [];
   godModeActive.value = false;
   godHoldTimer = 0;
+  godHoldProgress.value = 0;
   planeVisual = dockingPlane;
   scene.remove(dockingPlane);
   player.position.copy(dockingPlane.position);
@@ -5967,6 +5985,7 @@ const exitFinale = () => {
   driveSpawnTimer = 0;
   godModeActive.value = false;
   godHoldTimer = 0;
+  godHoldProgress.value = 0;
   clearFlyingCars();
 
   // Zone 3 cleanup: back to the night city.
@@ -6069,13 +6088,16 @@ const updateRunner = (delta) => {
           activateGodMode();
         }
       } else {
-        godHoldTimer = 0;
+        // Drain progress instead of a hard reset — dips cost time, not all.
+        godHoldTimer = Math.max(0, godHoldTimer - delta * 1.5);
       }
+      godHoldProgress.value = godHoldTimer;
     } else {
       emitFireTrail();
       if (finalePhase.value !== 'ramp' && speed.value < godFloorSpeed) {
         godModeActive.value = false;
         godHoldTimer = 0;
+        godHoldProgress.value = 0;
       }
     }
 
@@ -6085,7 +6107,7 @@ const updateRunner = (delta) => {
       } else if (!rampHintShown) {
         // Make the requirement discoverable instead of silently failing.
         rampHintShown = true;
-        driveHintText.value = 'The road ahead only breaks for gods — hold top speed!';
+        driveHintText.value = `The road only breaks for gods — hold ${godTriggerSpeed}+ and keep it there!`;
         driveHint.value = true;
         if (driveHintTimer) {
           clearTimeout(driveHintTimer);
@@ -6932,6 +6954,10 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   z-index: 1;
+  /* The swipe surface must own its touches completely: without this the
+     browser treats two active fingers (pedal + swipe) as a pinch-zoom
+     candidate and pointercancels BOTH inputs. */
+  touch-action: none;
 }
 
 .runner-canvas canvas {
@@ -7219,6 +7245,20 @@ onBeforeUnmount(() => {
   letter-spacing: 0.2em;
   font-variant-numeric: tabular-nums;
   color: rgba(255, 228, 195, 0.9);
+}
+
+.speed-goal-track {
+  margin-top: 6px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(80, 60, 30, 0.6);
+  overflow: hidden;
+}
+
+.speed-goal-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffb056, #5cffa8);
 }
 
 .speed-goal.ok {
