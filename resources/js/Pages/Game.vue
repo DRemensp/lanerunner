@@ -594,6 +594,25 @@
                 </div>
               </div>
               <div class="menu-field">
+                <label>Vibration (Mobile)</label>
+                <div class="difficulty-toggle">
+                  <button
+                    :class="{ active: vibrationEnabled }"
+                    @click="setVibration(true)"
+                    type="button"
+                  >
+                    On
+                  </button>
+                  <button
+                    :class="{ active: !vibrationEnabled }"
+                    @click="setVibration(false)"
+                    type="button"
+                  >
+                    Off
+                  </button>
+                </div>
+              </div>
+              <div class="menu-field">
                 <label>Render Quality</label>
                 <div class="difficulty-toggle">
                   <button
@@ -939,6 +958,24 @@ const envSettings = {
     bg: 0x8ecdf0, fog: 0xaee0f8, fogNear: 90, fogFar: 460,
     hemi: 2.6, dir: 3.0, hemiSky: 0xeaf6ff, dirColor: 0xfff4e0,
   },
+};
+
+// Zone-1 districts: each milestone nudges the night palette, so a long run
+// visibly travels through different parts of the city. lerpEnvironment
+// blends the change in smoothly.
+const nightDistricts = [
+  { bg: 0x05070f, fog: 0x05070f, hemiSky: 0x9fc1ff },
+  { bg: 0x0a0618, fog: 0x120a26, hemiSky: 0xbfa8ff },
+  { bg: 0x04120f, fog: 0x07211c, hemiSky: 0x8fffd9 },
+  { bg: 0x120609, fog: 0x220b12, hemiSky: 0xff9fb0 },
+];
+let districtIndex = 0;
+const applyDistrict = (index) => {
+  districtIndex = index % nightDistricts.length;
+  const district = nightDistricts[districtIndex];
+  envSettings.night.bg = district.bg;
+  envSettings.night.fog = district.fog;
+  envSettings.night.hemiSky = district.hemiSky;
 };
 const tmpEnvColor = new THREE.Color();
 const finalePhase = ref('none'); // none | approach | walk | enter | drive
@@ -2032,6 +2069,7 @@ const startRunSession = async () => {
 
 const resetRun = () => {
   clearCarPreview();
+  applyDistrict(0);
   exitFinale();
   devRun.value = false;
   score.value = 0;
@@ -2493,6 +2531,17 @@ const handleTouchCancel = (event) => {
   if (findTrackedTouch(event)) {
     touchStart = null;
   }
+};
+
+// Haptics: short buzzes on impactful moments (mobile only, toggleable).
+const vibrationEnabled = ref(localStorage.getItem('runner_vibration') !== '0');
+const setVibration = (on) => {
+  vibrationEnabled.value = on;
+  localStorage.setItem('runner_vibration', on ? '1' : '0');
+};
+const vibrate = (ms) => {
+  if (!vibrationEnabled.value) return;
+  navigator.vibrate?.(ms);
 };
 
 // Battery Saver renders at a lower pixel ratio — a big win on hot phones.
@@ -3111,6 +3160,7 @@ const triggerNearMiss = () => {
   const bonus = nearMissBase * nearMissCombo.value * (multiTime.value > 0 ? 2 : 1);
   nearMissAmount.value = bonus;
   runNearMisses.value += 1;
+  vibrate(12);
   score.value += bonus;
   sfx.nearMiss();
   nearMissToast.value = false;
@@ -4030,6 +4080,7 @@ const updateZoneEvents = (delta) => {
     showEventToast(`${nextMilestone.toLocaleString('en-US')} points`, 'Keep it rolling!', 1500);
     sfx.powerup();
     spawnBurst(player.position.clone(), ['gold'], 10, 5);
+    applyDistrict(districtIndex + 1);
     nextMilestone += 2500;
   }
   if (trafficWave) {
@@ -4108,6 +4159,7 @@ const handleSideBump = (obstacle) => {
   currentLane = laneOrigin;
   bumpProtectUntil = now + 800;
   bumpShakeTimer = 0.3;
+  vibrate(35);
   nearMissCombo.value = 0;
   nearMissComboAt = -Infinity;
   spawnBurst(
@@ -4515,6 +4567,7 @@ const clearFlyingCars = () => {
 const activateGodMode = () => {
   godModeActive.value = true;
   smashStreak = 0;
+  vibrate([40, 40, 80]);
   sfx.godMode();
   bumpShakeTimer = 0.3;
 };
@@ -6382,6 +6435,7 @@ const startCrash = () => {
   player.visible = false;
   nearMissCombo.value = 0;
   nearMissComboAt = -Infinity;
+  vibrate(90);
   sfx.crash();
   spawnBurst(player.position, ['skin', 'red', 'skin'], 26, 8);
 };
