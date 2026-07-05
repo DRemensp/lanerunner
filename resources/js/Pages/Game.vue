@@ -486,6 +486,9 @@
                     <div class="leaderboard-value">{{ totalCoins }}</div>
                   </div>
                 </div>
+                <div v-if="yourRank" class="your-rank">
+                  Your global rank: <strong>#{{ yourRank }}</strong>
+                </div>
                 <div v-if="leaderboard.length" class="menu-leaderboard">
                   <div class="menu-leaderboard-title">Top Runners</div>
                   <ol>
@@ -637,6 +640,7 @@ const runCoins = ref(0);
 const totalCoins = ref(0);
 const shopMessage = ref('');
 const leaderboard = ref([]);
+const yourRank = ref(null);
 const ownedSkinIds = ref([]);
 const loadingProfile = ref(false);
 const runToken = ref(null);
@@ -1654,8 +1658,10 @@ const loadLeaderboard = async () => {
   try {
     const response = await axios.get('/api/runner/leaderboard');
     leaderboard.value = response.data.leaders || [];
+    yourRank.value = response.data.your_rank ?? null;
   } catch (error) {
     leaderboard.value = [];
+    yourRank.value = null;
   }
 };
 
@@ -6621,6 +6627,16 @@ onBeforeUnmount(() => {
 .event-toast .finale-toast-sub {
   font-size: 0.7rem;
   color: rgba(255, 230, 190, 0.8);
+}
+
+.your-rank {
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 210, 100, 0.4);
+  background: rgba(50, 38, 12, 0.4);
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  color: #ffd76b;
 }
 
 .stats-grid {

@@ -294,7 +294,7 @@ class RunnerController extends Controller
         ]);
     }
 
-    public function leaderboard(): Response
+    public function leaderboard(Request $request): Response
     {
         $leaders = RunnerProfile::with('user')
             ->where('best_distance', '>', 0)
@@ -309,8 +309,19 @@ class RunnerController extends Controller
                 ];
             });
 
+        $yourRank = null;
+        $user = $request->user();
+        if ($user) {
+            $profile = RunnerProfile::where('user_id', $user->id)->first();
+            if ($profile && $profile->best_distance > 0) {
+                $yourRank = RunnerProfile::where('best_distance', '>', $profile->best_distance)
+                    ->count() + 1;
+            }
+        }
+
         return response([
             'leaders' => $leaders,
+            'your_rank' => $yourRank,
         ]);
     }
 
