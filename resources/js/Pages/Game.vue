@@ -6276,9 +6276,10 @@ const updateRunner = (delta) => {
       spawnTimer -= delta;
       if (spawnTimer <= 0) {
         spawnRow();
-        // ~0.7s between rows at low speed, tapering to 0.58s late game.
-        const baseGap = Math.max(0.58, 0.7 - (speed.value - 12) * 0.003);
-        spawnTimer = THREE.MathUtils.randFloat(0.6, 1.4) * baseGap;
+        // A real ~1s between rows at low speed (narrow random spread, so no
+        // sub-0.5s clusters), tapering to ~0.6s at checkpoint speeds.
+        const baseGap = THREE.MathUtils.clamp(1.0 - (speed.value - 12) * 0.012, 0.6, 1.0);
+        spawnTimer = THREE.MathUtils.randFloat(0.75, 1.25) * baseGap;
       }
     } else {
       spawnTimer = Math.max(spawnTimer, 0.7);
