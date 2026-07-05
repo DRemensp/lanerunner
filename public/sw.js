@@ -1,6 +1,6 @@
 /* Lane Runner service worker: network-first pages with an offline fallback,
    cache-first for immutable build assets, models, and audio. */
-const CACHE_NAME = 'lanerunner-v1';
+const CACHE_NAME = 'lanerunner-v2';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {

@@ -579,6 +579,9 @@
           <div>Last Score: <strong>{{ Math.floor(score) }}</strong></div>
           <div>Best Score: <strong>{{ Math.floor(bestScore) }}</strong></div>
           <div class="death-coins">Coins <strong>+{{ runCoins }}</strong></div>
+          <div class="death-substats">
+            Top speed {{ Math.round(runTopSpeed) }} &middot; Near misses {{ runNearMisses }}
+          </div>
         </div>
         <div class="death-actions">
           <button class="primary-btn" @click="startRun" type="button">Run Again</button>
@@ -665,6 +668,9 @@ const nearMissAmount = ref(25);
 const nearMissCombo = ref(0);
 let nearMissComboAt = -Infinity;
 let nearMissTimer;
+const runNearMisses = ref(0);
+const runTopSpeed = ref(0);
+let runTopSpeedRaw = 0;
 
 const shieldActive = ref(false);
 const magnetTime = ref(0);
@@ -1902,6 +1908,9 @@ const resetRun = () => {
   nearMissComboAt = -Infinity;
   smashStreak = 0;
   recordCelebrated = false;
+  runNearMisses.value = 0;
+  runTopSpeed.value = 0;
+  runTopSpeedRaw = 0;
   trafficWave = null;
   coinRushEndZ = null;
   eventTimer = 8;
@@ -1915,6 +1924,7 @@ const resetRun = () => {
 
 const endRun = () => {
   state.value = 'crashed';
+  runTopSpeed.value = runTopSpeedRaw;
   persistRun();
   loadLeaderboard();
 };
@@ -2931,6 +2941,7 @@ const triggerNearMiss = () => {
   nearMissComboAt = now;
   const bonus = nearMissBase * nearMissCombo.value * (multiTime.value > 0 ? 2 : 1);
   nearMissAmount.value = bonus;
+  runNearMisses.value += 1;
   score.value += bonus;
   sfx.nearMiss();
   nearMissToast.value = false;
@@ -6162,6 +6173,9 @@ const animate = (time) => {
 
   if (state.value === 'running') {
     updateRunner(delta);
+    if (speed.value > runTopSpeedRaw) {
+      runTopSpeedRaw = speed.value;
+    }
     if (
       !recordCelebrated &&
       !devRun.value &&
@@ -6627,6 +6641,14 @@ onBeforeUnmount(() => {
 .event-toast .finale-toast-sub {
   font-size: 0.7rem;
   color: rgba(255, 230, 190, 0.8);
+}
+
+.death-substats {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(180, 205, 235, 0.65);
 }
 
 .your-rank {
