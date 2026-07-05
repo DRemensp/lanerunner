@@ -324,6 +324,10 @@
             <button class="menu-link" @click="openMenuScreen('inventory')" type="button">
               Inventory
             </button>
+            <button class="menu-link" @click="openMenuScreen('missions')" type="button">
+              Missions
+              <span v-if="completedMissionCount" class="mission-badge">{{ completedMissionCount }}</span>
+            </button>
             <button class="menu-link" @click="openMenuScreen('leaderboard')" type="button">
               Leaderboard
             </button>
@@ -373,9 +377,11 @@
                   ? 'Skins'
                   : menuScreen === 'inventory'
                     ? 'Inventory'
-                    : menuScreen === 'leaderboard'
-                      ? 'Leaderboard'
-                      : 'Settings'
+                    : menuScreen === 'missions'
+                      ? 'Daily Missions'
+                      : menuScreen === 'leaderboard'
+                        ? 'Leaderboard'
+                        : 'Settings'
               }}
             </div>
           </div>
@@ -464,6 +470,58 @@
                 </div>
               </div>
             </div>
+            </template>
+
+            <template v-else-if="menuScreen === 'missions'">
+              <div class="mission-panel">
+                <div class="mission-sub">
+                  Three fresh missions every day. Rewards are paid in coins.
+                </div>
+                <div
+                  v-for="(mission, index) in dailyMissions"
+                  :key="mission.key"
+                  class="mission-row"
+                  :class="{ done: missionProgress(mission) >= mission.target }"
+                >
+                  <div class="mission-info">
+                    <div class="mission-label">{{ mission.label }}</div>
+                    <div class="mission-progress-track">
+                      <div
+                        class="mission-progress-fill"
+                        :style="{
+                          width:
+                            Math.min(100, (missionProgress(mission) / mission.target) * 100) + '%',
+                        }"
+                      ></div>
+                    </div>
+                    <div class="mission-progress-text">
+                      {{ Math.min(missionProgress(mission), mission.target) }} /
+                      {{ mission.target }}
+                    </div>
+                  </div>
+                  <button
+                    v-if="claimedMissions.includes(index)"
+                    class="mission-claim claimed"
+                    disabled
+                    type="button"
+                  >
+                    Claimed
+                  </button>
+                  <button
+                    v-else
+                    class="mission-claim"
+                    :disabled="missionProgress(mission) < mission.target"
+                    @click="claimMission(index)"
+                    type="button"
+                  >
+                    +{{ missionRewards[index] }}c
+                  </button>
+                </div>
+                <div v-if="isGuest" class="mission-guest-note">
+                  Log in to claim mission rewards.
+                </div>
+                <div v-if="shopMessage" class="shop-message">{{ shopMessage }}</div>
+              </div>
             </template>
 
             <template v-else-if="menuScreen === 'leaderboard'">
@@ -1151,6 +1209,111 @@ const ensureSelectedSkin = () => {
   }
 };
 
+// --- Daily missions: three per day, deterministically seeded from the date.
+// Progress is tracked locally; claiming rewards goes through the backend
+// (one claim per slot per day, fixed rewards).
+const missionRewards = [60, 80, 100];
+const missionPool = [
+  { id: 'coins', text: (n) => `Collect ${n} coins today`, targets: [80, 130, 200], stat: 'coins' },
+  { id: 'near', text: (n) => `${n} near misses today`, targets: [10, 18, 30], stat: 'nearMisses' },
+  { id: 'score', text: (n) => `Reach ${n} points in one run`, targets: [2000, 3500, 5500], stat: 'bestScore' },
+  { id: 'runs', text: (n) => `Finish ${n} runs today`, targets: [3, 5, 8], stat: 'runs' },
+];
+const todayKey = () => new Date().toISOString().slice(0, 10);
+const mulberry32 = (seed) => {
+  let a = seed | 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+const hashString = (input) => {
+  let h = 0;
+  for (const ch of input) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  return h;
+};
+
+const dailyMissions = computed(() => {
+  const rng = mulberry32(hashString(todayKey()));
+  const pool = [...missionPool];
+  // Fisher-Yates with the seeded rng keeps the pick deterministic per day.
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, 3).map((mission, slot) => {
+    const target = mission.targets[Math.floor(rng() * mission.targets.length)];
+    return {
+      key: `${todayKey()}-${mission.id}`,
+      label: mission.text(target),
+      stat: mission.stat,
+      target,
+      slot,
+    };
+  });
+});
+
+const emptyDailyStats = () => ({
+  date: todayKey(),
+  coins: 0,
+  nearMisses: 0,
+  bestScore: 0,
+  runs: 0,
+});
+const dailyStats = ref(emptyDailyStats());
+const loadDailyStats = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem('runner_daily_stats') || 'null');
+    if (raw && raw.date === todayKey()) {
+      dailyStats.value = { ...emptyDailyStats(), ...raw };
+    }
+  } catch (error) {
+    // Corrupt storage — start fresh.
+  }
+};
+const recordDailyStats = () => {
+  if (dailyStats.value.date !== todayKey()) {
+    dailyStats.value = emptyDailyStats();
+  }
+  const stats = dailyStats.value;
+  stats.coins += runCoins.value;
+  stats.nearMisses += runNearMisses.value;
+  stats.bestScore = Math.max(stats.bestScore, Math.floor(score.value));
+  stats.runs += 1;
+  localStorage.setItem('runner_daily_stats', JSON.stringify(stats));
+};
+
+const missionProgress = (mission) => Math.floor(dailyStats.value[mission.stat] || 0);
+const claimedMissions = ref([]);
+const completedMissionCount = computed(
+  () =>
+    dailyMissions.value.filter(
+      (mission, index) =>
+        missionProgress(mission) >= mission.target && !claimedMissions.value.includes(index),
+    ).length,
+);
+
+const claimMission = async (index) => {
+  shopMessage.value = '';
+  if (isGuest.value) {
+    showLoginPrompt.value = true;
+    return;
+  }
+  try {
+    const response = await axios.post('/api/runner/mission/claim', { mission_index: index });
+    totalCoins.value = response.data.coins ?? totalCoins.value;
+    claimedMissions.value = Array.isArray(response.data.claimed)
+      ? response.data.claimed.map((i) => Number(i))
+      : claimedMissions.value;
+    shopMessage.value = `Reward claimed — +${missionRewards[index]} coins!`;
+    sfx.powerup();
+  } catch (error) {
+    shopMessage.value = error.response?.data?.message || 'Claim failed.';
+  }
+};
+
 const loadGuestPrefs = () => {
   const storedBest = Number.parseInt(localStorage.getItem('runner_best_distance') || '0', 10);
   bestScore.value = Number.isFinite(storedBest) ? storedBest : 0;
@@ -1651,6 +1814,9 @@ const loadProfile = async () => {
       }
       totalCoins.value = data.profile.coins ?? 0;
       inventoryItems.value = Array.isArray(data.inventory) ? data.inventory : [];
+      claimedMissions.value = Array.isArray(data.mission_claims)
+        ? data.mission_claims.map((i) => Number(i))
+        : [];
       ensureSelectedSkin();
     }
   } catch (error) {
@@ -1925,6 +2091,9 @@ const resetRun = () => {
 const endRun = () => {
   state.value = 'crashed';
   runTopSpeed.value = runTopSpeedRaw;
+  if (!devRun.value) {
+    recordDailyStats();
+  }
   persistRun();
   loadLeaderboard();
 };
@@ -6405,6 +6574,7 @@ onMounted(() => {
   loadAudioPrefs();
   loadLevelPref();
   loadHandednessPref();
+  loadDailyStats();
   initAudio();
   pointerUnlockHandler = () => unlockAudio();
   window.addEventListener('pointerdown', pointerUnlockHandler, { once: true });
@@ -6693,6 +6863,104 @@ onBeforeUnmount(() => {
 .event-toast .finale-toast-sub {
   font-size: 0.7rem;
   color: rgba(255, 230, 190, 0.8);
+}
+
+.mission-badge {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #ffd76b;
+  color: #241a04;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.mission-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.mission-sub {
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  color: rgba(180, 205, 235, 0.7);
+}
+
+.mission-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(120, 180, 255, 0.25);
+  background: rgba(14, 20, 34, 0.6);
+}
+
+.mission-row.done {
+  border-color: rgba(61, 255, 179, 0.55);
+}
+
+.mission-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mission-label {
+  font-size: 0.88rem;
+  color: rgba(225, 238, 255, 0.92);
+  margin-bottom: 6px;
+}
+
+.mission-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(70, 100, 150, 0.3);
+  overflow: hidden;
+}
+
+.mission-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2ee5ff, #3bffb3);
+}
+
+.mission-progress-text {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: rgba(170, 195, 230, 0.65);
+}
+
+.mission-claim {
+  flex: 0 0 auto;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 210, 100, 0.7);
+  background: rgba(60, 44, 12, 0.7);
+  color: #ffd76b;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.mission-claim:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.mission-claim.claimed {
+  border-color: rgba(61, 255, 179, 0.55);
+  color: #7dfce0;
+  background: rgba(10, 40, 28, 0.6);
+}
+
+.mission-guest-note {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: rgba(255, 215, 107, 0.75);
 }
 
 .death-substats {

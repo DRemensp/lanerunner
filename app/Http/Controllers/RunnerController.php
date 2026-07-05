@@ -87,6 +87,10 @@ class RunnerController extends Controller
             'skins' => $skins,
             'owned_skin_ids' => $user->skins()->pluck('skins.id')->values(),
             'inventory' => $inventory,
+            'mission_claims' => \App\Models\MissionClaim::where('user_id', $user->id)
+                ->whereDate('claim_date', now()->toDateString())
+                ->pluck('mission_index')
+                ->values(),
         ]);
     }
 
@@ -294,6 +298,48 @@ class RunnerController extends Controller
 
         return response([
             'active_skin_id' => $profile->active_skin_id,
+        ]);
+    }
+
+    // Fixed rewards per daily-mission slot. Mission definitions live in the
+    // client (seeded from the date); the server only rate-limits claims to
+    // one per slot per day, so the worst-case abuse is 240 coins daily.
+    private const MISSION_REWARDS = [60, 80, 100];
+
+    public function claimMission(Request $request, RunnerProfileService $service): Response
+    {
+        $validated = $request->validate([
+            'mission_index' => ['required', 'integer', 'min:0', 'max:2'],
+        ]);
+
+        $user = $request->user();
+        if (!$user) {
+            return response(['message' => 'Login required.'], 401);
+        }
+
+        $profile = $service->ensureProfile($user);
+        $index = (int) $validated['mission_index'];
+        $today = now()->toDateString();
+
+        $claim = \App\Models\MissionClaim::firstOrCreate([
+            'user_id' => $user->id,
+            'claim_date' => $today,
+            'mission_index' => $index,
+        ]);
+
+        if ($claim->wasRecentlyCreated) {
+            $profile->coins += self::MISSION_REWARDS[$index];
+            $profile->save();
+        }
+
+        $claimed = \App\Models\MissionClaim::where('user_id', $user->id)
+            ->whereDate('claim_date', $today)
+            ->pluck('mission_index')
+            ->values();
+
+        return response([
+            'coins' => $profile->coins,
+            'claimed' => $claimed,
         ]);
     }
 

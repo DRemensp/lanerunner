@@ -34,6 +34,7 @@ Route::prefix('api/runner')->group(function () {
     Route::post('/skin', [RunnerController::class, 'setSkin']);
     Route::post('/skin/buy', [RunnerController::class, 'buySkin']);
     Route::get('/leaderboard', [RunnerController::class, 'leaderboard']);
+    Route::post('/mission/claim', [RunnerController::class, 'claimMission']);
 });
 
 Route::middleware('auth')->prefix('api/inventory')->group(function () {
