@@ -775,6 +775,7 @@ let nextMilestone = 2500;
 // breather state machine.
 let speedTier = 0;
 let checkpointPending = null;
+let lastRowFull = false;
 let smashStreak = 0;
 let recordCelebrated = false;
 let driveEventTimer = 10;
@@ -2125,6 +2126,7 @@ const resetRun = () => {
   coinRushEndZ = null;
   speedTier = 0;
   checkpointPending = null;
+  lastRowFull = false;
 
   nextMilestone = 2500;
   eventToast.value = null;
@@ -3901,7 +3903,7 @@ const spawnOncoming = () => {
     vehicle.position.set(
       lanes[laneOrder[i]],
       vehicle.userData.size.h / 2 + 0.02,
-      -travelDepth - i * 12 - Math.random() * 4,
+      -travelDepth - i * 18 - Math.random() * 4,
     );
     obstacles.push(vehicle);
     scene.add(vehicle);
@@ -3915,7 +3917,14 @@ const spawnRow = () => {
     return;
   }
 
-  const pattern = rowPatterns[Math.floor(Math.random() * rowPatterns.length)];
+  // Never two fully blocked rows back to back: after a 3-lane wall the next
+  // row always keeps a free lane, so steering is always an escape option.
+  let pattern = rowPatterns[Math.floor(Math.random() * rowPatterns.length)];
+  if (lastRowFull && !pattern.includes('none')) {
+    const openPatterns = rowPatterns.filter((candidate) => candidate.includes('none'));
+    pattern = openPatterns[Math.floor(Math.random() * openPatterns.length)];
+  }
+  lastRowFull = !pattern.includes('none');
   // Spawn farther out the faster we go, so there is always time to react.
   const baseZ = -(70 + Math.min(45, speed.value));
 
@@ -6318,8 +6327,10 @@ const updateRunner = (delta) => {
         // oncoming cars are arrival-normalized (see spawnOncoming), so this
         // IS the real time between obstacles reaching the player.
         // Cadence follows the applied tier, in lockstep with the speed.
+        // Floor stays above a full jump chain (0.86s airtime + reaction):
+        // tier 0 never dips below 1.1s between arrivals.
         const baseGap = [1.0, 0.85, 0.75, 0.65][speedTier];
-        spawnTimer = THREE.MathUtils.randFloat(0.9, 1.2) * baseGap;
+        spawnTimer = THREE.MathUtils.randFloat(1.1, 1.45) * baseGap;
       }
     } else {
       spawnTimer = Math.max(spawnTimer, 0.7);
