@@ -2957,6 +2957,57 @@ const triggerNearMiss = () => {
   });
 };
 
+// Ambient shooting stars streaking across the night sky.
+let shootingStars = [];
+let shootingStarTimer = 6;
+let shootingStarGeo = null;
+let shootingStarMat = null;
+
+const spawnShootingStar = () => {
+  if (!shootingStarGeo) {
+    shootingStarGeo = new THREE.BoxGeometry(0.14, 0.14, 7);
+    shootingStarMat = new THREE.MeshBasicMaterial({
+      color: 0xdfeaff,
+      transparent: true,
+      opacity: 0.9,
+      fog: false,
+    });
+  }
+  const mesh = new THREE.Mesh(shootingStarGeo, shootingStarMat.clone());
+  const x = THREE.MathUtils.randFloat(-90, 90);
+  mesh.position.set(x, THREE.MathUtils.randFloat(45, 80), -180);
+  const vel = new THREE.Vector3(
+    THREE.MathUtils.randFloat(-42, -22) * (x > 0 ? 1 : -1),
+    THREE.MathUtils.randFloat(-14, -6),
+    0,
+  );
+  mesh.userData.vel = vel;
+  mesh.userData.life = 1.2;
+  mesh.lookAt(mesh.position.clone().add(vel));
+  shootingStars.push(mesh);
+  scene.add(mesh);
+};
+
+const updateShootingStars = (delta) => {
+  if (!scene) return;
+  shootingStarTimer -= delta;
+  if (shootingStarTimer <= 0 && envMode === 'night') {
+    spawnShootingStar();
+    shootingStarTimer = THREE.MathUtils.randFloat(7, 18);
+  }
+  for (let i = shootingStars.length - 1; i >= 0; i -= 1) {
+    const star = shootingStars[i];
+    star.position.addScaledVector(star.userData.vel, delta);
+    star.userData.life -= delta;
+    star.material.opacity = Math.max(0, Math.min(0.9, star.userData.life));
+    if (star.userData.life <= 0) {
+      scene.remove(star);
+      star.material.dispose();
+      shootingStars.splice(i, 1);
+    }
+  }
+};
+
 const initScene = () => {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05070f);
@@ -6262,6 +6313,7 @@ const animate = (time) => {
   if (state.value !== 'paused') {
     // Crash debris floats in slow motion for the drama.
     updateParticles(state.value === 'crashing' ? delta * 0.35 : delta);
+    updateShootingStars(delta);
   }
 
   if (Math.abs(musicDuckCurrent - musicDuckTarget) > 0.005) {
