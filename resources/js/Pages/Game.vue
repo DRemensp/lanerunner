@@ -2,11 +2,6 @@
   <div class="runner-page">
     <div ref="canvasWrap" class="runner-canvas"></div>
 
-    <div v-if="state === 'menu' && !showAuthGate && !authUser" class="auth-bar">
-      <Link class="ghost-btn small" href="/login">Login</Link>
-      <Link class="primary-btn small" href="/register">Register</Link>
-    </div>
-
     <div
       v-if="!showAuthGate"
       class="audio-pill"
@@ -106,22 +101,33 @@
     </div>
 
     <div v-if="state === 'running' || state === 'crashing' || state === 'paused'" class="hud">
-      <div class="hud-block">
-        <div class="hud-label">Score</div>
-        <div class="hud-value">{{ Math.floor(score) }}</div>
+      <div class="hud-side">
+        <div class="hud-pill hud-coins">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
+          <span>{{ runCoins }}</span>
+        </div>
       </div>
-      <div class="hud-block coins">
-        <div class="hud-label">Coins</div>
-        <div class="hud-value">{{ runCoins }}</div>
+      <div class="hud-score">
+        <div class="hud-score-label">Score</div>
+        <div class="hud-score-value">{{ Math.floor(score) }}</div>
       </div>
-      <div class="hud-block">
-        <div class="hud-label">Speed</div>
+      <div class="hud-side hud-side-right">
         <div
-          class="hud-value"
+          class="hud-pill hud-speed"
           :class="{ low: finalePhase === 'drive' && speed < 15 }"
         >
-          {{ speed.toFixed(1) }}
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18a9 9 0 1115 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 14l3.5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span>{{ speed.toFixed(0) }}</span>
         </div>
+        <button
+          v-if="state === 'running'"
+          class="pause-btn"
+          @click="pauseRun"
+          type="button"
+          aria-label="Pause"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5.5" width="3.4" height="13" rx="1" fill="currentColor"/><rect x="13.6" y="5.5" width="3.4" height="13" rx="1" fill="currentColor"/></svg>
+        </button>
       </div>
     </div>
 
@@ -275,16 +281,6 @@
       <div v-if="multiTime > 0" class="power-chip multi">x2 Score {{ Math.ceil(multiTime) }}s</div>
     </div>
 
-    <button
-      v-if="state === 'running'"
-      class="pause-btn"
-      @click="pauseRun"
-      type="button"
-      aria-label="Pause"
-    >
-      II
-    </button>
-
     <div v-if="state === 'paused'" class="death-overlay">
       <div class="death-card">
         <div class="death-title">Paused</div>
@@ -299,86 +295,85 @@
 
     <div v-if="state === 'menu' && !showAuthGate" class="menu-overlay">
       <div v-if="menuScreen === 'main'" class="menu-layout">
-        <div class="menu-left">
-          <div class="menu-title">
-            <div class="menu-eyebrow">Lane Runner</div>
-            <h1 class="menu-title-text">Neon Rail Dash</h1>
-            <p class="menu-sub">
-              Sprint through three lanes, dodge the blocks, and build momentum.
-              The menu is the hub for levels, skins, and inventory.
-            </p>
-          </div>
+        <div class="menu-hero">
+          <div class="menu-eyebrow">Neon Night City</div>
+          <h1 class="menu-logo">
+            <span class="menu-logo-top">Lane</span>
+            <span class="menu-logo-main">Runner</span>
+          </h1>
+          <div v-if="bestScore > 0" class="menu-best">Best {{ Math.floor(bestScore).toLocaleString() }}</div>
+        </div>
 
-          <nav class="menu-nav">
-            <button class="menu-link primary" @click="startRun" type="button">
-              Start Game
-            </button>
-            <div class="difficulty-row">
-              <span class="difficulty-label">Difficulty</span>
-              <div class="difficulty-toggle">
-                <button
-                  v-for="level in levelOptions"
-                  :key="level.id"
-                  :class="{ active: selectedLevel === level.id }"
-                  @click="setLevel(level.id)"
-                  type="button"
-                >
-                  {{ level.label }}
-                </button>
-              </div>
+        <div class="menu-center">
+          <button class="play-btn" @click="startRun" type="button">Play</button>
+          <div class="difficulty-row">
+            <span class="difficulty-label">Mode</span>
+            <div class="difficulty-toggle">
+              <button
+                v-for="level in levelOptions"
+                :key="level.id"
+                :class="{ active: selectedLevel === level.id }"
+                @click="setLevel(level.id)"
+                type="button"
+              >
+                {{ level.label }}
+              </button>
             </div>
-            <button class="menu-link" @click="openMenuScreen('level')" type="button">
-              Skins
+          </div>
+        </div>
+
+        <div class="menu-bottom">
+          <nav class="menu-tiles">
+            <button class="menu-tile" @click="openMenuScreen('level')" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5L4 6.2l1.7 3.5L8 8.6V20h8V8.6l2.3 1.1L20 6.2l-4.5-2.7a3.5 3.5 0 01-7 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+              <span>Skins</span>
             </button>
-            <button class="menu-link" @click="openMenuScreen('inventory')" type="button">
-              Inventory
+            <button class="menu-tile" @click="openMenuScreen('inventory')" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM12 12l8-4.5M12 12L4 7.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+              <span>Items</span>
             </button>
-            <button class="menu-link" @click="openMenuScreen('missions')" type="button">
-              Missions
-              <span v-if="completedMissionCount" class="mission-badge">{{ completedMissionCount }}</span>
+            <button class="menu-tile" @click="openMenuScreen('missions')" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>
+              <span>Missions</span>
+              <span v-if="completedMissionCount" class="tile-badge">{{ completedMissionCount }}</span>
             </button>
-            <button class="menu-link" @click="openMenuScreen('leaderboard')" type="button">
-              Leaderboard
+            <button class="menu-tile" @click="openMenuScreen('leaderboard')" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v5a5 5 0 01-10 0zM7 5H4.4a2.9 2.9 0 003 3.5M17 5h2.6a2.9 2.9 0 01-3 3.5M12 14v4M8 20.5h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>Ranks</span>
             </button>
-            <button class="menu-link" @click="openMenuScreen('settings')" type="button">
-              Settings
+            <button class="menu-tile" @click="openMenuScreen('settings')" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h8M17.5 7H20M4 17h2.5M12 17h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="14.5" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+              <span>Settings</span>
             </button>
-            <Link
-              v-if="authUser"
-              class="menu-link"
-              href="/profile"
-            >
-              Account
-            </Link>
-            <Link
-              v-if="authUser"
-              class="menu-link danger"
-              href="/logout"
-              method="post"
-              as="button"
-            >
-              Leave Game
-            </Link>
-            <Link
-              v-else
-              class="menu-link"
-              href="/login"
-            >
-              Login
-            </Link>
           </nav>
 
-          <div class="menu-controls">
-            <div>Controls: A/D or Left/Right to switch lanes, Space or Up to jump, Esc to pause.</div>
-            <div>Mobile: use the buttons on screen.</div>
+          <div class="menu-foot">
+            <div class="menu-foot-links">
+              <template v-if="authUser">
+                <div class="coin-chip">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
+                  <span>{{ totalCoins }}</span>
+                </div>
+                <Link class="ghost-btn small" href="/profile">Account</Link>
+                <Link class="ghost-btn small danger" href="/logout" method="post" as="button">Log out</Link>
+              </template>
+              <template v-else>
+                <Link class="ghost-btn small" href="/login">Log in</Link>
+                <Link class="primary-btn small" href="/register">Register</Link>
+              </template>
+            </div>
+            <div class="menu-controls">
+              <template v-if="isTouchDevice">Swipe to steer &middot; up to jump &middot; down to slide</template>
+              <template v-else>A / D move &middot; W jump &middot; S slide &middot; Esc pause</template>
+            </div>
           </div>
         </div>
       </div>
 
       <div v-else class="menu-screen" :class="{ 'skin-screen': menuScreen === 'level' }">
           <div class="menu-screen-head">
-            <button class="ghost-btn small" @click="backToMainMenu" type="button">
-              Back
+            <button class="back-btn" @click="backToMainMenu" type="button" aria-label="Back">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
             <div class="menu-screen-title">
               {{
@@ -661,13 +656,15 @@
     <div v-if="state === 'crashed'" class="death-overlay">
       <div class="death-card">
         <div class="death-title">Run Complete</div>
-        <div class="death-score">
-          <div>Last Score: <strong>{{ Math.floor(score) }}</strong></div>
-          <div>Best Score: <strong>{{ Math.floor(bestScore) }}</strong></div>
-          <div class="death-coins">Coins <strong>+{{ runCoins }}</strong></div>
-          <div class="death-substats">
-            Top speed {{ Math.round(runTopSpeed) }} &middot; Near misses {{ runNearMisses }}
-          </div>
+        <div class="death-hero">
+          <div class="death-hero-label">Score</div>
+          <div class="death-hero-value">{{ Math.floor(score).toLocaleString() }}</div>
+        </div>
+        <div class="death-stats">
+          <div class="death-stat"><span>Best</span><strong>{{ Math.floor(bestScore).toLocaleString() }}</strong></div>
+          <div class="death-stat gold"><span>Coins</span><strong>+{{ runCoins }}</strong></div>
+          <div class="death-stat"><span>Top speed</span><strong>{{ Math.round(runTopSpeed) }}</strong></div>
+          <div class="death-stat"><span>Near misses</span><strong>{{ runNearMisses }}</strong></div>
         </div>
         <div class="death-actions">
           <button class="primary-btn" @click="startRun" type="button">Run Again</button>
@@ -710,6 +707,9 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
+import '@fontsource/chakra-petch/500.css';
+import '@fontsource/chakra-petch/600.css';
+import '@fontsource/chakra-petch/700.css';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
@@ -6773,7 +6773,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
 :global(html),
 :global(body),
 :global(#app) {
@@ -6789,6 +6788,9 @@ onBeforeUnmount(() => {
 }
 
 .runner-page {
+  --display: 'Chakra Petch', 'Bahnschrift', 'Segoe UI', sans-serif;
+  --cyan: #4be8ff;
+  --gold: #ffc94a;
   position: relative;
   width: 100vw;
   height: 100vh;
@@ -6800,7 +6802,7 @@ onBeforeUnmount(() => {
     radial-gradient(circle at 20% 20%, rgba(70, 120, 200, 0.2), transparent 45%),
     radial-gradient(circle at 80% 10%, rgba(255, 120, 80, 0.18), transparent 42%),
     linear-gradient(180deg, #05070f 0%, #0a1020 60%, #05070f 100%);
-  font-family: 'Agency FB', 'Bahnschrift', 'Segoe UI', sans-serif;
+  font-family: 'Chakra Petch', 'Bahnschrift', 'Segoe UI', sans-serif;
 }
 
 .runner-canvas {
@@ -6821,33 +6823,89 @@ onBeforeUnmount(() => {
 
 .hud {
   position: absolute;
-  top: 24px;
-  left: 24px;
-  right: 24px;
-  display: flex;
-  justify-content: space-between;
+  top: calc(10px + env(safe-area-inset-top));
+  left: calc(14px + env(safe-area-inset-left));
+  right: calc(14px + env(safe-area-inset-right));
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  gap: 10px;
   z-index: 3;
   pointer-events: none;
 }
 
-.hud-block {
-  background: rgba(8, 12, 22, 0.7);
-  border: 1px solid rgba(88, 140, 255, 0.4);
-  padding: 12px 18px;
-  border-radius: 14px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+.hud-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-side-right {
+  justify-content: flex-end;
+}
+
+.hud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px;
+  background: linear-gradient(180deg, rgba(16, 24, 44, 0.85), rgba(8, 12, 24, 0.85));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14);
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  color: #eef6ff;
+}
+
+.hud-pill svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+
+.hud-coins {
+  color: #ffd97a;
+}
+
+.hud-speed svg {
+  color: var(--cyan);
+}
+
+.hud-speed.low {
+  color: #ff8087;
+}
+
+.hud-speed.low svg {
+  color: #ff5d68;
+}
+
+.hud-score {
+  text-align: center;
+  font-family: var(--display);
+}
+
+.hud-score-label {
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.5em;
+  margin-left: 0.5em;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  color: rgba(170, 200, 240, 0.6);
 }
 
-.hud-label {
-  font-size: 0.65rem;
-  opacity: 0.7;
-}
-
-.hud-value {
-  font-size: 1.4rem;
+.hud-score-value {
+  font-size: clamp(1.9rem, 5.5vw, 2.6rem);
   font-weight: 700;
+  line-height: 1.02;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  color: #f4faff;
+  text-shadow: 0 0 22px rgba(75, 232, 255, 0.35), 0 2px 14px rgba(0, 0, 0, 0.65);
 }
 
 .near-miss {
@@ -6857,16 +6915,12 @@ onBeforeUnmount(() => {
   z-index: 3;
   pointer-events: none;
   color: #ffd766;
-  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', sans-serif;
+  font-family: var(--display);
   font-size: 1.6rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   text-shadow: 0 0 18px rgba(255, 190, 70, 0.65);
   animation: nearMissPop 0.95s ease-out forwards;
-}
-
-.hud-value.low {
-  color: #ff6b6e;
 }
 
 .dev-badge {
@@ -6897,7 +6951,7 @@ onBeforeUnmount(() => {
 }
 
 .finale-toast-title {
-  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', sans-serif;
+  font-family: var(--display);
   font-size: 2.6rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
@@ -7084,7 +7138,7 @@ onBeforeUnmount(() => {
 }
 
 .speed-goal-title {
-  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', sans-serif;
+  font-family: var(--display);
   font-size: 1.35rem;
   letter-spacing: 0.26em;
   text-transform: uppercase;
@@ -7161,7 +7215,7 @@ onBeforeUnmount(() => {
   z-index: 3;
   pointer-events: none;
   color: #ffcf3d;
-  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', sans-serif;
+  font-family: var(--display);
   font-size: 1.8rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -7252,19 +7306,27 @@ onBeforeUnmount(() => {
 }
 
 .pause-btn {
-  position: absolute;
-  top: calc(96px + env(safe-area-inset-top));
-  right: calc(24px + env(safe-area-inset-right));
-  z-index: 4;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  border: 1px solid rgba(90, 140, 255, 0.4);
-  background: rgba(8, 12, 22, 0.7);
-  color: #cfe0ff;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  pointer-events: auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: linear-gradient(180deg, rgba(16, 24, 44, 0.85), rgba(8, 12, 24, 0.85));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14);
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  color: #cfe4ff;
   cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.pause-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.pause-btn:active {
+  transform: scale(0.92);
 }
 
 .skin-preview-hint {
@@ -7454,78 +7516,80 @@ onBeforeUnmount(() => {
   inset: 0;
   display: flex;
   align-items: stretch;
-  justify-content: flex-start;
-  background: linear-gradient(
-    90deg,
-    rgba(6, 8, 18, 0.92) 0%,
-    rgba(6, 8, 18, 0.7) 38%,
-    rgba(6, 8, 18, 0.3) 60%,
-    rgba(6, 8, 18, 0) 100%
-  );
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 50% -12%, rgba(60, 130, 220, 0.18), transparent 55%),
+    linear-gradient(180deg, rgba(5, 7, 15, 0.92) 0%, rgba(5, 7, 15, 0.55) 45%, rgba(5, 7, 15, 0.88) 100%);
   z-index: 3;
-  animation: fadeIn 0.6s ease;
+  animation: fadeIn 0.5s ease;
 }
 
 .menu-layout {
-  width: min(620px, 92vw);
+  width: min(620px, 100%);
   height: 100%;
-  padding: calc(156px + env(safe-area-inset-top)) 0 calc(40px + env(safe-area-inset-bottom)) 64px;
+  padding: calc(24px + env(safe-area-inset-top)) 22px calc(18px + env(safe-area-inset-bottom));
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.menu-left {
-  display: grid;
-  gap: 24px;
-  max-width: 520px;
-  min-height: 0;
+.menu-hero {
+  text-align: center;
+  margin-top: 5vh;
 }
 
 .menu-eyebrow {
-  font-size: 0.75rem;
-  letter-spacing: 0.4em;
+  font-family: var(--display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.52em;
+  margin-left: 0.52em;
   text-transform: uppercase;
-  color: rgba(150, 190, 255, 0.7);
+  color: rgba(150, 190, 255, 0.65);
 }
 
-.menu-title-text {
-  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', sans-serif;
-  font-size: 3.2rem;
-  margin: 0;
+.menu-logo {
+  margin: 12px 0 0;
+  font-family: var(--display);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  line-height: 0.94;
 }
 
-.menu-sub {
-  margin: 0;
-  color: rgba(220, 230, 255, 0.7);
-  line-height: 1.5;
+.menu-logo-top {
+  display: block;
+  font-size: clamp(1.2rem, 4.5vw, 1.8rem);
+  font-weight: 600;
+  letter-spacing: 0.64em;
+  margin-left: 0.64em;
+  color: rgba(175, 205, 245, 0.85);
 }
 
-.menu-title {
-  display: grid;
-  gap: 12px;
+.menu-logo-main {
+  display: block;
+  font-size: clamp(3rem, 11vw, 4.6rem);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin-left: 0.1em;
+  color: #f6fbff;
+  text-shadow: 0 0 34px rgba(75, 232, 255, 0.4), 0 4px 24px rgba(0, 0, 0, 0.6);
 }
 
-.auth-bar {
-  position: absolute;
-  top: calc(20px + env(safe-area-inset-top));
-  right: calc(24px + env(safe-area-inset-right));
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  z-index: 6;
-}
-
-.auth-user {
-  font-size: 0.8rem;
-  color: rgba(210, 225, 255, 0.85);
-  background: rgba(8, 12, 22, 0.6);
-  border: 1px solid rgba(90, 140, 255, 0.35);
-  padding: 6px 10px;
-  border-radius: 999px;
+.menu-best {
+  display: inline-flex;
+  margin-top: 14px;
+  padding: 7px 14px;
+  font-family: var(--display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  background: rgba(50, 36, 8, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 201, 74, 0.35);
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
 }
 
 .audio-pill {
@@ -7691,103 +7755,218 @@ onBeforeUnmount(() => {
   letter-spacing: 0.08em;
 }
 
-.menu-nav {
+.menu-center {
+  width: 100%;
   display: grid;
-  gap: 10px;
-  margin-top: 16px;
+  justify-items: center;
+  gap: 16px;
+}
+
+.play-btn {
+  width: min(320px, 100%);
+  padding: 17px 20px 16px;
+  border: none;
+  position: relative;
+  overflow: hidden;
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  text-transform: uppercase;
+  color: #041018;
+  background: linear-gradient(115deg, #39f9c0, #25a6ff);
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+  cursor: pointer;
+  filter: drop-shadow(0 12px 30px rgba(43, 205, 213, 0.35));
+  transition: transform 0.15s ease, filter 0.2s ease;
+}
+
+.play-btn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: skewX(-18deg);
+  animation: playSheen 3.6s ease-in-out infinite;
+}
+
+@keyframes playSheen {
+  0%,
+  60% {
+    left: -60%;
+  }
+  100% {
+    left: 130%;
+  }
+}
+
+.play-btn:hover {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 16px 34px rgba(43, 205, 213, 0.5));
+}
+
+.play-btn:active {
+  transform: translateY(0) scale(0.97);
 }
 
 .difficulty-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 2px 0 6px;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
 }
 
 .difficulty-label {
-  font-size: 0.68rem;
-  letter-spacing: 0.24em;
+  font-family: var(--display);
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  margin-left: 0.34em;
   text-transform: uppercase;
-  color: rgba(170, 200, 255, 0.7);
+  color: rgba(170, 200, 255, 0.55);
 }
 
 .difficulty-toggle {
   display: inline-flex;
-  border: 1px solid rgba(110, 165, 255, 0.4);
-  border-radius: 999px;
   padding: 3px;
   gap: 3px;
-  background: rgba(8, 12, 22, 0.6);
+  background: rgba(9, 14, 28, 0.78);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.12);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 }
 
 .difficulty-toggle button {
   border: none;
-  border-radius: 999px;
-  padding: 7px 16px;
-  font-size: 0.72rem;
-  letter-spacing: 0.14em;
+  padding: 8px 18px;
+  font-family: var(--display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   background: transparent;
-  color: rgba(210, 225, 255, 0.75);
+  color: rgba(200, 220, 250, 0.68);
   cursor: pointer;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   transition: background 0.2s ease, color 0.2s ease;
 }
 
 .difficulty-toggle button.active {
-  background: linear-gradient(120deg, #39f9c0, #25a6ff);
-  color: #05070f;
+  background: linear-gradient(115deg, #39f9c0, #25a6ff);
+  color: #041018;
   font-weight: 700;
 }
 
-.menu-link {
-  display: block;
+.menu-bottom {
   width: 100%;
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  font-size: 0.85rem;
-  padding: 12px 0;
-  border: none;
-  color: rgba(224, 235, 255, 0.85);
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
+  display: grid;
+  gap: 14px;
+}
+
+.menu-tiles {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.menu-tile {
   position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 13px 4px 11px;
+  border: none;
+  background: linear-gradient(180deg, rgba(16, 24, 44, 0.8), rgba(8, 12, 24, 0.8));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.12);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  color: rgba(210, 228, 255, 0.85);
+  font-family: var(--display);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.15s ease, color 0.15s ease;
 }
 
-.menu-link.primary {
-  color: #05070f;
-  background: linear-gradient(120deg, #39f9c0, #25a6ff);
-  padding: 12px 16px;
-  border-radius: 12px;
-  box-shadow: 0 12px 30px rgba(40, 210, 190, 0.25);
-  letter-spacing: 0.18em;
+.menu-tile svg {
+  width: 21px;
+  height: 21px;
+  color: var(--cyan);
 }
 
-.menu-link.active {
-  color: #f6fffd;
+@media (hover: hover) {
+  .menu-tile:hover {
+    transform: translateY(-2px);
+    color: #ffffff;
+  }
 }
 
-.menu-link.active::after {
-  content: '';
+.menu-tile:active {
+  transform: scale(0.95);
+}
+
+.tile-badge {
   position: absolute;
-  left: 0;
-  bottom: 2px;
-  width: 120px;
-  height: 2px;
-  background: linear-gradient(90deg, rgba(80, 220, 190, 0.95), transparent);
+  top: 5px;
+  right: 7px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--gold);
+  color: #241300;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
-.menu-link.danger {
-  color: rgba(255, 190, 190, 0.9);
+.menu-foot {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.menu-foot-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  background: rgba(50, 36, 8, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 201, 74, 0.3);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.coin-chip svg {
+  width: 14px;
+  height: 14px;
 }
 
 .menu-screen {
-  width: min(720px, 92vw);
+  width: min(640px, 100%);
   height: 100%;
-  padding: calc(152px + env(safe-area-inset-top)) 0 calc(32px + env(safe-area-inset-bottom)) 64px;
-  display: grid;
-  align-content: start;
-  gap: 18px;
+  padding: calc(16px + env(safe-area-inset-top)) 18px calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
 }
 
 .menu-screen-head {
@@ -7796,23 +7975,51 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+.back-btn {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: linear-gradient(180deg, rgba(16, 24, 44, 0.85), rgba(8, 12, 24, 0.85));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  color: #d5e6ff;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.back-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.back-btn:active {
+  transform: scale(0.92);
+}
+
 .menu-screen-title {
   flex: 1;
+  font-family: var(--display);
+  font-size: clamp(1.1rem, 4vw, 1.4rem);
+  font-weight: 700;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
-  letter-spacing: 0.3em;
-  font-size: 0.75rem;
-  color: rgba(190, 210, 255, 0.85);
+  color: #eef6ff;
 }
 
 .menu-screen-card {
-  border-radius: 18px;
-  border: 1px solid rgba(120, 180, 255, 0.35);
-  background: rgba(10, 14, 24, 0.85);
+  flex: 0 1 auto;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(13, 19, 36, 0.92), rgba(8, 12, 24, 0.92));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.12);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
   padding: 18px;
   display: grid;
+  align-content: start;
   gap: 16px;
-  max-height: calc(100dvh - 180px);
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .menu-settings-grid {
@@ -7826,10 +8033,10 @@ onBeforeUnmount(() => {
 }
 
 .leaderboard-stat {
-  border-radius: 14px;
-  border: 1px solid rgba(120, 180, 255, 0.3);
-  background: rgba(8, 12, 22, 0.6);
   padding: 14px 16px;
+  background: rgba(9, 14, 28, 0.7);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.1);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   display: grid;
   gap: 6px;
 }
@@ -7842,8 +8049,10 @@ onBeforeUnmount(() => {
 }
 
 .leaderboard-value {
+  font-family: var(--display);
   font-size: 1.6rem;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: rgba(230, 240, 255, 0.95);
 }
 
@@ -7890,20 +8099,17 @@ onBeforeUnmount(() => {
 }
 
 .menu-screen.skin-screen {
-  display: flex;
-  flex-direction: column;
   justify-content: space-between;
-  width: min(720px, 94vw);
-  padding: calc(96px + env(safe-area-inset-top)) 0 calc(14px + env(safe-area-inset-bottom)) 0;
+  width: min(720px, 100%);
 }
 
 .skin-dock {
   display: grid;
   gap: 10px;
   padding: 12px 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(120, 180, 255, 0.35);
-  background: rgba(10, 14, 24, 0.88);
+  background: linear-gradient(180deg, rgba(13, 19, 36, 0.92), rgba(8, 12, 24, 0.92));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.12);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
 }
 
 .skin-tabs {
@@ -7913,6 +8119,8 @@ onBeforeUnmount(() => {
 }
 
 .skin-tab {
+  font-family: var(--display);
+  font-weight: 600;
   padding: 7px 16px;
   border-radius: 999px;
   border: 1px solid rgba(120, 180, 255, 0.3);
@@ -8055,14 +8263,6 @@ onBeforeUnmount(() => {
   color: rgba(255, 220, 150, 0.9);
 }
 
-.hud-block.coins .hud-value {
-  color: #ffcf4d;
-}
-
-.death-coins {
-  color: #ffcf4d;
-}
-
 .skin-chip.locked::before {
   box-shadow: none;
 }
@@ -8074,13 +8274,17 @@ onBeforeUnmount(() => {
 
 .primary-btn,
 .ghost-btn {
-  padding: 12px 18px;
-  border-radius: 12px;
+  padding: 13px 18px;
+  border: none;
+  font-family: var(--display);
   text-transform: uppercase;
-  letter-spacing: 0.2em;
-  font-size: 0.75rem;
+  letter-spacing: 0.22em;
+  font-size: 0.78rem;
   font-weight: 700;
+  text-align: center;
   cursor: pointer;
+  clip-path: polygon(11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%, 0 11px);
+  transition: transform 0.15s ease, filter 0.15s ease;
 }
 
 .primary-btn.small,
@@ -8091,16 +8295,24 @@ onBeforeUnmount(() => {
 }
 
 .primary-btn {
-  background: linear-gradient(120deg, #39f9c0, #25a6ff);
-  border: none;
-  color: #060812;
-  box-shadow: 0 12px 30px rgba(40, 210, 190, 0.35);
+  background: linear-gradient(115deg, #39f9c0, #25a6ff);
+  color: #041018;
+  filter: drop-shadow(0 8px 22px rgba(40, 210, 190, 0.3));
 }
 
 .ghost-btn {
-  background: transparent;
-  border: 1px solid rgba(120, 180, 255, 0.4);
-  color: #e5f0ff;
+  background: rgba(14, 20, 38, 0.75);
+  box-shadow: inset 0 0 0 1px rgba(120, 175, 255, 0.35), inset 0 1px 0 rgba(160, 210, 255, 0.1);
+  color: #dbe9ff;
+}
+
+.ghost-btn.danger {
+  color: rgba(255, 176, 182, 0.9);
+}
+
+.primary-btn:active,
+.ghost-btn:active {
+  transform: scale(0.96);
 }
 
 .menu-result {
@@ -8225,10 +8437,13 @@ onBeforeUnmount(() => {
 }
 
 .menu-controls {
-  font-size: 0.8rem;
-  color: rgba(190, 200, 230, 0.7);
-  display: grid;
-  gap: 6px;
+  font-family: var(--display);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  color: rgba(165, 185, 220, 0.6);
 }
 
 .gate-overlay {
@@ -8258,33 +8473,27 @@ onBeforeUnmount(() => {
   z-index: 9;
 }
 
-.death-card {
-  width: min(420px, 90vw);
-  padding: 26px;
-  border-radius: 18px;
-  border: 1px solid rgba(120, 180, 255, 0.35);
-  background: rgba(10, 14, 24, 0.95);
+.death-card,
+.modal-card,
+.gate-card {
+  width: min(410px, calc(100vw - 32px));
+  padding: 24px 22px;
+  background: linear-gradient(180deg, rgba(13, 19, 36, 0.97), rgba(7, 10, 20, 0.97));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14);
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
   display: grid;
   gap: 16px;
   text-align: center;
-}
-
-.modal-card {
-  width: min(420px, 90vw);
-  padding: 24px;
-  border-radius: 18px;
-  border: 1px solid rgba(120, 180, 255, 0.35);
-  background: rgba(10, 14, 24, 0.95);
-  display: grid;
-  gap: 16px;
-  text-align: center;
+  filter: drop-shadow(0 24px 60px rgba(0, 0, 0, 0.55));
 }
 
 .modal-title {
+  font-family: var(--display);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3em;
-  font-size: 0.85rem;
-  color: rgba(180, 210, 255, 0.9);
+  font-size: 1rem;
+  color: #eaf4ff;
 }
 
 .modal-actions {
@@ -8295,16 +8504,72 @@ onBeforeUnmount(() => {
 }
 
 .death-title {
+  font-family: var(--display);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3em;
-  font-size: 0.85rem;
-  color: rgba(180, 210, 255, 0.9);
+  font-size: 1rem;
+  color: #eaf4ff;
 }
 
-.death-score {
+.death-hero {
   display: grid;
-  gap: 6px;
-  color: rgba(220, 230, 255, 0.85);
+  gap: 2px;
+}
+
+.death-hero-label {
+  font-family: var(--display);
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.46em;
+  margin-left: 0.46em;
+  text-transform: uppercase;
+  color: rgba(160, 195, 240, 0.6);
+}
+
+.death-hero-value {
+  font-family: var(--display);
+  font-size: 2.8rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #f6fbff;
+  text-shadow: 0 0 26px rgba(75, 232, 255, 0.35);
+}
+
+.death-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.death-stat {
+  display: grid;
+  gap: 3px;
+  padding: 10px 8px;
+  background: rgba(9, 14, 28, 0.7);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.1);
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+}
+
+.death-stat span {
+  font-family: var(--display);
+  font-size: 0.54rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(165, 195, 240, 0.65);
+}
+
+.death-stat strong {
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  color: #eef6ff;
+}
+
+.death-stat.gold strong {
+  color: var(--gold);
 }
 
 .death-actions {
@@ -8312,22 +8577,13 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
-.gate-card {
-  width: min(420px, 90vw);
-  padding: 24px;
-  border-radius: 18px;
-  border: 1px solid rgba(120, 180, 255, 0.4);
-  background: rgba(10, 14, 24, 0.95);
-  display: grid;
-  gap: 16px;
-  text-align: center;
-}
-
 .gate-title {
+  font-family: var(--display);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3em;
-  font-size: 0.9rem;
-  color: rgba(180, 210, 255, 0.9);
+  font-size: 1rem;
+  color: #eaf4ff;
 }
 
 .gate-actions {
@@ -8353,14 +8609,20 @@ onBeforeUnmount(() => {
 
 @media (max-width: 768px) {
   .hud {
-    top: calc(12px + env(safe-area-inset-top));
-    left: 16px;
-    right: 16px;
+    top: calc(8px + env(safe-area-inset-top));
+    left: 10px;
+    right: 10px;
   }
 
-  .auth-bar {
-    top: calc(12px + env(safe-area-inset-top));
-    right: 16px;
+  .hud-pill {
+    height: 34px;
+    padding: 0 10px;
+    font-size: 0.9rem;
+  }
+
+  .pause-btn {
+    width: 34px;
+    height: 34px;
   }
 
   .audio-pill {
@@ -8369,7 +8631,7 @@ onBeforeUnmount(() => {
   }
 
   .audio-pill.running {
-    top: calc(72px + env(safe-area-inset-top));
+    top: calc(56px + env(safe-area-inset-top));
   }
 
   .audio-panel {
@@ -8380,37 +8642,33 @@ onBeforeUnmount(() => {
   .menu-layout,
   .menu-screen {
     width: 100%;
-    padding: calc(124px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
   }
 
-  .menu-left {
-    gap: 16px;
+  .menu-hero {
+    margin-top: 2vh;
   }
 
-  .menu-title-text {
-    font-size: 2.2rem;
-  }
-
-  .menu-sub {
-    display: none;
-  }
-
-  .menu-nav {
-    grid-template-columns: minmax(0, 1fr);
+  .menu-tiles {
     gap: 6px;
-    margin-top: 10px;
   }
 
-  .menu-link {
-    text-align: left;
-    padding: 10px 12px;
-    font-size: 0.72rem;
-    letter-spacing: 0.16em;
-    width: min(240px, 60%);
+  .menu-tile {
+    padding: 11px 2px 9px;
+    font-size: 0.52rem;
+    letter-spacing: 0.08em;
+  }
+
+  .menu-tile svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .play-btn {
+    width: 100%;
   }
 
   .menu-screen-card {
-    max-height: calc(100dvh - 140px);
+    padding: 14px;
   }
 
   .menu-inventory-list {
@@ -8418,7 +8676,22 @@ onBeforeUnmount(() => {
   }
 
   .menu-controls {
-    font-size: 0.7rem;
+    font-size: 0.56rem;
+  }
+}
+
+.runner-page :is(button, a):focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .play-btn::after {
+    animation: none;
+  }
+
+  .menu-overlay {
+    animation: none;
   }
 }
 </style>

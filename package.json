@@ -21,6 +21,7 @@
         "vue": "^3.4.0"
     },
     "dependencies": {
+        "@fontsource/chakra-petch": "^5.2.7",
         "gsap": "^3.13.0",
         "three": "^0.182.0"
     }
