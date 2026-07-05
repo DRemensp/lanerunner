@@ -3885,10 +3885,16 @@ const spawnOncoming = () => {
       vehicle.userData.beams.visible = true;
     }
     vehicle.rotation.y = 0;
+    // Arrival-normalized depth: spawn proportionally deeper by the closing
+    // speed, so the travel time to the player equals a normal row's. This
+    // keeps the spawn cadence and the ARRIVAL cadence identical — oncoming
+    // cars can no longer catch up and bunch onto a row.
+    const rowDepth = 72 + Math.min(45, speed.value);
+    const travelDepth = rowDepth * ((speed.value + vehicle.userData.vz) / speed.value);
     vehicle.position.set(
       lanes[laneOrder[i]],
       vehicle.userData.size.h / 2 + 0.02,
-      -(112 + Math.min(20, speed.value * 0.3)) - i * 10 - Math.random() * 5,
+      -travelDepth - i * 12 - Math.random() * 4,
     );
     obstacles.push(vehicle);
     scene.add(vehicle);
@@ -6276,10 +6282,13 @@ const updateRunner = (delta) => {
       spawnTimer -= delta;
       if (spawnTimer <= 0) {
         spawnRow();
-        // A real ~1s between rows at low speed (narrow random spread, so no
-        // sub-0.5s clusters), tapering to ~0.6s at checkpoint speeds.
-        const baseGap = THREE.MathUtils.clamp(1.0 - (speed.value - 12) * 0.012, 0.6, 1.0);
-        spawnTimer = THREE.MathUtils.randFloat(0.75, 1.25) * baseGap;
+        // Arrival gap between hazards, tiered per 2.5k checkpoint block.
+        // The floor always stays above the 0.86s jump airtime in tier 0, and
+        // oncoming cars are arrival-normalized (see spawnOncoming), so this
+        // IS the real time between obstacles reaching the player.
+        const tier = Math.min(3, Math.floor(score.value / 2500));
+        const baseGap = [1.0, 0.85, 0.75, 0.65][tier];
+        spawnTimer = THREE.MathUtils.randFloat(0.9, 1.2) * baseGap;
       }
     } else {
       spawnTimer = Math.max(spawnTimer, 0.7);
