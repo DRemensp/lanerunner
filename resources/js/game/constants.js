@@ -43,9 +43,9 @@ export const driveMaxSpeed = 160;
 // God mode: hold a medium-high speed for a sustained stretch (not a short
 // top-speed burst). Dropping below the trigger drains progress at 1.5x
 // instead of resetting — challenging, but never cheap.
-export const godTriggerSpeed = 110;
-export const godHoldSeconds = 20;
-export const godFloorSpeed = 100;
+export const godTriggerSpeed = 100;
+export const godHoldSeconds = 10;
+export const godFloorSpeed = 90;
 
 // Zone 3: at RAMP_SCORE while in god mode, the road ends in a jump ramp into
 // the sunrise over water; mid-air the car slams into a plane's cargo hold and

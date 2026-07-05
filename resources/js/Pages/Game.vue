@@ -783,6 +783,11 @@ let nearMissTimer;
 const runNearMisses = ref(0);
 const runTopSpeed = ref(0);
 let runTopSpeedRaw = 0;
+// Zone-3 per-run counters feeding the daily missions.
+const runGrazes = ref(0);
+const runDroneKills = ref(0);
+const runMotherKills = ref(0);
+const runBestCombo = ref(0);
 
 const shieldActive = ref(false);
 const magnetTime = ref(0);
@@ -860,6 +865,11 @@ const {
   totalCoins,
   runCoins,
   runNearMisses,
+  runGrazes,
+  runDroneKills,
+  runMotherKills,
+  runBestCombo,
+  runTopSpeed,
   score,
   sfx,
 });
@@ -1008,6 +1018,15 @@ let driveTargetSpeed = 24;
 let accelHeld = false;
 let brakeHeld = false;
 let driveSpawnTimer = 0;
+// Second chance: the first Zone-2 crash throws the character out of the car;
+// they steal a parked car at the left curb and drive on. Crash #2 is fatal.
+let driveLifeUsed = false;
+let carjackPhase = 'eject'; // 'eject' (tumble arc) -> 'run' (sprint to the car)
+let carjackTimer = 0;
+let carjackCar = null;
+let carjackFrom = new THREE.Vector3();
+let carjackLand = new THREE.Vector3();
+const carjackProps = [];
 
 const activeLanes = () => (finalePhase.value === 'drive' ? carLanes : lanes);
 
@@ -1530,6 +1549,10 @@ const resetRun = () => {
   smashStreak = 0;
   recordCelebrated = false;
   runNearMisses.value = 0;
+  runGrazes.value = 0;
+  runDroneKills.value = 0;
+  runMotherKills.value = 0;
+  runBestCombo.value = 0;
   runTopSpeed.value = 0;
   runTopSpeedRaw = 0;
   trafficWave = null;
@@ -2581,6 +2604,7 @@ const triggerNearMiss = () => {
   nearMissCombo.value =
     now - nearMissComboAt < nearMissComboWindowMs ? nearMissCombo.value + 1 : 1;
   nearMissComboAt = now;
+  runBestCombo.value = Math.max(runBestCombo.value, nearMissCombo.value);
   const bonus = nearMissBase * nearMissCombo.value * (multiTime.value > 0 ? 2 : 1);
   nearMissAmount.value = bonus;
   runNearMisses.value += 1;
@@ -2592,6 +2616,32 @@ const triggerNearMiss = () => {
     clearTimeout(nearMissTimer);
   }
   // Re-trigger the CSS animation even when two near misses overlap.
+  requestAnimationFrame(() => {
+    nearMissToast.value = true;
+    nearMissTimer = setTimeout(() => {
+      nearMissToast.value = false;
+    }, 950);
+  });
+};
+
+// Zone-3 graze: an enemy bolt slipping past close by pays out like a road
+// near miss — shares the toast/combo machinery, tracks its own mission stat.
+const triggerGraze = () => {
+  const now = performance.now();
+  nearMissCombo.value =
+    now - nearMissComboAt < nearMissComboWindowMs ? nearMissCombo.value + 1 : 1;
+  nearMissComboAt = now;
+  runBestCombo.value = Math.max(runBestCombo.value, nearMissCombo.value);
+  const bonus = 30 * nearMissCombo.value;
+  nearMissAmount.value = bonus;
+  runGrazes.value += 1;
+  vibrate(12);
+  score.value += bonus;
+  sfx.nearMiss();
+  nearMissToast.value = false;
+  if (nearMissTimer) {
+    clearTimeout(nearMissTimer);
+  }
   requestAnimationFrame(() => {
     nearMissToast.value = true;
     nearMissTimer = setTimeout(() => {
@@ -3913,6 +3963,165 @@ const updateFinaleWalk = (delta) => {
   }
 };
 
+const buildParkedCar = () => {
+  // Any ride will do when you're stealing it — pick a random template.
+  const keys = Object.keys(glbTemplates);
+  const template = keys.length
+    ? glbTemplates[keys[Math.floor(Math.random() * keys.length)]]
+    : null;
+  if (template) {
+    const car = template.model.clone(true);
+    car.userData.restY = template.size.h / 2 + 0.12;
+    return car;
+  }
+  const { mesh } = obstacleBuilders['low-car']();
+  mesh.userData.restY = 0.57 + 0.12;
+  return mesh;
+};
+
+// First Zone-2 crash: throw the character out of the wreck instead of ending
+// the run. The wreck stays behind, a parked car waits at the left curb, and
+// the god-mode hold progress is deliberately NOT reset.
+const ejectFromCar = () => {
+  driveLifeUsed = true;
+  finalePhase.value = 'carjack';
+  carjackPhase = 'eject';
+  carjackTimer = 0.85;
+  nearMissCombo.value = 0;
+  nearMissComboAt = -Infinity;
+  vibrate(90);
+  sfx.crash();
+  spawnBurst(player.position.clone(), ['red', 'dust', 'skin'], 26, 8);
+  clearObstacles();
+
+  // Leave the dead car behind as a tipped-over wreck.
+  if (carVisual) {
+    const wreckPosition = new THREE.Vector3();
+    carVisual.getWorldPosition(wreckPosition);
+    player.remove(carVisual);
+    carVisual.position.copy(wreckPosition);
+    carVisual.position.y = Math.max(0.5, wreckPosition.y);
+    carVisual.rotation.set(0, Math.PI + 0.7, 0.55);
+    scene.add(carVisual);
+    carjackProps.push(carVisual);
+    carVisual = null;
+    carWheels = [];
+  }
+
+  // The character reappears and tumbles toward the left curb.
+  player.visible = true;
+  player.scale.y = 1;
+  if (activeCharacter) {
+    activeCharacter.root.visible = true;
+  } else {
+    proceduralParts.forEach((part) => {
+      part.visible = true;
+    });
+  }
+  currentSurfaceY = 0;
+  currentGroundCenter = getGroundCenterForSurface(0, currentPlayerHeight());
+  playerVelocityY = 0;
+  carjackFrom.copy(player.position);
+  carjackLand.set(carLanes[0] - 1.6, currentGroundCenter, player.position.z + 1.2);
+
+  // The getaway ride, parked at the left curb a few meters ahead.
+  carjackCar = buildParkedCar();
+  carjackCar.position.set(-7.2, carjackCar.userData.restY, player.position.z - 9);
+  carjackCar.rotation.y = Math.PI;
+  scene.add(carjackCar);
+
+  driveHintText.value = 'Wrecked! Steal the parked car on the left — the next crash is final.';
+  driveHint.value = true;
+  if (driveHintTimer) {
+    clearTimeout(driveHintTimer);
+  }
+  driveHintTimer = setTimeout(() => {
+    driveHint.value = false;
+  }, 4200);
+};
+
+const enterStolenCar = () => {
+  sfx.door();
+  carVisual = carjackCar;
+  carjackCar = null;
+  scene.remove(carVisual);
+  carVisual.position.set(0, 0, 0);
+  carVisual.rotation.set(0, Math.PI, 0);
+  player.add(carVisual);
+  carWheels = [];
+  carVisual.traverse((node) => {
+    if (node.name && node.name.startsWith('wheel')) {
+      carWheels.push(node);
+    }
+  });
+  if (activeCharacter) {
+    activeCharacter.root.visible = false;
+  }
+  proceduralParts.forEach((part) => {
+    part.visible = false;
+  });
+  player.rotation.z = 0;
+  player.position.y = carPlayerSize.h / 2 + 0.02;
+  currentGroundCenter = player.position.y;
+  playerVelocityY = 0;
+  currentLane = 2;
+  laneOrigin = 2;
+  finalePhase.value = 'drive';
+  speed.value = 2;
+  driveTargetSpeed = 24;
+  driveSpawnTimer = 1.8;
+  const now = performance.now();
+  bumpProtectUntil = now + 2500;
+  invulnUntil = now + 2500;
+  sfx.engineStart();
+  showEventToast('Ride stolen!', 'Last chance — keep it on the road.', 2600);
+};
+
+const updateCarjack = (delta) => {
+  // The road grinds to a halt while the character is on foot.
+  speed.value = THREE.MathUtils.damp(speed.value, 0, 6, delta);
+  driveTargetSpeed = 0;
+
+  if (carjackPhase === 'eject') {
+    carjackTimer -= delta;
+    const p = 1 - Math.max(0, carjackTimer) / 0.85;
+    player.position.x = THREE.MathUtils.lerp(carjackFrom.x, carjackLand.x, p);
+    player.position.z = THREE.MathUtils.lerp(carjackFrom.z, carjackLand.z, p);
+    player.position.y = currentGroundCenter + Math.sin(p * Math.PI) * 1.5;
+    player.rotation.z = Math.sin(p * Math.PI) * 0.9;
+    if (carjackTimer <= 0) {
+      carjackPhase = 'run';
+      player.rotation.z = 0;
+      player.position.y = currentGroundCenter;
+      sfx.land();
+      spawnBurst(player.position.clone(), ['dust'], 8, 4);
+    }
+  } else if (carjackCar) {
+    // Sprint to the driver's door, same beat as the plaza walk-up.
+    const targetX = carjackCar.position.x + 1.4;
+    const targetZ = carjackCar.position.z + 1.6;
+    player.position.x = THREE.MathUtils.damp(player.position.x, targetX, 5, delta);
+    player.position.z = Math.max(targetZ, player.position.z - 4.2 * delta);
+    if (activeCharacter) {
+      setCharacterAction('run');
+      if (activeCharacter.actions.run) {
+        activeCharacter.actions.run.paused = false;
+      }
+      activeCharacter.mixer.timeScale = 1.0;
+      activeCharacter.mixer.update(delta);
+    }
+    if (player.position.z <= targetZ + 0.05 && Math.abs(player.position.x - targetX) < 0.5) {
+      enterStolenCar();
+    }
+  }
+
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x * 0.3, 4, delta);
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, 3.2, 2.5, delta);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, player.position.z + 7.5, 2.5, delta);
+  lookAtTarget.set(player.position.x * 0.6, 1.0, player.position.z - 8);
+  camera.lookAt(lookAtTarget);
+};
+
 const spawnDriveTraffic = () => {
   const oncoming = Math.random() < 0.45;
   const lanePair = oncoming ? [0, 1] : [2, 3];
@@ -4238,6 +4447,39 @@ const buildTerrainChunk = () => {
   return chunk;
 };
 
+// Solar eclipse for the mothership's final phase: the day palette collapses
+// into violet twilight and the ocean sun becomes a black disc with a corona.
+// applyEnvironment lerps toward envSettings every frame, so mutating the day
+// palette fades the whole scene smoothly (same pattern as applyDistrict).
+let sunMesh = null;
+let sunGlowMesh = null;
+let eclipseActive = false;
+let dayEnvBackup = null;
+
+const setEclipse = (active) => {
+  if (eclipseActive === active) return;
+  eclipseActive = active;
+  if (active) {
+    dayEnvBackup = { ...envSettings.day };
+    Object.assign(envSettings.day, {
+      bg: 0x120e22,
+      fog: 0x1a1230,
+      hemi: 1.0,
+      dir: 0.9,
+      hemiSky: 0x8f7ad0,
+      dirColor: 0xcaa8ff,
+    });
+  } else if (dayEnvBackup) {
+    Object.assign(envSettings.day, dayEnvBackup);
+    dayEnvBackup = null;
+  }
+  if (sunMesh) {
+    sunMesh.material.color.set(active ? 0x07070e : 0xffc46a);
+    sunGlowMesh.material.color.set(active ? 0xd8e2ff : 0xff9a50);
+    sunGlowMesh.material.opacity = active ? 0.7 : 0.3;
+  }
+};
+
 const buildOcean = () => {
   oceanGroup = new THREE.Group();
 
@@ -4260,6 +4502,8 @@ const buildOcean = () => {
   );
   sunGlow.position.set(0, 28, -561);
   oceanGroup.add(sunGlow);
+  sunMesh = sun;
+  sunGlowMesh = sunGlow;
 
   scene.add(oceanGroup);
 
@@ -4348,6 +4592,10 @@ const getEnemyAssets = () => {
       enemyBoltGeo: new THREE.BoxGeometry(0.3, 0.3, 1.6),
       motherBoltGeo: new THREE.BoxGeometry(0.5, 0.5, 2.2),
       motherBoltMat: new THREE.MeshBasicMaterial({ color: 0x67f05a }),
+      hugeBoltGeo: new THREE.SphereGeometry(1.5, 12, 10),
+      hugeBoltMat: new THREE.MeshBasicMaterial({ color: 0xff2e4d }),
+      missileGeo: new THREE.BoxGeometry(0.34, 0.34, 1.2),
+      missileMat: new THREE.MeshBasicMaterial({ color: 0xffa22e }),
       podGeo: new THREE.BoxGeometry(0.5, 0.4, 1.1),
       hpBarGeo: new THREE.PlaneGeometry(1, 1),
       hpBgMat: new THREE.MeshBasicMaterial({
@@ -4523,7 +4771,38 @@ const buildMothershipModel = () => {
 
   ship.userData.lightRing = lightRing;
   ship.userData.shieldMesh = shieldMeshBig;
+  // Kept for phase tinting: the hull recolors as the fight escalates.
+  ship.userData.phaseMats = {
+    hull: hull.material,
+    belly: belly.material,
+    rim: rim.material,
+    dome: dome.material,
+    emitter: emitter.material,
+  };
   return ship;
+};
+
+// Mothership fight phases. Stage 2 (<50% HP) turns the hull ember-orange and
+// speeds up attacks; stage 3 (<10% HP) goes near-black with red glow, grants
+// 10s of invulnerability, then unleashes the eclipse barrage of huge orbs.
+const motherStageColors = {
+  1: { hull: 0x565f7d, belly: 0x3f4763, rim: 0x2c3350, dome: 0x7df9d0, domeGlow: 0x2c8a6e, emitter: 0x9b59d0, shield: 0x7df9d0 },
+  2: { hull: 0x94502e, belly: 0x6e3a20, rim: 0x4a2312, dome: 0xffb066, domeGlow: 0xa04a1a, emitter: 0xff7a2e, shield: 0xffa22e },
+  3: { hull: 0x36080f, belly: 0x24060a, rim: 0x160306, dome: 0xff3b57, domeGlow: 0xaa1020, emitter: 0xff2244, shield: 0xff3b57 },
+};
+
+const setMotherStage = (ship, stage) => {
+  const colors = motherStageColors[stage];
+  const mats = ship.userData.phaseMats;
+  if (!colors || !mats) return;
+  mats.hull.color.set(colors.hull);
+  mats.belly.color.set(colors.belly);
+  mats.rim.color.set(colors.rim);
+  mats.dome.color.set(colors.dome);
+  mats.dome.emissive.set(colors.domeGlow);
+  mats.emitter.color.set(colors.emitter);
+  mats.emitter.emissive.set(colors.emitter);
+  ship.userData.shieldMesh.material.color.set(colors.shield);
 };
 
 const spawnMothership = () => {
@@ -4544,6 +4823,10 @@ const spawnMothership = () => {
   ship.userData.burstTick = 0;
   ship.userData.shieldTimer = 0;
   ship.userData.ramCooldown = 0;
+  ship.userData.stage = 1;
+  ship.userData.invulnTimer = 0;
+  ship.userData.hugeTimer = 0;
+  setMotherStage(ship, 1);
   ship.userData.shieldMesh.visible = false;
   ship.position.set(0, 13, -240);
   enemies.push(ship);
@@ -4559,26 +4842,29 @@ const spawnMothership = () => {
   }, 4200);
 };
 
-const fireEnemyBolt = (enemy, targetPoint = null) => {
+const fireEnemyBolt = (enemy, targetPoint = null, opts = {}) => {
   const assets = getEnemyAssets();
   const isMother = enemy.userData.kind === 'mother';
+  const huge = !!opts.huge;
   let bolt = enemyBoltPool.pop();
   if (!bolt) {
     bolt = new THREE.Mesh(assets.enemyBoltGeo, assets.eyeMat);
   }
-  bolt.geometry = isMother ? assets.motherBoltGeo : assets.enemyBoltGeo;
-  bolt.material = isMother ? assets.motherBoltMat : assets.eyeMat;
+  bolt.geometry = huge ? assets.hugeBoltGeo : isMother ? assets.motherBoltGeo : assets.enemyBoltGeo;
+  bolt.material = huge ? assets.hugeBoltMat : isMother ? assets.motherBoltMat : assets.eyeMat;
   bolt.position.copy(enemy.position);
   bolt.position.z += isMother ? 4 : 2.5;
   const target = targetPoint || player.position;
   const dir = new THREE.Vector3()
     .subVectors(target, bolt.position)
     .normalize()
-    .multiplyScalar(isMother ? 46 : 42);
+    .multiplyScalar(huge ? 38 : isMother ? 46 : 42);
   bolt.userData.vel = dir;
   bolt.userData.life = 6;
   bolt.userData.mother = isMother;
-  bolt.userData.dmg = isMother ? 20 : 18;
+  bolt.userData.huge = huge;
+  bolt.userData.grazed = false;
+  bolt.userData.dmg = huge ? 26 : isMother ? 20 : 18;
   bolt.lookAt(target);
   enemyBolts.push(bolt);
   scene.add(bolt);
@@ -4654,15 +4940,48 @@ const clearEnemies = () => {
 
 const fireProjectiles = () => {
   const assets = getEnemyAssets();
-  [-1.1, 1.1].forEach((x) => {
+  // The pool is shared with homing missiles, so geometry/material/userData
+  // must be reassigned on every spawn.
+  const spawnBolt = (offsetX, vx) => {
     let bolt = projectilePool.pop();
     if (!bolt) {
       bolt = new THREE.Mesh(assets.boltGeo, assets.boltMat);
     }
-    bolt.position.set(player.position.x + x, player.position.y - 0.2, player.position.z - 2.2);
+    bolt.geometry = assets.boltGeo;
+    bolt.material = assets.boltMat;
+    bolt.rotation.set(0, 0, 0);
+    bolt.userData.homing = false;
+    bolt.userData.dmg = 1;
+    bolt.userData.vx = vx;
+    bolt.position.set(player.position.x + offsetX, player.position.y - 0.2, player.position.z - 2.2);
     projectiles.push(bolt);
     scene.add(bolt);
-  });
+  };
+  spawnBolt(-1.1, 0);
+  spawnBolt(1.1, 0);
+  if (spreadFireTime > 0) {
+    spawnBolt(-1.6, -34);
+    spawnBolt(1.6, 34);
+  }
+  sfx.shoot();
+};
+
+// Homing missile: launches loose, then steers toward the current enemy.
+const fireHomingMissile = () => {
+  const assets = getEnemyAssets();
+  let missile = projectilePool.pop();
+  if (!missile) {
+    missile = new THREE.Mesh(assets.missileGeo, assets.missileMat);
+  }
+  missile.geometry = assets.missileGeo;
+  missile.material = assets.missileMat;
+  missile.userData.homing = true;
+  missile.userData.dmg = 8;
+  missile.userData.vx = 0;
+  missile.userData.vel = new THREE.Vector3((Math.random() - 0.5) * 30, 12, -30);
+  missile.position.set(player.position.x, player.position.y - 0.8, player.position.z - 2);
+  projectiles.push(missile);
+  scene.add(missile);
   sfx.shoot();
 };
 
@@ -4940,6 +5259,10 @@ const updateLaunch = (delta) => {
 let skyPickups = [];
 let skyPickupTimer = 7;
 let rapidFireTime = 0;
+let spreadFireTime = 0;
+let homingAmmo = 0;
+let homingTimer = 0;
+const tmpHomingDir = new THREE.Vector3();
 let skyPickupAssets = null;
 
 const getSkyPickupAssets = () => {
@@ -4956,13 +5279,24 @@ const getSkyPickupAssets = () => {
       emissive: 0xcc9a1f,
       emissiveIntensity: 1.6,
     }),
+    spread: new THREE.MeshStandardMaterial({
+      color: 0xc06bff,
+      emissive: 0x8a2fd0,
+      emissiveIntensity: 1.6,
+    }),
+    homing: new THREE.MeshStandardMaterial({
+      color: 0x4dd8ff,
+      emissive: 0x1f8acc,
+      emissiveIntensity: 1.6,
+    }),
   };
   return skyPickupAssets;
 };
 
 const spawnSkyPickup = () => {
   const assets = getSkyPickupAssets();
-  const type = Math.random() < 0.55 ? 'heal' : 'rapid';
+  const roll = Math.random();
+  const type = roll < 0.4 ? 'heal' : roll < 0.65 ? 'rapid' : roll < 0.85 ? 'spread' : 'homing';
   const mesh = new THREE.Mesh(assets.geo, assets[type]);
   mesh.userData.type = type;
   mesh.position.set(
@@ -4988,6 +5322,9 @@ const updateSkyPickups = (delta) => {
   if (rapidFireTime > 0) {
     rapidFireTime -= delta;
   }
+  if (spreadFireTime > 0) {
+    spreadFireTime -= delta;
+  }
   for (let i = skyPickups.length - 1; i >= 0; i -= 1) {
     const pickup = skyPickups[i];
     pickup.position.z += (speed.value + 18) * delta;
@@ -5005,9 +5342,15 @@ const updateSkyPickups = (delta) => {
       if (pickup.userData.type === 'heal') {
         playerHp.value = Math.min(100, playerHp.value + 25);
         showEventToast('Repair Kit', '+25 HP', 1200);
-      } else {
+      } else if (pickup.userData.type === 'rapid') {
         rapidFireTime = 6;
         showEventToast('Rapid Fire', 'Six seconds of fury!', 1200);
+      } else if (pickup.userData.type === 'spread') {
+        spreadFireTime = 8;
+        showEventToast('Spread Shot', 'Wide fire for eight seconds!', 1200);
+      } else {
+        homingAmmo = Math.min(homingAmmo + 6, 12);
+        showEventToast('Homing Missiles', '+6 seeker missiles', 1200);
       }
       sfx.powerup();
       spawnBurst(pickup.position, ['gold', 'skin'], 10, 6);
@@ -5082,10 +5425,41 @@ const updatePlane = (delta) => {
     fireTimer = rapidFireTime > 0 ? 0.09 : 0.18;
   }
 
+  if (homingAmmo > 0) {
+    homingTimer -= delta;
+    if (homingTimer <= 0 && enemies.length) {
+      fireHomingMissile();
+      homingAmmo -= 1;
+      homingTimer = 0.55;
+    }
+  }
+
   for (let i = projectiles.length - 1; i >= 0; i -= 1) {
     const bolt = projectiles[i];
-    bolt.position.z -= 150 * delta;
-    if (bolt.position.z < -280) {
+    if (bolt.userData.homing) {
+      const target = enemies[0];
+      if (target) {
+        tmpHomingDir.subVectors(target.position, bolt.position).normalize().multiplyScalar(95);
+        bolt.userData.vel.x = THREE.MathUtils.damp(bolt.userData.vel.x, tmpHomingDir.x, 5, delta);
+        bolt.userData.vel.y = THREE.MathUtils.damp(bolt.userData.vel.y, tmpHomingDir.y, 5, delta);
+        bolt.userData.vel.z = THREE.MathUtils.damp(bolt.userData.vel.z, tmpHomingDir.z, 5, delta);
+      }
+      bolt.position.addScaledVector(bolt.userData.vel, delta);
+      bolt.lookAt(
+        bolt.position.x + bolt.userData.vel.x,
+        bolt.position.y + bolt.userData.vel.y,
+        bolt.position.z + bolt.userData.vel.z,
+      );
+    } else {
+      bolt.position.z -= 150 * delta;
+      bolt.position.x += (bolt.userData.vx || 0) * delta;
+    }
+    if (
+      bolt.position.z < -280 ||
+      bolt.position.z > 30 ||
+      bolt.position.y > 60 ||
+      Math.abs(bolt.position.x) > 70
+    ) {
       scene.remove(bolt);
       projectilePool.push(bolt);
       projectiles.splice(i, 1);
@@ -5106,41 +5480,70 @@ const updatePlane = (delta) => {
       ud.lightRing.rotation.y += delta * 1.4;
       enemy.rotation.y += delta * 0.12;
 
-      if (ud.shieldTimer > 0) {
-        ud.shieldTimer -= delta;
+      if (ud.stage === 3 && ud.invulnTimer > 0) {
+        // Final-phase telegraph: 10s untouchable while it charges, the shield
+        // bubble pulses blood-red under the darkening eclipse.
+        ud.invulnTimer -= delta;
         ud.shieldMesh.visible = true;
-        ud.shieldMesh.material.opacity = 0.12 + Math.sin(performance.now() * 0.012) * 0.05;
-        if (ud.shieldTimer <= 0) {
+        ud.shieldMesh.material.opacity = 0.18 + Math.sin(performance.now() * 0.02) * 0.1;
+        if (ud.invulnTimer <= 0) {
           ud.shieldMesh.visible = false;
+          ud.hugeTimer = 0.5;
+          showEventToast('ECLIPSE BARRAGE', 'Dodge the orbs!', 2200);
+          sfx.motherSpawn();
         }
-      }
-
-      if (ud.burstLeft > 0) {
-        ud.burstTick -= delta;
-        if (ud.burstTick <= 0) {
+      } else if (ud.stage === 3) {
+        // Eclipse barrage: huge slow orbs at a relentless rate, nothing else.
+        ud.hugeTimer -= delta;
+        if (ud.hugeTimer <= 0) {
           fireEnemyBolt(enemy, new THREE.Vector3(
-            player.position.x + (Math.random() - 0.5) * 3,
-            player.position.y + (Math.random() - 0.5) * 2,
+            player.position.x + (Math.random() - 0.5) * 7,
+            player.position.y + (Math.random() - 0.5) * 4.5,
             player.position.z,
-          ));
+          ), { huge: true });
           sfx.enemyShoot();
-          ud.burstLeft -= 1;
-          ud.burstTick = 0.13;
+          ud.hugeTimer = 0.24;
         }
-      } else if (enemy.position.z > -150) {
-        ud.attackTimer -= delta;
-        if (ud.attackTimer <= 0) {
-          const roll = Math.random();
-          if (roll < 0.4) {
-            ud.burstLeft = 6;
-            ud.burstTick = 0;
-          } else if (roll < 0.75) {
-            fireShotgun(enemy);
-          } else {
-            ud.shieldTimer = 3;
-            sfx.shieldUp();
+      } else {
+        if (ud.shieldTimer > 0) {
+          ud.shieldTimer -= delta;
+          ud.shieldMesh.visible = true;
+          ud.shieldMesh.material.opacity = 0.12 + Math.sin(performance.now() * 0.012) * 0.05;
+          if (ud.shieldTimer <= 0) {
+            ud.shieldMesh.visible = false;
           }
-          ud.attackTimer = 2.3 + Math.random() * 1.6;
+        }
+
+        if (ud.burstLeft > 0) {
+          ud.burstTick -= delta;
+          if (ud.burstTick <= 0) {
+            fireEnemyBolt(enemy, new THREE.Vector3(
+              player.position.x + (Math.random() - 0.5) * 3,
+              player.position.y + (Math.random() - 0.5) * 2,
+              player.position.z,
+            ));
+            sfx.enemyShoot();
+            ud.burstLeft -= 1;
+            ud.burstTick = 0.13;
+          }
+        } else if (enemy.position.z > -150) {
+          ud.attackTimer -= delta;
+          if (ud.attackTimer <= 0) {
+            const roll = Math.random();
+            if (roll < 0.4) {
+              // Enraged (stage 2): longer bursts, shorter breathers.
+              ud.burstLeft = ud.stage === 2 ? 9 : 6;
+              ud.burstTick = 0;
+            } else if (roll < 0.75) {
+              fireShotgun(enemy);
+            } else {
+              ud.shieldTimer = 3;
+              sfx.shieldUp();
+            }
+            ud.attackTimer = ud.stage === 2
+              ? 1.4 + Math.random() * 1.1
+              : 2.3 + Math.random() * 1.6;
+          }
         }
       }
       if (ud.ramCooldown > 0) {
@@ -5212,13 +5615,35 @@ const updatePlane = (delta) => {
         scene.remove(bolt);
         projectilePool.push(bolt);
         projectiles.splice(j, 1);
-        if (isMother && ud.shieldTimer > 0) {
-          // Shield absorbs the shot.
+        if (isMother && (ud.shieldTimer > 0 || ud.invulnTimer > 0)) {
+          // Shield or final-phase invulnerability absorbs the shot.
           spawnBurst(bolt.position, ['skin'], 2, 2);
           continue;
         }
-        ud.hp -= 1;
+        ud.hp -= bolt.userData.dmg || 1;
+        if (bolt.userData.homing) {
+          spawnBurst(bolt.position, ['flame', 'gold'], 8, 6);
+        }
         hit = true;
+        if (isMother) {
+          if (ud.stage === 1 && ud.hp <= ud.maxHp * 0.5) {
+            ud.stage = 2;
+            setMotherStage(enemy, 2);
+            spawnBurst(enemy.position, ['red', 'flame'], 24, 10);
+            sfx.shieldUp();
+            showEventToast('MOTHERSHIP ENRAGED', 'Its hull burns — attacks speed up!', 2200);
+          } else if (ud.stage === 2 && ud.hp <= ud.maxHp * 0.1) {
+            // Final phase: clamp HP so the killing blow can't skip it.
+            ud.stage = 3;
+            ud.hp = Math.max(ud.hp, 1);
+            ud.invulnTimer = 10;
+            setMotherStage(enemy, 3);
+            setEclipse(true);
+            spawnBurst(enemy.position, ['red', 'dust'], 30, 12);
+            sfx.shieldUp();
+            showEventToast('SOLAR ECLIPSE', 'The mothership is charging…', 2600);
+          }
+        }
       }
     }
     if (hit) {
@@ -5228,7 +5653,9 @@ const updatePlane = (delta) => {
           score.value += 2500;
           playerHp.value = Math.min(100, playerHp.value + 40);
           mothershipCount += 1;
+          runMotherKills.value += 1;
           killsSinceMother = 0;
+          setEclipse(false);
           sfx.enemyDown();
           sfx.smash();
           spawnBurst(enemy.position, ['red', 'gold', 'flame'], 40, 14);
@@ -5239,6 +5666,7 @@ const updatePlane = (delta) => {
           score.value += 600;
           playerHp.value = Math.min(100, playerHp.value + 15);
           bossCount += 1;
+          runDroneKills.value += 1;
           killsSinceMother += 1;
           sfx.enemyDown();
           spawnBurst(enemy.position, ['red', 'gold', 'dust'], 30, 11);
@@ -5313,6 +5741,18 @@ const updatePlane = (delta) => {
           spawnBurst(mother.position, ['heal'], 8, 5);
         }
       }
+      continue;
+    }
+    // Graze: the bolt slips past the cockpit without hitting — pays out once
+    // per bolt, right as it crosses the player's z-plane.
+    if (
+      !bolt.userData.grazed &&
+      Math.abs(bolt.position.z - player.position.z) < 2.2 &&
+      Math.abs(bolt.position.x - player.position.x) < 6 &&
+      Math.abs(bolt.position.y - player.position.y) < 4.5
+    ) {
+      bolt.userData.grazed = true;
+      triggerGraze();
     }
   }
 
@@ -5364,6 +5804,17 @@ const exitFinale = () => {
     carVisual = null;
   }
   carWheels = [];
+  driveLifeUsed = false;
+  carjackPhase = 'eject';
+  carjackTimer = 0;
+  if (carjackCar) {
+    scene.remove(carjackCar);
+    carjackCar = null;
+  }
+  carjackProps.forEach((prop) => {
+    scene.remove(prop);
+  });
+  carjackProps.length = 0;
   driveCamera.value = 'chase';
   applyCameraZoom();
   if (activeCharacter) {
@@ -5404,6 +5855,10 @@ const exitFinale = () => {
   clearEnemyBolts();
   clearSkyPickups();
   rapidFireTime = 0;
+  spreadFireTime = 0;
+  homingAmmo = 0;
+  homingTimer = 0;
+  setEclipse(false);
   skyPickupTimer = 7;
   playerHp.value = 100;
   damageFlash.value = false;
@@ -5443,6 +5898,10 @@ const updateRunner = (delta) => {
     updateFinaleWalk(delta);
     return;
   }
+  if (finalePhase.value === 'carjack') {
+    updateCarjack(delta);
+    return;
+  }
   if (finalePhase.value === 'launch') {
     updateLaunch(delta);
     return;
@@ -5450,6 +5909,19 @@ const updateRunner = (delta) => {
   if (finalePhase.value === 'plane') {
     updatePlane(delta);
     return;
+  }
+
+  // Carjack leftovers (the tipped wreck) scroll away with the road.
+  if (carjackProps.length) {
+    for (let i = carjackProps.length - 1; i >= 0; i -= 1) {
+      const prop = carjackProps[i];
+      prop.position.z += speed.value * delta;
+      if (prop.position.z > 30) {
+        // Clones share GLB template geometry — remove only, never dispose.
+        scene.remove(prop);
+        carjackProps.splice(i, 1);
+      }
+    }
   }
 
   const level = currentLevel.value;
@@ -5980,6 +6452,12 @@ const updateRunner = (delta) => {
 };
 
 const startCrash = () => {
+  // Zone 2 second chance: the first wreck ejects the character instead of
+  // ending the run — they steal a parked car at the left curb and drive on.
+  if (finalePhase.value === 'drive' && !rampTriggered && !driveLifeUsed) {
+    ejectFromCar();
+    return;
+  }
   state.value = 'crashing';
   crashTimer = 1.0;
   player.visible = false;

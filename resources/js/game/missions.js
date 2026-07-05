@@ -11,6 +11,14 @@ const missionPool = [
   { id: 'near', text: (n) => `${n} near misses today`, targets: [10, 18, 30], stat: 'nearMisses' },
   { id: 'score', text: (n) => `Reach ${n} points in one run`, targets: [2000, 3500, 5500], stat: 'bestScore' },
   { id: 'runs', text: (n) => `Finish ${n} runs today`, targets: [3, 5, 8], stat: 'runs' },
+  // Zone-3 (Flugzeug) missions.
+  { id: 'graze', text: (n) => `Graze ${n} enemy bolts today`, targets: [8, 15, 25], stat: 'grazes' },
+  { id: 'drones', text: (n) => `Destroy ${n} attack drones today`, targets: [4, 8, 14], stat: 'droneKills' },
+  { id: 'mother', text: (n) => `Take down ${n} mothership${n > 1 ? 's' : ''} today`, targets: [1, 2, 3], stat: 'motherKills' },
+  // Skill missions on existing run stats.
+  { id: 'combo', text: (n) => `Reach a x${n} near-miss combo`, targets: [3, 4, 6], stat: 'bestCombo' },
+  { id: 'speed', text: (n) => `Hit ${n} top speed in one run`, targets: [24, 32, 45], stat: 'topSpeed' },
+  { id: 'dist', text: (n) => `Travel ${n}m in total today`, targets: [5000, 9000, 15000], stat: 'distance' },
 ];
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -38,6 +46,11 @@ export function createMissions({
   totalCoins,
   runCoins,
   runNearMisses,
+  runGrazes,
+  runDroneKills,
+  runMotherKills,
+  runBestCombo,
+  runTopSpeed,
   score,
   sfx,
 }) {
@@ -67,6 +80,12 @@ export function createMissions({
     nearMisses: 0,
     bestScore: 0,
     runs: 0,
+    grazes: 0,
+    droneKills: 0,
+    motherKills: 0,
+    bestCombo: 0,
+    topSpeed: 0,
+    distance: 0,
   });
   const dailyStats = ref(emptyDailyStats());
 
@@ -90,6 +109,12 @@ export function createMissions({
     stats.nearMisses += runNearMisses.value;
     stats.bestScore = Math.max(stats.bestScore, Math.floor(score.value));
     stats.runs += 1;
+    stats.grazes += runGrazes.value;
+    stats.droneKills += runDroneKills.value;
+    stats.motherKills += runMotherKills.value;
+    stats.bestCombo = Math.max(stats.bestCombo, runBestCombo.value);
+    stats.topSpeed = Math.max(stats.topSpeed, Math.round(runTopSpeed.value));
+    stats.distance += Math.floor(score.value);
     localStorage.setItem('runner_daily_stats', JSON.stringify(stats));
   };
 
