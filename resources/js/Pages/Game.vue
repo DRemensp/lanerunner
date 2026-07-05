@@ -770,6 +770,11 @@ let eventToastTimer;
 let trafficWave = null;
 let coinRushEndZ = null;
 let nextMilestone = 2500;
+// Speed only steps up once the checkpoint breather has cleared the road —
+// never mid-traffic. speedTier is the applied tier, checkpointPending the
+// breather state machine.
+let speedTier = 0;
+let checkpointPending = null;
 let smashStreak = 0;
 let recordCelebrated = false;
 let driveEventTimer = 10;
@@ -2118,6 +2123,8 @@ const resetRun = () => {
   runTopSpeedRaw = 0;
   trafficWave = null;
   coinRushEndZ = null;
+  speedTier = 0;
+  checkpointPending = null;
 
   nextMilestone = 2500;
   eventToast.value = null;
@@ -4092,6 +4099,9 @@ const startRandomEvent = () => {
 // Spawns only hold while an event's tail is still deeper than where new
 // rows appear; once the tail is closer, fresh rows spawn safely behind it.
 const eventSpawnHoldActive = () => {
+  // Checkpoint breather: nothing spawns until the road has drained and the
+  // speed step has been applied.
+  if (checkpointPending) return true;
   // Speed-scaled margin: the landing arc after the final roof bounce must
   // never come down on a freshly spawned row.
   const spawnDepth = -(70 + Math.min(45, speed.value)) + 6 + speed.value * 0.45;
@@ -4107,16 +4117,36 @@ const eventSpawnHoldActive = () => {
 
 const updateZoneEvents = (delta) => {
   if (nextMilestone < FINALE_SCORE && score.value >= nextMilestone) {
-    showEventToast(`Checkpoint ${nextMilestone.toLocaleString('en-US')}`, 'Speed up!', 1800);
+    // Checkpoint reached: open the breather first. Spawns stop, remaining
+    // traffic drains out; the speed step and the event come only once the
+    // road ahead is clear.
+    showEventToast(`Checkpoint ${nextMilestone.toLocaleString('en-US')}`, 'Safe zone ahead', 1800);
     sfx.powerup();
     spawnBurst(player.position.clone(), ['gold'], 10, 5);
-    applyDistrict(districtIndex + 1);
-    // Every checkpoint rolls one random event — repeats are allowed, so an
-    // event stays a set piece instead of background noise.
-    if (!trafficWave && !finaleTriggered && nextMilestone <= FINALE_SCORE - 2500) {
-      startRandomEvent();
-    }
+    checkpointPending = {
+      failsafe: 8,
+      fireEvent: nextMilestone <= FINALE_SCORE - 2500,
+    };
     nextMilestone += 2500;
+  }
+  if (checkpointPending) {
+    checkpointPending.failsafe -= delta;
+    const clearDepth = -(78 + Math.min(45, speed.value));
+    const roadClear = !obstacles.some(
+      (obstacle) =>
+        obstacle.position.z < player.position.z + 2 && obstacle.position.z > clearDepth,
+    );
+    if (roadClear || checkpointPending.failsafe <= 0) {
+      speedTier = Math.min(3, speedTier + 1);
+      applyDistrict(districtIndex + 1);
+      showEventToast('Speed up!', 'New tempo — go!', 1600);
+      sfx.godMode();
+      if (checkpointPending.fireEvent && !trafficWave && !finaleTriggered) {
+        startRandomEvent();
+      }
+      checkpointPending = null;
+    }
+    return;
   }
   if (trafficWave) {
     if (trafficWave.rowsLeft > 0) {
@@ -6043,8 +6073,9 @@ const updateRunner = (delta) => {
     }
   } else {
     score.value += speed.value * delta * 2.4 * scoreMult;
-    const stepIndex = Math.floor(score.value / level.stepDistance);
-    const targetSpeed = level.baseSpeed + stepIndex * level.speedStep;
+    // Speed follows the APPLIED tier (raised only after the checkpoint
+    // breather cleared the road), never raw score.
+    const targetSpeed = level.baseSpeed + speedTier * level.speedStep;
     speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, 4, delta);
     if (!finaleTriggered && score.value >= FINALE_SCORE) {
       triggerFinale();
@@ -6286,8 +6317,8 @@ const updateRunner = (delta) => {
         // The floor always stays above the 0.86s jump airtime in tier 0, and
         // oncoming cars are arrival-normalized (see spawnOncoming), so this
         // IS the real time between obstacles reaching the player.
-        const tier = Math.min(3, Math.floor(score.value / 2500));
-        const baseGap = [1.0, 0.85, 0.75, 0.65][tier];
+        // Cadence follows the applied tier, in lockstep with the speed.
+        const baseGap = [1.0, 0.85, 0.75, 0.65][speedTier];
         spawnTimer = THREE.MathUtils.randFloat(0.9, 1.2) * baseGap;
       }
     } else {
