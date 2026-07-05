@@ -4008,11 +4008,14 @@ const startWrongWayDriver = () => {
 // A snaking trail of coins weaving across all three lanes. The trail spawns
 // deeper than any in-flight row and normal spawns pause until it has passed,
 // so following it is always safe. Two jump arcs curve over their own crate.
-const coinRushStep = 2.3;
+const coinRushStep = 2.2;
 const startCoinRush = () => {
-  const baseZ = -(120 + Math.min(45, speed.value));
-  const count = 20;
-  const arcCenters = [8, 15];
+  // Just behind the deepest possible normal row — safe, but no dead air.
+  const baseZ = -(78 + Math.min(45, speed.value));
+  const count = 14;
+  // A single jump arc: two arcs on the shorter trail would sit too close
+  // together to land and jump again at low speeds.
+  const arcCenters = [7];
   const arcLift = [0, 1.2, 1.9, 1.2, 0];
   const snapToLane = (x) =>
     lanes.reduce((best, lane) => (Math.abs(lane - x) < Math.abs(best - x) ? lane : best), lanes[0]);
@@ -4075,6 +4078,20 @@ const startRandomEvent = () => {
   }
 };
 
+// Spawns only hold while an event's tail is still deeper than where new
+// rows appear; once the tail is closer, fresh rows spawn safely behind it.
+const eventSpawnHoldActive = () => {
+  const spawnDepth = -(70 + Math.min(45, speed.value)) + 6;
+  if (
+    trafficWave &&
+    (trafficWave.rowsLeft > 0 ||
+      (trafficWave.endZ !== null && trafficWave.endZ < spawnDepth))
+  ) {
+    return true;
+  }
+  return coinRushEndZ !== null && coinRushEndZ < spawnDepth;
+};
+
 const updateZoneEvents = (delta) => {
   if (nextMilestone < FINALE_SCORE && score.value >= nextMilestone) {
     showEventToast(`${nextMilestone.toLocaleString('en-US')} points`, 'Keep it rolling!', 1500);
@@ -4106,15 +4123,13 @@ const updateZoneEvents = (delta) => {
     coinRushEndZ += speed.value * delta;
     if (coinRushEndZ > player.position.z + 2) {
       coinRushEndZ = null;
-    } else {
-      return;
     }
   }
   if (finaleTriggered) return;
   eventTimer -= delta;
   if (eventTimer <= 0 && score.value > 350 && score.value < FINALE_SCORE - 800) {
     startRandomEvent();
-    eventTimer = THREE.MathUtils.randFloat(11, 18);
+    eventTimer = THREE.MathUtils.randFloat(7, 12);
   }
 };
 
@@ -6248,17 +6263,20 @@ const updateRunner = (delta) => {
     }
   } else if (finalePhase.value === 'none') {
     updateZoneEvents(delta);
-    // Normal rows pause while a traffic wave or coin-rush trail rolls
-    // through, so their safe route is never blocked by a random spawn.
-    if (!trafficWave && coinRushEndZ === null) {
+    // Normal rows pause only while an event's tail still sits deeper than
+    // the spawn point — new rows land safely behind it, so the pause stays
+    // as short as possible.
+    if (!eventSpawnHoldActive()) {
       spawnTimer -= delta;
       if (spawnTimer <= 0) {
         spawnRow();
-        const spacingFactor = 1 + Math.min(1.2, speed.value / 24);
+        // Constant ~1s time-gap between rows regardless of speed (slightly
+        // tighter past speed 31): low speeds used to feel empty at 1.75s.
+        const spacingFactor = Math.min(2.2, speed.value / 14);
         spawnTimer = THREE.MathUtils.randFloat(0.5, 1.5) * (14 / speed.value) * spacingFactor;
       }
     } else {
-      spawnTimer = Math.max(spawnTimer, 1.1);
+      spawnTimer = Math.max(spawnTimer, 0.7);
     }
   }
 
