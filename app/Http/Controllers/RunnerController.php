@@ -38,10 +38,10 @@ class RunnerController extends Controller
     private const DRIVE_MAX_SPEED = 160.0;
 
     // Past this distance the run is in zone 3+ (flying), where flat kill
-    // bonuses pile up: drones (+600), motherships (+2500) and the zone-4
-    // asteroid belt (+60/80/200/400/900 per rock, dense spawns) all pay on
-    // top of raw speed. Score itself is uncapped server-side; only distance
-    // and speed are plausibility-checked.
+    // bonuses pile up: drones (+600) and motherships (+2500) pay on top of
+    // raw speed. Zone-4 asteroids are indestructible and pay nothing per
+    // rock (only grazes). Score itself is uncapped server-side; only
+    // distance and speed are plausibility-checked.
     private const RAMP_DISTANCE = 20000;
 
     public function profile(Request $request, RunnerProfileService $service): Response

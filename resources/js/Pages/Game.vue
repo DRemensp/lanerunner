@@ -5399,7 +5399,7 @@ const updateSkyPickups = (delta) => {
 // ---------------------------------------------------------------------------
 // Zone 4 — the void. The dying mothership detonates in slow motion, its wreck
 // collapses into a black hole and the plane is dragged through the wormhole
-// into a deep-space asteroid field: rocks with hit points — shoot or dodge.
+// into a deep-space asteroid field: indestructible rocks — dodge or die.
 // ---------------------------------------------------------------------------
 
 const spawnShockRing = (position, color, grow) => {
@@ -5701,18 +5701,18 @@ const enterVoid = () => {
   fireTimer = 0.4;
   setMusicDuck(0.7);
   sfx.dock();
-  showEventToast('ZONE 4 — THE VOID', 'Deep space. Shoot the asteroids or weave through!', 3200);
+  showEventToast('ZONE 4 — THE VOID', 'Deep space. The rocks are indestructible — weave through!', 3200);
 };
 
-// A real belt: lots of small debris that pops in a hit or two, mid rocks
-// that soak a burst, and rare colossal boulders that are basically terrain —
-// you dodge those, you don't out-shoot them.
+// A real belt: lots of small debris, mid rocks and rare colossal boulders.
+// Every rock is pure terrain — immune to weapons fire. Bolts spark off the
+// surface without effect; weaving through is the only way past.
 const asteroidTiers = [
-  { radius: 0.9, hp: 1, score: 60, dmg: 12 },
-  { radius: 1.4, hp: 1, score: 80, dmg: 18 },
-  { radius: 2.3, hp: 3, score: 200, dmg: 32 },
-  { radius: 3.4, hp: 6, score: 400, dmg: 50 },
-  { radius: 6.2, hp: 16, score: 900, dmg: 75 },
+  { radius: 0.9, dmg: 12 },
+  { radius: 1.4, dmg: 18 },
+  { radius: 2.3, dmg: 32 },
+  { radius: 3.4, dmg: 50 },
+  { radius: 6.2, dmg: 75 },
 ];
 
 const spawnAsteroid = () => {
@@ -5737,7 +5737,6 @@ const spawnAsteroid = () => {
   const ud = rock.userData;
   const size = tier.radius * (0.85 + Math.random() * 0.3);
   ud.tier = tier;
-  ud.hp = tier.hp;
   ud.radius = size;
   ud.grazed = false;
   ud.hitFlash = 0;
@@ -5863,8 +5862,8 @@ const updateVoid = (delta) => {
       continue;
     }
 
-    // Player bolts chip the rock down.
-    let destroyed = false;
+    // Rocks are immune to weapons fire: bolts get swallowed with a dull
+    // spark, the asteroid doesn't care. Dodging is the only option.
     const hitRange = (ud.radius + 1) * (ud.radius + 1);
     for (let j = projectiles.length - 1; j >= 0; j -= 1) {
       const bolt = projectiles[j];
@@ -5875,21 +5874,11 @@ const updateVoid = (delta) => {
         scene.remove(bolt);
         projectilePool.push(bolt);
         projectiles.splice(j, 1);
-        ud.hp -= bolt.userData.dmg || 1;
         ud.hitFlash = 0.12;
-        rock.material.emissive.setHex(0x8a4a3a);
-        spawnBurst(bolt.position, ['dust', 'gold'], 3, 5);
-        if (ud.hp <= 0) {
-          score.value += ud.tier.score;
-          sfx.enemyDown();
-          spawnBurst(rock.position, ['dust', 'red', 'gold'], Math.round(8 + ud.radius * 4), 6 + ud.radius * 2);
-          recycleAsteroid(i);
-          destroyed = true;
-          break;
-        }
+        rock.material.emissive.setHex(0x3a3446);
+        spawnBurst(bolt.position, ['dust'], 3, 4);
       }
     }
-    if (destroyed) continue;
 
     // Collision hurts — big rocks hit like a truck.
     const px = rock.position.x - player.position.x;
