@@ -362,6 +362,10 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h8M17.5 7H20M4 17h2.5M12 17h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="14.5" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
               <span>Settings</span>
             </button>
+            <button class="menu-tile" @click="startGallery" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 15.5l4.6-4.6 3 3 4-4.6 5.4 6.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8.2" cy="8.6" r="1.4" fill="currentColor"/></svg>
+              <span>Gallery</span>
+            </button>
           </nav>
 
           <div class="menu-foot">
@@ -1110,6 +1114,13 @@ let floorSegments = [];
 let obstacles = [];
 let spawnTimer = 0;
 
+// Gallery mode: a free-roam showroom listing every obstacle/vehicle variant
+// side by side so art changes are easy to eyeball without playing a run.
+let galleryProps = [];
+let galleryFloor = null;
+let galleryYaw = Math.PI;
+const galleryKeys = { forward: false, back: false, left: false, right: false };
+
 let coins = [];
 let coinPool = [];
 let coinGeometry;
@@ -1252,6 +1263,55 @@ const resumeRun = () => {
 const quitRun = () => {
   resetRun();
   backToMenu();
+};
+
+const startGallery = () => {
+  if (!scene) return;
+  unlockAudio();
+  showLoginPrompt.value = false;
+  menuScreen.value = 'main';
+  clearCarPreview();
+  applyDistrict(0);
+  exitFinale();
+  clearObstacles();
+  clearCoins();
+  clearPowerups();
+  buildGallery();
+  floorSegments.forEach((segment) => {
+    segment.visible = false;
+  });
+  playerVelocityY = 0;
+  isSliding = false;
+  galleryYaw = 0;
+  galleryKeys.forward = false;
+  galleryKeys.back = false;
+  galleryKeys.left = false;
+  galleryKeys.right = false;
+  if (player) {
+    player.scale.y = 1;
+    player.rotation.set(0, galleryYaw, 0);
+    player.position.set(0, playerSize.h / 2, 4);
+    player.visible = true;
+  }
+  if (camera) {
+    camera.fov = 60;
+    camera.updateProjectionMatrix();
+  }
+  state.value = 'gallery';
+};
+
+const exitGallery = () => {
+  if (state.value !== 'gallery') return;
+  clearGallery();
+  floorSegments.forEach((segment) => {
+    segment.visible = true;
+  });
+  state.value = 'menu';
+  menuScreen.value = 'main';
+  if (camera) {
+    camera.position.x = 0;
+    applyCameraZoom();
+  }
 };
 
 const normalizeSkins = (skins) =>
@@ -1708,6 +1768,56 @@ const resetFloor = () => {
   });
 };
 
+const clearGallery = () => {
+  galleryProps.forEach((prop) => scene.remove(prop));
+  galleryProps = [];
+  if (galleryFloor) {
+    scene.remove(galleryFloor);
+    galleryFloor = null;
+  }
+};
+
+// Lays out one instance of every registered obstacle/vehicle builder in a
+// grid on a dedicated showroom floor. Rebuilt each time the gallery opens so
+// GLB variants that finish loading late (see glbVehicleDefs) still show up.
+const buildGallery = () => {
+  if (!scene) return;
+  clearGallery();
+
+  const floorGeo = track(new THREE.PlaneGeometry(80, 80));
+  const floorMat = track(new THREE.MeshLambertMaterial({ color: 0x1b2233 }));
+  galleryFloor = new THREE.Mesh(floorGeo, floorMat);
+  galleryFloor.rotation.x = -Math.PI / 2;
+  galleryFloor.position.set(0, 0, -14);
+  scene.add(galleryFloor);
+  galleryProps.push(galleryFloor);
+
+  const assets = getObstacleAssets();
+  const keys = Object.keys(obstacleBuilders).sort();
+  const cols = Math.max(1, Math.ceil(Math.sqrt(keys.length)));
+  const spacing = 4.4;
+  const startX = -((cols - 1) * spacing) / 2;
+  keys.forEach((key, index) => {
+    const { mesh, size } = obstacleBuilders[key]();
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    mesh.position.set(startX + col * spacing, size.h / 2, -14 - row * spacing);
+    mesh.rotation.y = Math.PI;
+    if (mesh.userData.beams) {
+      mesh.userData.beams.visible = false;
+    }
+    if (mesh.userData.paintMeshes) {
+      const palette = mesh.userData.paintSet === 'bus' ? assets.busPaints : assets.carPaints;
+      const paint = palette[Math.floor(Math.random() * palette.length)];
+      mesh.userData.paintMeshes.forEach((paintMesh) => {
+        paintMesh.material = paint;
+      });
+    }
+    scene.add(mesh);
+    galleryProps.push(mesh);
+  });
+};
+
 const moveLeft = () => {
   if (state.value !== 'running') return;
   if (['walk', 'enter', 'launch', 'plane'].includes(finalePhase.value)) return;
@@ -1777,6 +1887,33 @@ const stopSlide = () => {
 };
 
 const handleKeydown = (event) => {
+  if (state.value === 'gallery') {
+    switch (event.code) {
+      case 'ArrowUp':
+      case 'KeyW':
+        galleryKeys.forward = true;
+        break;
+      case 'ArrowDown':
+      case 'KeyS':
+        galleryKeys.back = true;
+        break;
+      case 'ArrowLeft':
+      case 'KeyA':
+        galleryKeys.left = true;
+        break;
+      case 'ArrowRight':
+      case 'KeyD':
+        galleryKeys.right = true;
+        break;
+      case 'Escape':
+        exitGallery();
+        break;
+      default:
+        break;
+    }
+    return;
+  }
+
   if (state.value === 'paused') {
     if (event.code === 'Escape' || event.code === 'Enter') {
       resumeRun();
@@ -1919,6 +2056,29 @@ const pedalBrakeUp = () => {
 };
 
 const handleKeyup = (event) => {
+  if (state.value === 'gallery') {
+    switch (event.code) {
+      case 'ArrowUp':
+      case 'KeyW':
+        galleryKeys.forward = false;
+        break;
+      case 'ArrowDown':
+      case 'KeyS':
+        galleryKeys.back = false;
+        break;
+      case 'ArrowLeft':
+      case 'KeyA':
+        galleryKeys.left = false;
+        break;
+      case 'ArrowRight':
+      case 'KeyD':
+        galleryKeys.right = false;
+        break;
+      default:
+        break;
+    }
+    return;
+  }
   switch (event.code) {
     case 'ArrowUp':
     case 'KeyW':
@@ -2527,6 +2687,57 @@ const animateIdle = (delta) => {
     arm.elbow.rotation.x = d(arm.elbow.rotation.x, 0.25);
   });
   player.rotation.z = d(player.rotation.z, 0);
+};
+
+const galleryMoveSpeed = 3.6;
+const galleryTurnSpeed = 2.4;
+
+const updateGallery = (delta) => {
+  if (!player) return;
+  if (galleryKeys.left) galleryYaw += galleryTurnSpeed * delta;
+  if (galleryKeys.right) galleryYaw -= galleryTurnSpeed * delta;
+  const forwardInput = (galleryKeys.forward ? 1 : 0) - (galleryKeys.back ? 1 : 0);
+  // rotation.y = 0 faces -z (matches the run direction used everywhere else).
+  const dirX = Math.sin(galleryYaw);
+  const dirZ = -Math.cos(galleryYaw);
+  if (forwardInput !== 0) {
+    player.position.x += dirX * forwardInput * galleryMoveSpeed * delta;
+    player.position.z += dirZ * forwardInput * galleryMoveSpeed * delta;
+  }
+  player.position.x = THREE.MathUtils.clamp(player.position.x, -20, 20);
+  player.position.z = THREE.MathUtils.clamp(player.position.z, -46, 8);
+  player.rotation.y = galleryYaw;
+
+  if (activeCharacter) {
+    setCharacterAction(forwardInput !== 0 ? 'run' : 'idle');
+    if (activeCharacter.actions.run) {
+      activeCharacter.actions.run.paused = forwardInput === 0;
+    }
+    activeCharacter.mixer.timeScale = forwardInput < 0 ? -0.85 : 1;
+    activeCharacter.root.rotation.x = THREE.MathUtils.damp(
+      activeCharacter.root.rotation.x,
+      0,
+      8,
+      delta,
+    );
+    activeCharacter.mixer.update(delta);
+  }
+  player.rotation.z = THREE.MathUtils.damp(player.rotation.z, 0, 6, delta);
+
+  // Third-person chase cam that trails behind wherever the runner is facing.
+  const camDist = 4.6;
+  const camHeight = 2.0;
+  const targetX = player.position.x - dirX * camDist;
+  const targetZ = player.position.z - dirZ * camDist;
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 5, delta);
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, player.position.y + camHeight, 5, delta);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, targetZ, 5, delta);
+  lookAtTarget.set(
+    player.position.x + dirX * 4,
+    player.position.y + 0.7,
+    player.position.z + dirZ * 4,
+  );
+  camera.lookAt(lookAtTarget);
 };
 
 const getCoin = () => {
@@ -3281,7 +3492,7 @@ const glbVehicleDefs = [
   { key: 'sedan', kind: 'car', fitLength: 2.86 },
   { key: 'sedan-sports', kind: 'car', fitLength: 2.86 },
   { key: 'hatchback-sports', kind: 'car', fitLength: 2.64 },
-  { key: 'race', kind: 'car', fitLength: 2.75 },
+  { key: 'race', kind: 'car', fitLength: 3.3, scaleMultiplier: 1.2 },
   { key: 'taxi', kind: 'car', fitLength: 2.86 },
   { key: 'police', kind: 'car', fitLength: 2.97 },
   { key: 'suv', kind: 'car', fitLength: 2.86 },
@@ -3320,7 +3531,9 @@ const addVehicleLights = (group, size) => {
 
 const registerVehicleModel = (def, model) => {
   const rawSize = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
-  const scale = def.fitLength ? def.fitLength / rawSize.z : def.fitHeight / rawSize.y;
+  const scale =
+    (def.fitLength ? def.fitLength / rawSize.z : def.fitHeight / rawSize.y) *
+    (def.scaleMultiplier || 1);
   model.scale.setScalar(scale);
   const box = new THREE.Box3().setFromObject(model);
   model.position.sub(box.getCenter(new THREE.Vector3()));
@@ -7115,6 +7328,8 @@ const animate = (time) => {
       bumpShakeTimer -= delta;
       camera.position.x += (Math.random() - 0.5) * 0.14 * Math.max(0, bumpShakeTimer);
     }
+  } else if (state.value === 'gallery') {
+    updateGallery(delta);
   } else if (state.value !== 'crashing' && state.value !== 'paused') {
     animateIdle(delta);
     const damp = (current, target) => THREE.MathUtils.damp(current, target, 4, delta);
