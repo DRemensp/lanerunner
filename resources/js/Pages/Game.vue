@@ -197,6 +197,18 @@
 
     <div v-if="whiteFlash > 0" class="void-flash" :style="{ opacity: whiteFlash }"></div>
 
+    <button
+      v-if="
+        state === 'running' &&
+        (finalePhase === 'none' || finalePhase === 'drive')
+      "
+      class="cheat-skip"
+      type="button"
+      @pointerdown.prevent.stop="devSkip"
+    >
+      Skip &raquo;
+    </button>
+
     <div
       v-if="state === 'running' && (finalePhase === 'plane' || finalePhase === 'void')"
       class="joystick"
@@ -671,6 +683,7 @@
           <div class="death-stat"><span>Top speed</span><strong>{{ Math.round(runTopSpeed) }}</strong></div>
           <div class="death-stat"><span>Near misses</span><strong>{{ runNearMisses }}</strong></div>
         </div>
+        <div v-if="runSaveNoticeText" class="death-notice">{{ runSaveNoticeText }}</div>
         <div class="death-actions">
           <button class="primary-btn" @click="startRun" type="button">Run Again</button>
           <button class="ghost-btn" @click="shareScore" type="button">{{ shareLabel }}</button>
@@ -970,9 +983,6 @@ const joyKnob = ref({ x: 0, y: 0 });
 let joyVec = { x: 0, y: 0 };
 let joyPointerId = null;
 let rampHintShown = false;
-// Zone-2 speed trap: crossing RAMP_SCORE drops the limit to 80 for 10s.
-let speedLimitTimer = 0;
-let speedLimitHit = false;
 let clouds = [];
 let cloudAssets = null;
 let terrainChunks = [];
@@ -1025,6 +1035,23 @@ const finalePhase = ref('none'); // none | approach | walk | enter | drive
 // Dev cheat (F9 during a run): jump straight to the finale trigger. The run
 // is then never persisted, so it cannot flag the account or touch records.
 const devRun = ref(false);
+// Shared by the F9 key and the mobile cheat button.
+const devSkip = () => {
+  if (state.value !== 'running') return;
+  if (!finaleTriggered && finalePhase.value === 'none') {
+    devRun.value = true;
+    score.value = FINALE_SCORE;
+  } else if (finalePhase.value === 'drive' && !rampTriggered) {
+    // Second skip in zone 2: jump straight to the ramp requirements.
+    devRun.value = true;
+    score.value = Math.max(score.value, RAMP_SCORE);
+    driveTargetSpeed = driveMaxSpeed;
+    speed.value = Math.max(speed.value, godTriggerSpeed);
+    if (!godModeActive.value) {
+      activateGodMode();
+    }
+  }
+};
 const driveCamera = ref('chase'); // chase | ego (hood cam, car hidden)
 const finaleToast = ref(false);
 const driveHint = ref(false);
@@ -1585,6 +1612,7 @@ const resetRun = () => {
   lastRowFull = false;
 
   nextMilestone = 2500;
+  runSaveNotice.value = null;
   eventToast.value = null;
   clearObstacles();
   clearCoins();
@@ -1602,7 +1630,20 @@ const endRun = () => {
   loadLeaderboard();
 };
 
+const runSaveNotice = ref(null);
+
+const runSaveNoticeText = computed(() => {
+  if (runSaveNotice.value === 'unranked') {
+    return 'Run not ranked — records unchanged.';
+  }
+  if (runSaveNotice.value === 'offline') {
+    return 'Score could not be saved — check your connection.';
+  }
+  return '';
+});
+
 const persistRun = async () => {
+  runSaveNotice.value = null;
   if (devRun.value) {
     // Dev runs never touch records, coins, leaderboard, or anti-cheat.
     return;
@@ -1611,6 +1652,9 @@ const persistRun = async () => {
   const maxSpeed = Number(speed.value.toFixed(2));
 
   if (authUser.value) {
+    // No run token means /run/start already failed (network/session), so
+    // the server will refuse to rank this run either way.
+    const hadToken = !!runToken.value;
     try {
       const response = await axios.post('/api/runner/run/end', {
         distance,
@@ -1618,6 +1662,9 @@ const persistRun = async () => {
         coins: runCoins.value,
         run_id: runToken.value,
       });
+      if (response.data && response.data.accepted === false) {
+        runSaveNotice.value = hadToken && !response.data.guest ? 'unranked' : 'offline';
+      }
       const updated = response.data.profile;
       if (updated && typeof updated.best_distance === 'number') {
         bestScore.value = updated.best_distance;
@@ -1627,7 +1674,7 @@ const persistRun = async () => {
       }
       loadProfile();
     } catch (error) {
-      // Ignore network errors for now.
+      runSaveNotice.value = 'offline';
     }
     return;
   }
@@ -1750,22 +1797,7 @@ const handleKeydown = (event) => {
   }
 
   if (event.code === 'F9') {
-    if (!finaleTriggered && finalePhase.value === 'none') {
-      devRun.value = true;
-      score.value = FINALE_SCORE;
-    } else if (finalePhase.value === 'drive' && !rampTriggered) {
-      // Second F9 press in zone 2: jump straight to the ramp requirements.
-      devRun.value = true;
-      score.value = Math.max(score.value, RAMP_SCORE);
-      // Dev shortcut skips the 20k speed trap instead of stalling in it.
-      speedLimitHit = true;
-      speedLimitTimer = 0;
-      driveTargetSpeed = driveMaxSpeed;
-      speed.value = Math.max(speed.value, godTriggerSpeed);
-      if (!godModeActive.value) {
-        activateGodMode();
-      }
-    }
+    devSkip();
     return;
   }
 
@@ -1914,7 +1946,7 @@ const handleKeyup = (event) => {
 
 const handleTouchStart = (event) => {
   if (state.value !== 'running') return;
-  if (event.target?.closest?.('.joystick, .pedals')) return;
+  if (event.target?.closest?.('.joystick, .pedals, .cheat-skip')) return;
   // Track exactly one swipe finger by identifier so a thumb resting on the
   // pedals (or joystick) never hijacks or cancels the swipe gesture.
   if (touchStart) return;
@@ -1995,7 +2027,7 @@ const handleTouchMove = (event) => {
   if (event.cancelable) {
     event.preventDefault();
   }
-  if (target?.closest?.('.joystick, .pedals')) return;
+  if (target?.closest?.('.joystick, .pedals, .cheat-skip')) return;
 
   if (state.value !== 'running' || !touchStart) return;
   const touch = findTrackedTouch(event);
@@ -6436,8 +6468,6 @@ const exitFinale = () => {
   mothershipCount = 0;
   rampTriggered = false;
   rampHintShown = false;
-  speedLimitTimer = 0;
-  speedLimitHit = false;
   enemySpawnTimer = 0;
   fireTimer = 0;
   launchVy = 0;
@@ -6519,17 +6549,9 @@ const updateRunner = (delta) => {
       speed.value = THREE.MathUtils.damp(speed.value, 48, 1.1, delta);
       driveTargetSpeed = speed.value;
     } else {
-      // Speed trap at 20,000: the limit drops to 80 for 10 seconds before
-      // the road will even think about breaking into a ramp.
-      if (!speedLimitHit && score.value >= RAMP_SCORE) {
-        speedLimitHit = true;
-        speedLimitTimer = 10;
-        showEventToast('SPEED LIMIT', '80 km/h for 10 seconds!', 2600);
-      }
-      if (speedLimitTimer > 0) {
-        speedLimitTimer -= delta;
-      }
-      const driveCap = speedLimitTimer > 0 ? 80 : driveMaxSpeed;
+      // Zone 2 is capped at 80 km/h — permanently. No speed trap, no
+      // temporary window; driveMaxSpeed IS the limit.
+      const driveCap = driveMaxSpeed;
       if (accelHeld) {
         driveTargetSpeed = Math.min(driveCap, driveTargetSpeed + 26 * delta);
       }
@@ -6545,7 +6567,9 @@ const updateRunner = (delta) => {
     updateEngineSound();
 
     if (!godModeActive.value) {
-      if (speed.value >= godTriggerSpeed) {
+      // Round like the HUD does: damp() approaches the 80 cap asymptotically
+      // and would otherwise never hit godTriggerSpeed exactly.
+      if (Math.round(speed.value) >= godTriggerSpeed) {
         godHoldTimer += delta;
         if (godHoldTimer >= godHoldSeconds) {
           activateGodMode();
@@ -6567,7 +6591,6 @@ const updateRunner = (delta) => {
     if (
       finalePhase.value === 'drive'
       && !rampTriggered
-      && speedLimitTimer <= 0
       && score.value >= RAMP_SCORE
     ) {
       if (godModeActive.value) {
@@ -8000,6 +8023,27 @@ onBeforeUnmount(() => {
   z-index: 5;
 }
 
+.cheat-skip {
+  position: absolute;
+  top: calc(14px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px dashed rgba(255, 200, 80, 0.7);
+  background: rgba(40, 30, 8, 0.65);
+  color: #ffc850;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .pedals-left {
   left: calc(22px + env(safe-area-inset-left));
 }
@@ -9178,6 +9222,19 @@ onBeforeUnmount(() => {
 
 .death-stat.gold strong {
   color: var(--gold);
+}
+
+.death-notice {
+  padding: 8px 10px;
+  font-family: var(--display);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ffb46e;
+  background: rgba(60, 30, 8, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 180, 110, 0.35);
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
 }
 
 .death-actions {

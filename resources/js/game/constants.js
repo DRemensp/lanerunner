@@ -37,15 +37,16 @@ export const FINALE_SCORE = 10000;
 export const carLanes = [-3, -1, 1, 3];
 export const carPlayerSize = { w: 1.5, h: 1.1, d: 2.6 };
 export const driveScoreMinSpeed = 15;
-export const driveMaxSpeed = 160;
+// Zone 2 hard limit: 80 km/h, always. Nothing in stage 2 goes faster.
+export const driveMaxSpeed = 80;
 // Hold near top speed for a moment and the car goes god mode: it smashes
 // straight through traffic (cars go flying) and drags a fire trail.
 // God mode: hold a medium-high speed for a sustained stretch (not a short
 // top-speed burst). Dropping below the trigger drains progress at 1.5x
 // instead of resetting — challenging, but never cheap.
-export const godTriggerSpeed = 100;
+export const godTriggerSpeed = 80;
 export const godHoldSeconds = 10;
-export const godFloorSpeed = 90;
+export const godFloorSpeed = 72;
 
 // Zone 3: at RAMP_SCORE while in god mode, the road ends in a jump ramp into
 // the sunrise over water; mid-air the car slams into a plane's cargo hold and

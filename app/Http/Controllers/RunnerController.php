@@ -37,12 +37,13 @@ class RunnerController extends Controller
     private const FINALE_DISTANCE = 10000;
     private const DRIVE_MAX_SPEED = 160.0;
 
-    // Past this distance the run is in zone 3+ (flying), where flat kill
-    // bonuses pile up: drones (+600) and motherships (+2500) pay on top of
-    // raw speed. Zone-4 asteroids are indestructible and pay nothing per
-    // rock (only grazes). Score itself is uncapped server-side; only
-    // distance and speed are plausibility-checked.
-    private const RAMP_DISTANCE = 20000;
+    // Past FINALE_DISTANCE the run leaves the runner speed curve entirely:
+    // zone 2 driving pays 2.4 * speed (client-capped at 80), zones 3+ stack
+    // flat kill bonuses on top (drones +600, motherships +2500) plus
+    // near-miss/graze chains and god-mode smash streaks. MAX_ZONE_RATE is a
+    // generous ceiling on sustained points per second past the finale;
+    // score itself stays uncapped server-side, only pacing is checked.
+    private const MAX_ZONE_RATE = 800.0;
 
     public function profile(Request $request, RunnerProfileService $service): Response
     {
@@ -166,21 +167,16 @@ class RunnerController extends Controller
             $durationSeconds = max(1.0, $durationMs / 1000);
             $levelKey = $profile->run_level ?? 'rush';
             $level = self::LEVELS[$levelKey] ?? self::LEVELS['rush'];
-            $maxDistance = $this->maxDistanceForDuration(
-                $durationSeconds,
+            // Pacing sanity: instead of projecting a max score from the
+            // zone-1 runner curve (which flags legit bonus-heavy zone 3+
+            // runs), require the run to have lasted at least as long as a
+            // perfect player would need for this score.
+            $minDuration = $this->minPlausibleDuration(
+                (float) $distance,
                 $level['base_speed'],
                 $level['speed_step'],
             );
-
-            // Zone 2 lets skilled players out-earn the runner speed curve for
-            // a while, so grant flat headroom once the finale is reached.
-            // The 1.35 factor also absorbs skill bonuses on top of raw
-            // distance: near-miss combo chains, traffic-wave clears and
-            // god-mode smash streaks.
-            $distanceCap = $maxDistance * 1.35
-                + ($distance >= self::FINALE_DISTANCE ? 8000 : 0)
-                + ($distance >= self::RAMP_DISTANCE ? 6000 : 0);
-            if ($distance > $distanceCap) {
+            if ($durationSeconds < $minDuration) {
                 $cheatReasons[] = 'distance_over_cap';
                 $verified = false;
             }
@@ -384,12 +380,22 @@ class RunnerController extends Controller
         ]);
     }
 
-    private function maxDistanceForDuration(float $durationSeconds, int $baseSpeed, int $speedStep): float
+    private function minPlausibleDuration(float $distance, int $baseSpeed, int $speedStep): float
     {
-        // Solves d'(t) = SCORE_MULTIPLIER * (baseSpeed + d/STEP_DISTANCE * speedStep).
-        $growth = self::SCORE_MULTIPLIER * $speedStep / self::STEP_DISTANCE;
+        // Zone 1 pacing solves d'(t) = SCORE_MULTIPLIER * (baseSpeed +
+        // d/STEP_DISTANCE * speedStep); the 2x score power-up can at most
+        // double that rate, so invert the doubled curve for the fastest
+        // legit time through the runner stretch.
+        $growth = 2 * self::SCORE_MULTIPLIER * $speedStep / self::STEP_DISTANCE;
         $scale = $baseSpeed * self::STEP_DISTANCE / $speedStep;
+        $seconds = log(1 + min($distance, self::FINALE_DISTANCE) / $scale) / $growth;
 
-        return $scale * (exp($growth * $durationSeconds) - 1);
+        // Everything past the finale is paced linearly by MAX_ZONE_RATE.
+        if ($distance > self::FINALE_DISTANCE) {
+            $seconds += ($distance - self::FINALE_DISTANCE) / self::MAX_ZONE_RATE;
+        }
+
+        // 25% grace plus a flat 5s so borderline legit runs never flag.
+        return max(1.0, $seconds * 0.75 - 5.0);
     }
 }
