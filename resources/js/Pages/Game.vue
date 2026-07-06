@@ -970,6 +970,9 @@ const joyKnob = ref({ x: 0, y: 0 });
 let joyVec = { x: 0, y: 0 };
 let joyPointerId = null;
 let rampHintShown = false;
+// Zone-2 speed trap: crossing RAMP_SCORE drops the limit to 80 for 10s.
+let speedLimitTimer = 0;
+let speedLimitHit = false;
 let clouds = [];
 let cloudAssets = null;
 let terrainChunks = [];
@@ -1754,6 +1757,9 @@ const handleKeydown = (event) => {
       // Second F9 press in zone 2: jump straight to the ramp requirements.
       devRun.value = true;
       score.value = Math.max(score.value, RAMP_SCORE);
+      // Dev shortcut skips the 20k speed trap instead of stalling in it.
+      speedLimitHit = true;
+      speedLimitTimer = 0;
       driveTargetSpeed = driveMaxSpeed;
       speed.value = Math.max(speed.value, godTriggerSpeed);
       if (!godModeActive.value) {
@@ -5683,22 +5689,40 @@ const enterVoid = () => {
   planeVelX = 0;
   planeVelY = 0;
   asteroidSpawnTimer = 1.2;
+  // Pre-seed the belt so the zone doesn't open with empty space — push the
+  // seeded rocks deeper out so the player still gets a beat to orient.
+  for (let i = 0; i < 14; i += 1) {
+    spawnAsteroid();
+    const seeded = asteroids[asteroids.length - 1];
+    if (seeded) {
+      seeded.position.z -= 60 + Math.random() * 220;
+    }
+  }
   fireTimer = 0.4;
   setMusicDuck(0.7);
   sfx.dock();
   showEventToast('ZONE 4 — THE VOID', 'Deep space. Shoot the asteroids or weave through!', 3200);
 };
 
-// Small rocks pop in one hit; the big ones soak six and hit like a truck.
+// A real belt: lots of small debris that pops in a hit or two, mid rocks
+// that soak a burst, and rare colossal boulders that are basically terrain —
+// you dodge those, you don't out-shoot them.
 const asteroidTiers = [
+  { radius: 0.9, hp: 1, score: 60, dmg: 12 },
   { radius: 1.4, hp: 1, score: 80, dmg: 18 },
   { radius: 2.3, hp: 3, score: 200, dmg: 32 },
   { radius: 3.4, hp: 6, score: 400, dmg: 50 },
+  { radius: 6.2, hp: 16, score: 900, dmg: 75 },
 ];
 
 const spawnAsteroid = () => {
   const roll = Math.random();
-  const tier = roll < 0.45 ? asteroidTiers[0] : roll < 0.8 ? asteroidTiers[1] : asteroidTiers[2];
+  // Mostly small debris, a scattering of mid rocks, and the occasional wall.
+  const tier = roll < 0.38 ? asteroidTiers[0]
+    : roll < 0.66 ? asteroidTiers[1]
+      : roll < 0.83 ? asteroidTiers[2]
+        : roll < 0.93 ? asteroidTiers[3]
+          : asteroidTiers[4];
   let rock = asteroidPool.pop();
   if (!rock) {
     if (!asteroidGeometry) {
@@ -5722,14 +5746,17 @@ const spawnAsteroid = () => {
     (Math.random() - 0.5) * 1.6,
     (Math.random() - 0.5) * 1.6,
   );
-  ud.driftX = (Math.random() - 0.5) * 3;
-  ud.driftY = (Math.random() - 0.5) * 2;
+  // Big rocks fly straight and predictable — dodging them stays fair; the
+  // small debris is what tumbles and drifts around.
+  const driftScale = Math.min(1, 2.2 / size);
+  ud.driftX = (Math.random() - 0.5) * 3 * driftScale;
+  ud.driftY = (Math.random() - 0.5) * 2 * driftScale;
   rock.scale.setScalar(size);
   rock.material.emissive.setHex(0x1a1424);
   rock.position.set(
-    (Math.random() - 0.5) * 26,
-    5 + Math.random() * 14,
-    -250 - Math.random() * 40,
+    (Math.random() - 0.5) * 32,
+    4 + Math.random() * 16,
+    -250 - Math.random() * 60,
   );
   rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
   asteroids.push(rock);
@@ -5812,15 +5839,15 @@ const updateVoid = (delta) => {
   }
 
   asteroidSpawnTimer -= delta;
-  if (asteroidSpawnTimer <= 0 && asteroids.length < 12) {
+  if (asteroidSpawnTimer <= 0 && asteroids.length < 30) {
     spawnAsteroid();
-    asteroidSpawnTimer = 0.5 + Math.random() * 0.7;
+    asteroidSpawnTimer = 0.14 + Math.random() * 0.28;
   }
 
   for (let i = asteroids.length - 1; i >= 0; i -= 1) {
     const rock = asteroids[i];
     const ud = rock.userData;
-    rock.position.z += (speed.value * 1.5 + 12) * delta;
+    rock.position.z += (speed.value * 1.2 + 10) * delta;
     rock.position.x += ud.driftX * delta;
     rock.position.y += ud.driftY * delta;
     rock.rotation.x += ud.spin.x * delta;
@@ -6019,13 +6046,25 @@ const updatePlane = (delta) => {
 
       if (ud.stage === 3 && ud.invulnTimer > 0) {
         // Final-phase telegraph: 10s untouchable while it charges, the shield
-        // bubble pulses blood-red under the darkening eclipse.
+        // bubble pulses blood-red under the darkening eclipse. It already
+        // lobs the huge orbs through the shield — slower cadence than the
+        // full barrage, but the dodging starts immediately.
         ud.invulnTimer -= delta;
         ud.shieldMesh.visible = true;
         ud.shieldMesh.material.opacity = 0.18 + Math.sin(performance.now() * 0.02) * 0.1;
+        ud.hugeTimer -= delta;
+        if (ud.hugeTimer <= 0) {
+          fireEnemyBolt(enemy, new THREE.Vector3(
+            player.position.x + (Math.random() - 0.5) * 7,
+            player.position.y + (Math.random() - 0.5) * 4.5,
+            player.position.z,
+          ), { huge: true });
+          sfx.enemyShoot();
+          ud.hugeTimer = 0.5;
+        }
         if (ud.invulnTimer <= 0) {
           ud.shieldMesh.visible = false;
-          ud.hugeTimer = 0.5;
+          ud.hugeTimer = 0.24;
           showEventToast('ECLIPSE BARRAGE', 'Dodge the orbs!', 2200);
           sfx.motherSpawn();
         }
@@ -6174,11 +6213,13 @@ const updatePlane = (delta) => {
             ud.stage = 3;
             ud.hp = Math.max(ud.hp, 1);
             ud.invulnTimer = 10;
+            // First shielded orb after a short telegraph beat.
+            ud.hugeTimer = 0.8;
             setMotherStage(enemy, 3);
             setEclipse(true);
             spawnBurst(enemy.position, ['red', 'dust'], 30, 12);
             sfx.shieldUp();
-            showEventToast('SOLAR ECLIPSE', 'The mothership is charging…', 2600);
+            showEventToast('SOLAR ECLIPSE', 'The mothership charges — orbs incoming!', 2600);
           }
         }
       }
@@ -6406,6 +6447,8 @@ const exitFinale = () => {
   mothershipCount = 0;
   rampTriggered = false;
   rampHintShown = false;
+  speedLimitTimer = 0;
+  speedLimitHit = false;
   enemySpawnTimer = 0;
   fireTimer = 0;
   launchVy = 0;
@@ -6487,8 +6530,23 @@ const updateRunner = (delta) => {
       speed.value = THREE.MathUtils.damp(speed.value, 48, 1.1, delta);
       driveTargetSpeed = speed.value;
     } else {
+      // Speed trap at 20,000: the limit drops to 80 for 10 seconds before
+      // the road will even think about breaking into a ramp.
+      if (!speedLimitHit && score.value >= RAMP_SCORE) {
+        speedLimitHit = true;
+        speedLimitTimer = 10;
+        showEventToast('SPEED LIMIT', '80 km/h for 10 seconds!', 2600);
+      }
+      if (speedLimitTimer > 0) {
+        speedLimitTimer -= delta;
+      }
+      const driveCap = speedLimitTimer > 0 ? 80 : driveMaxSpeed;
       if (accelHeld) {
-        driveTargetSpeed = Math.min(driveMaxSpeed, driveTargetSpeed + 26 * delta);
+        driveTargetSpeed = Math.min(driveCap, driveTargetSpeed + 26 * delta);
+      }
+      if (driveTargetSpeed > driveCap) {
+        // Forced deceleration while the limit is active — pedals or not.
+        driveTargetSpeed = Math.max(driveCap, driveTargetSpeed - 60 * delta);
       }
       if (brakeHeld) {
         driveTargetSpeed = Math.max(0, driveTargetSpeed - 40 * delta);
@@ -6517,7 +6575,12 @@ const updateRunner = (delta) => {
       }
     }
 
-    if (finalePhase.value === 'drive' && !rampTriggered && score.value >= RAMP_SCORE) {
+    if (
+      finalePhase.value === 'drive'
+      && !rampTriggered
+      && speedLimitTimer <= 0
+      && score.value >= RAMP_SCORE
+    ) {
       if (godModeActive.value) {
         triggerRamp();
       } else if (!rampHintShown) {
