@@ -37,6 +37,11 @@ class RunnerController extends Controller
     private const FINALE_DISTANCE = 10000;
     private const DRIVE_MAX_SPEED = 160.0;
 
+    // Past this distance the run is in zone 3+ (flying), where flat kill
+    // bonuses pile up: drones (+600), motherships (+2500) and the zone-4
+    // asteroid field (+80/200/400 per rock) all pay on top of raw speed.
+    private const RAMP_DISTANCE = 20000;
+
     public function profile(Request $request, RunnerProfileService $service): Response
     {
         $service->ensureDefaultSkins();
@@ -171,7 +176,8 @@ class RunnerController extends Controller
             // distance: near-miss combo chains, traffic-wave clears and
             // god-mode smash streaks.
             $distanceCap = $maxDistance * 1.35
-                + ($distance >= self::FINALE_DISTANCE ? 8000 : 0);
+                + ($distance >= self::FINALE_DISTANCE ? 8000 : 0)
+                + ($distance >= self::RAMP_DISTANCE ? 6000 : 0);
             if ($distance > $distanceCap) {
                 $cheatReasons[] = 'distance_over_cap';
                 $verified = false;

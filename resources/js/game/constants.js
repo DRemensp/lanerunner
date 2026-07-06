@@ -67,6 +67,12 @@ export const envSettings = {
     bg: 0x8ecdf0, fog: 0xaee0f8, fogNear: 90, fogFar: 460,
     hemi: 2.6, dir: 3.0, hemiSky: 0xeaf6ff, dirColor: 0xfff4e0,
   },
+  // Zone 4: deep space beyond the wormhole — near-black sky, thin violet fog
+  // so the asteroid field reads against the starfield.
+  void: {
+    bg: 0x02010a, fog: 0x060218, fogNear: 70, fogFar: 380,
+    hemi: 1.2, dir: 1.3, hemiSky: 0xa88fff, dirColor: 0xd8c8ff,
+  },
 };
 
 // Zone-1 districts: each milestone nudges the night palette, so a long run

@@ -180,7 +180,10 @@
     </div>
 
     <div
-      v-if="finalePhase === 'plane' && (state === 'running' || state === 'paused')"
+      v-if="
+        (finalePhase === 'plane' || finalePhase === 'void') &&
+        (state === 'running' || state === 'paused')
+      "
       class="hp-bar"
     >
       <div
@@ -192,8 +195,10 @@
 
     <div v-if="damageFlash && state === 'running'" class="damage-flash"></div>
 
+    <div v-if="whiteFlash > 0" class="void-flash" :style="{ opacity: whiteFlash }"></div>
+
     <div
-      v-if="state === 'running' && finalePhase === 'plane'"
+      v-if="state === 'running' && (finalePhase === 'plane' || finalePhase === 'void')"
       class="joystick"
       @pointerdown="joyStart"
       @pointermove="joyMove"
@@ -988,6 +993,21 @@ let enemyBoltPool = [];
 let fireTimer = 0;
 let enemyAssets = null;
 
+// Zone 4 (the void): after a mothership kill the wreck detonates, collapses
+// into a black hole and drags the plane through a wormhole into a deep-space
+// asteroid field. finalePhase: 'collapse' (cinematic, controls locked) then
+// 'void' (asteroid gameplay — shoot the rocks or weave through).
+let collapseTimer = 0;
+let blackHole = null;
+let shockRings = [];
+let wreckDebris = [];
+let debrisAssets = null;
+const whiteFlash = ref(0);
+let asteroids = [];
+let asteroidPool = [];
+let asteroidSpawnTimer = 0;
+let asteroidGeometry = null;
+
 let envMode = 'night'; // night | sunrise | day
 let districtIndex = 0;
 const applyDistrict = (index) => {
@@ -1743,7 +1763,12 @@ const handleKeydown = (event) => {
     return;
   }
 
-  if (finalePhase.value === 'plane') {
+  if (finalePhase.value === 'collapse') {
+    // Black-hole cinematic: the player has no control until zone 4 opens.
+    return;
+  }
+
+  if (finalePhase.value === 'plane' || finalePhase.value === 'void') {
     switch (event.code) {
       case 'ArrowUp':
       case 'KeyW':
@@ -1916,7 +1941,12 @@ const triggerSwipe = (dx, dy) => {
     return true;
   }
 
-  if (finalePhase.value === 'plane' || finalePhase.value === 'launch') {
+  if (
+    finalePhase.value === 'plane' ||
+    finalePhase.value === 'launch' ||
+    finalePhase.value === 'void' ||
+    finalePhase.value === 'collapse'
+  ) {
     // The plane uses the on-screen joystick instead of swipes.
     return true;
   }
@@ -5360,6 +5390,513 @@ const updateSkyPickups = (delta) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Zone 4 — the void. The dying mothership detonates in slow motion, its wreck
+// collapses into a black hole and the plane is dragged through the wormhole
+// into a deep-space asteroid field: rocks with hit points — shoot or dodge.
+// ---------------------------------------------------------------------------
+
+const spawnShockRing = (position, color, grow) => {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.85, 1.1, 48),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      fog: false,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  ring.position.copy(position);
+  ring.userData.grow = grow;
+  shockRings.push(ring);
+  scene.add(ring);
+};
+
+const buildBlackHole = (position) => {
+  blackHole = new THREE.Group();
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(3, 24, 18),
+    new THREE.MeshBasicMaterial({ color: 0x000000, fog: false }),
+  );
+  blackHole.add(core);
+  const diskMat = {
+    transparent: true,
+    fog: false,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  };
+  const disk = new THREE.Mesh(
+    new THREE.RingGeometry(3.3, 5.4, 56),
+    new THREE.MeshBasicMaterial({ ...diskMat, color: 0xcaa8ff, opacity: 0.85 }),
+  );
+  blackHole.add(disk);
+  const rim = new THREE.Mesh(
+    new THREE.RingGeometry(5.6, 6.2, 56),
+    new THREE.MeshBasicMaterial({ ...diskMat, color: 0xffd9a8, opacity: 0.5 }),
+  );
+  blackHole.add(rim);
+  const glow = new THREE.Mesh(
+    new THREE.CircleGeometry(8, 40),
+    new THREE.MeshBasicMaterial({
+      color: 0x8f7ad0,
+      transparent: true,
+      opacity: 0.22,
+      fog: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  glow.position.z = -0.5;
+  blackHole.add(glow);
+  blackHole.position.copy(position);
+  blackHole.scale.setScalar(0.001);
+  scene.add(blackHole);
+};
+
+const clearVoidObjects = () => {
+  shockRings.forEach((ring) => {
+    scene.remove(ring);
+    ring.geometry.dispose();
+    ring.material.dispose();
+  });
+  shockRings = [];
+  wreckDebris.forEach((chunk) => scene.remove(chunk));
+  wreckDebris = [];
+  if (blackHole) {
+    scene.remove(blackHole);
+    blackHole.traverse((node) => {
+      if (node.isMesh) {
+        node.geometry?.dispose();
+        node.material?.dispose();
+      }
+    });
+    blackHole = null;
+  }
+  asteroids.forEach((rock) => {
+    scene.remove(rock);
+    asteroidPool.push(rock);
+  });
+  asteroids = [];
+  collapseTimer = 0;
+  whiteFlash.value = 0;
+};
+
+const getDebrisAssets = () => {
+  if (!debrisAssets) {
+    debrisAssets = {
+      geo: new THREE.BoxGeometry(1, 1, 1),
+      mat: new THREE.MeshLambertMaterial({ color: 0x2c3242 }),
+    };
+  }
+  return debrisAssets;
+};
+
+const triggerMotherCollapse = (position) => {
+  finalePhase.value = 'collapse';
+  collapseTimer = 0;
+  clearEnemies();
+  clearEnemyBolts();
+  clearSkyPickups();
+  planeKeys.up = false;
+  planeKeys.down = false;
+  planeKeys.left = false;
+  planeKeys.right = false;
+  joyVec = { x: 0, y: 0 };
+  joyKnob.value = { x: 0, y: 0 };
+  driveHint.value = false;
+  // The blast itself: white-out, shockwaves, wreck debris. updateCollapse
+  // plays the first beat in slow motion.
+  whiteFlash.value = 1;
+  bumpShakeTimer = 1.1;
+  sfx.smash();
+  sfx.enemyDown();
+  spawnBurst(position, ['red', 'gold', 'flame'], 50, 18);
+  spawnBurst(position, ['dust', 'gold'], 36, 12);
+  spawnShockRing(position, 0xffd9a8, 34);
+  spawnShockRing(position, 0xff6a3a, 26);
+  spawnShockRing(position, 0xcaa8ff, 44);
+  const assets = getDebrisAssets();
+  for (let i = 0; i < 16; i += 1) {
+    const chunk = new THREE.Mesh(assets.geo, assets.mat);
+    chunk.position.copy(position);
+    chunk.scale.set(
+      0.5 + Math.random() * 1.6,
+      0.4 + Math.random() * 1.2,
+      0.5 + Math.random() * 1.8,
+    );
+    chunk.userData.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 26,
+      (Math.random() - 0.35) * 20,
+      (Math.random() - 0.5) * 22,
+    );
+    chunk.userData.spin = new THREE.Vector3(
+      (Math.random() - 0.5) * 8,
+      (Math.random() - 0.5) * 8,
+      (Math.random() - 0.5) * 8,
+    );
+    wreckDebris.push(chunk);
+    scene.add(chunk);
+  }
+  buildBlackHole(position);
+  setMusicDuck(0.3);
+  showEventToast('MOTHERSHIP DESTROYED', 'Its core is collapsing…', 2600);
+};
+
+const updateCollapse = (delta) => {
+  collapseTimer += delta;
+  const t = collapseTimer;
+  // The first beat of the detonation plays in slow motion.
+  const world = t < 0.9 ? delta * 0.3 : delta;
+
+  speed.value = THREE.MathUtils.damp(speed.value, 8, 1.4, delta);
+  updateEngineSound();
+  updateOceanMotion(world);
+  planeMixer?.update(world);
+
+  if (t < 3.2) {
+    // The blast white-out fades…
+    whiteFlash.value = Math.max(0, whiteFlash.value - delta * 1.5);
+  } else {
+    // …and the wormhole swallows the screen right before zone 4.
+    whiteFlash.value = Math.min(1, whiteFlash.value + delta * 2.6);
+  }
+
+  // Secondary detonations while the wreck breaks apart.
+  if (t < 1.1 && blackHole && Math.random() < 0.4) {
+    spawnBurst(
+      new THREE.Vector3(
+        blackHole.position.x + (Math.random() - 0.5) * 10,
+        blackHole.position.y + (Math.random() - 0.5) * 6,
+        blackHole.position.z + (Math.random() - 0.5) * 6,
+      ),
+      ['flame', 'gold', 'red'],
+      6,
+      14,
+    );
+  }
+
+  for (let i = shockRings.length - 1; i >= 0; i -= 1) {
+    const ring = shockRings[i];
+    const s = ring.scale.x + ring.userData.grow * world;
+    ring.scale.set(s, s, s);
+    ring.material.opacity -= world * 0.5;
+    if (ring.material.opacity <= 0) {
+      scene.remove(ring);
+      ring.geometry.dispose();
+      ring.material.dispose();
+      shockRings.splice(i, 1);
+    }
+  }
+
+  // Debris flies free, then spirals into the growing hole.
+  const sucking = t > 1.5 && blackHole;
+  for (let i = wreckDebris.length - 1; i >= 0; i -= 1) {
+    const chunk = wreckDebris[i];
+    if (sucking) {
+      tmpHomingDir.subVectors(blackHole.position, chunk.position);
+      const dist = tmpHomingDir.length();
+      tmpHomingDir.normalize().multiplyScalar(60);
+      chunk.userData.velocity.x = THREE.MathUtils.damp(chunk.userData.velocity.x, tmpHomingDir.x, 2.5, world);
+      chunk.userData.velocity.y = THREE.MathUtils.damp(chunk.userData.velocity.y, tmpHomingDir.y, 2.5, world);
+      chunk.userData.velocity.z = THREE.MathUtils.damp(chunk.userData.velocity.z, tmpHomingDir.z, 2.5, world);
+      if (dist < 3.5 * blackHole.scale.x) {
+        scene.remove(chunk);
+        wreckDebris.splice(i, 1);
+        continue;
+      }
+    }
+    chunk.position.addScaledVector(chunk.userData.velocity, world);
+    chunk.rotation.x += chunk.userData.spin.x * world;
+    chunk.rotation.y += chunk.userData.spin.y * world;
+    chunk.rotation.z += chunk.userData.spin.z * world;
+  }
+
+  if (blackHole) {
+    if (t > 0.8) {
+      blackHole.scale.setScalar(Math.max(0.001, Math.min(1.25, ((t - 0.8) / 1.4) * 1.25)));
+    }
+    blackHole.rotation.z += world * 2.4;
+  }
+
+  if (t > 1.2 && envMode !== 'void') {
+    // The eclipse sky bleeds into deep space while the hole grows.
+    envMode = 'void';
+  }
+
+  if (t > 1.6 && blackHole) {
+    // The hole reels the plane in; the airframe starts to spiral.
+    player.position.x = THREE.MathUtils.damp(player.position.x, blackHole.position.x, 1.4, delta);
+    player.position.y = THREE.MathUtils.damp(player.position.y, Math.max(5, blackHole.position.y), 1.4, delta);
+    blackHole.position.z = THREE.MathUtils.damp(blackHole.position.z, player.position.z - 10, 0.55, delta);
+    bumpShakeTimer = Math.max(bumpShakeTimer, 0.25);
+    if (planeVisual) {
+      planeVisual.rotation.z += delta * Math.min(6, (t - 1.6) * 2.2);
+    }
+  }
+
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x * 0.5, 4, delta);
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, player.position.y + 3.2, 4, delta);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, player.position.z + 10, 4, delta);
+  camera.fov = THREE.MathUtils.damp(camera.fov, t > 1.6 ? 74 : 58, 2.5, delta);
+  camera.updateProjectionMatrix();
+  if (blackHole) {
+    lookAtTarget.set(
+      (player.position.x + blackHole.position.x) / 2,
+      (player.position.y + blackHole.position.y) / 2,
+      blackHole.position.z,
+    );
+  } else {
+    lookAtTarget.set(player.position.x * 0.85, player.position.y + 0.3, player.position.z - 12);
+  }
+  camera.lookAt(lookAtTarget);
+
+  if (t >= 4.1) {
+    enterVoid();
+  }
+};
+
+const enterVoid = () => {
+  clearVoidObjects();
+  finalePhase.value = 'void';
+  // The sunrise world stays behind the wormhole.
+  if (oceanGroup) oceanGroup.visible = false;
+  terrainChunks.forEach((chunk) => {
+    chunk.visible = false;
+  });
+  clouds.forEach((cloud) => {
+    cloud.visible = false;
+  });
+  if (starPoints) starPoints.visible = true;
+  envMode = 'void';
+  applyEnvironmentNow();
+  // Drop out of the wormhole flash into the starfield.
+  whiteFlash.value = 1;
+  playerHp.value = Math.min(100, playerHp.value + 30);
+  player.position.set(0, 10, 2);
+  if (planeVisual) {
+    planeVisual.rotation.set(0, 0, 0);
+  }
+  planeVelX = 0;
+  planeVelY = 0;
+  asteroidSpawnTimer = 1.2;
+  fireTimer = 0.4;
+  setMusicDuck(0.7);
+  sfx.dock();
+  showEventToast('ZONE 4 — THE VOID', 'Deep space. Shoot the asteroids or weave through!', 3200);
+};
+
+// Small rocks pop in one hit; the big ones soak six and hit like a truck.
+const asteroidTiers = [
+  { radius: 1.4, hp: 1, score: 80, dmg: 18 },
+  { radius: 2.3, hp: 3, score: 200, dmg: 32 },
+  { radius: 3.4, hp: 6, score: 400, dmg: 50 },
+];
+
+const spawnAsteroid = () => {
+  const roll = Math.random();
+  const tier = roll < 0.45 ? asteroidTiers[0] : roll < 0.8 ? asteroidTiers[1] : asteroidTiers[2];
+  let rock = asteroidPool.pop();
+  if (!rock) {
+    if (!asteroidGeometry) {
+      asteroidGeometry = new THREE.DodecahedronGeometry(1, 0);
+    }
+    // Each rock owns its material so the hit flash never bleeds to others.
+    rock = new THREE.Mesh(
+      asteroidGeometry,
+      new THREE.MeshLambertMaterial({ color: 0x8a8296, emissive: 0x1a1424 }),
+    );
+  }
+  const ud = rock.userData;
+  const size = tier.radius * (0.85 + Math.random() * 0.3);
+  ud.tier = tier;
+  ud.hp = tier.hp;
+  ud.radius = size;
+  ud.grazed = false;
+  ud.hitFlash = 0;
+  ud.spin = new THREE.Vector3(
+    (Math.random() - 0.5) * 1.6,
+    (Math.random() - 0.5) * 1.6,
+    (Math.random() - 0.5) * 1.6,
+  );
+  ud.driftX = (Math.random() - 0.5) * 3;
+  ud.driftY = (Math.random() - 0.5) * 2;
+  rock.scale.setScalar(size);
+  rock.material.emissive.setHex(0x1a1424);
+  rock.position.set(
+    (Math.random() - 0.5) * 26,
+    5 + Math.random() * 14,
+    -250 - Math.random() * 40,
+  );
+  rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+  asteroids.push(rock);
+  scene.add(rock);
+};
+
+const recycleAsteroid = (index) => {
+  const rock = asteroids[index];
+  scene.remove(rock);
+  asteroidPool.push(rock);
+  asteroids.splice(index, 1);
+};
+
+const updateVoid = (delta) => {
+  // Movement mirrors zone 3, slightly faster and with more vertical room.
+  const inputX = THREE.MathUtils.clamp(
+    (planeKeys.right ? 1 : 0) - (planeKeys.left ? 1 : 0) + joyVec.x,
+    -1,
+    1,
+  );
+  const inputY = THREE.MathUtils.clamp(
+    (planeKeys.up ? 1 : 0) - (planeKeys.down ? 1 : 0) - joyVec.y,
+    -1,
+    1,
+  );
+
+  speed.value = THREE.MathUtils.damp(speed.value, 48 - inputY * 6, 2, delta);
+  updateEngineSound();
+  score.value += speed.value * delta * 2.4;
+
+  whiteFlash.value = Math.max(0, whiteFlash.value - delta * 1.1);
+
+  planeVelX = THREE.MathUtils.damp(planeVelX, inputX * 22, 6, delta);
+  planeVelY = THREE.MathUtils.damp(planeVelY, inputY * 14, 6, delta);
+  player.position.x = THREE.MathUtils.clamp(player.position.x + planeVelX * delta, -13, 13);
+  player.position.y = THREE.MathUtils.clamp(player.position.y + planeVelY * delta, 3, 21);
+  player.position.z = THREE.MathUtils.damp(player.position.z, 2, 0.8, delta);
+
+  if (planeVisual) {
+    planeVisual.rotation.z = THREE.MathUtils.damp(
+      planeVisual.rotation.z,
+      THREE.MathUtils.clamp(-planeVelX * 0.055, -0.85, 0.85),
+      7,
+      delta,
+    );
+    planeVisual.rotation.x = THREE.MathUtils.damp(
+      planeVisual.rotation.x,
+      THREE.MathUtils.clamp(planeVelY * 0.045, -0.6, 0.6),
+      7,
+      delta,
+    );
+    planeVisual.rotation.y = THREE.MathUtils.damp(planeVisual.rotation.y, -planeVelX * 0.014, 6, delta);
+    planeVisual.position.y = Math.sin(performance.now() * 0.0016) * 0.15;
+  }
+  player.rotation.x = THREE.MathUtils.damp(player.rotation.x, 0, 4, delta);
+  planeMixer?.update(delta);
+
+  if (starPoints) {
+    starPoints.rotation.z += delta * 0.008;
+  }
+
+  updateSkyPickups(delta);
+
+  fireTimer -= delta;
+  if (fireTimer <= 0) {
+    fireProjectiles();
+    fireTimer = rapidFireTime > 0 ? 0.09 : 0.18;
+  }
+
+  // Straight shots only — there are no lock-on targets out here.
+  for (let i = projectiles.length - 1; i >= 0; i -= 1) {
+    const bolt = projectiles[i];
+    bolt.position.z -= 150 * delta;
+    bolt.position.x += (bolt.userData.vx || 0) * delta;
+    if (bolt.position.z < -280 || bolt.position.y > 60 || Math.abs(bolt.position.x) > 70) {
+      scene.remove(bolt);
+      projectilePool.push(bolt);
+      projectiles.splice(i, 1);
+    }
+  }
+
+  asteroidSpawnTimer -= delta;
+  if (asteroidSpawnTimer <= 0 && asteroids.length < 12) {
+    spawnAsteroid();
+    asteroidSpawnTimer = 0.5 + Math.random() * 0.7;
+  }
+
+  for (let i = asteroids.length - 1; i >= 0; i -= 1) {
+    const rock = asteroids[i];
+    const ud = rock.userData;
+    rock.position.z += (speed.value * 1.5 + 12) * delta;
+    rock.position.x += ud.driftX * delta;
+    rock.position.y += ud.driftY * delta;
+    rock.rotation.x += ud.spin.x * delta;
+    rock.rotation.y += ud.spin.y * delta;
+    if (ud.hitFlash > 0) {
+      ud.hitFlash -= delta;
+      if (ud.hitFlash <= 0) {
+        rock.material.emissive.setHex(0x1a1424);
+      }
+    }
+    if (rock.position.z > 26) {
+      recycleAsteroid(i);
+      continue;
+    }
+
+    // Player bolts chip the rock down.
+    let destroyed = false;
+    const hitRange = (ud.radius + 1) * (ud.radius + 1);
+    for (let j = projectiles.length - 1; j >= 0; j -= 1) {
+      const bolt = projectiles[j];
+      const dx = bolt.position.x - rock.position.x;
+      const dy = bolt.position.y - rock.position.y;
+      const dz = bolt.position.z - rock.position.z;
+      if (dx * dx + dy * dy + dz * dz < hitRange) {
+        scene.remove(bolt);
+        projectilePool.push(bolt);
+        projectiles.splice(j, 1);
+        ud.hp -= bolt.userData.dmg || 1;
+        ud.hitFlash = 0.12;
+        rock.material.emissive.setHex(0x8a4a3a);
+        spawnBurst(bolt.position, ['dust', 'gold'], 3, 5);
+        if (ud.hp <= 0) {
+          score.value += ud.tier.score;
+          sfx.enemyDown();
+          spawnBurst(rock.position, ['dust', 'red', 'gold'], Math.round(8 + ud.radius * 4), 6 + ud.radius * 2);
+          recycleAsteroid(i);
+          destroyed = true;
+          break;
+        }
+      }
+    }
+    if (destroyed) continue;
+
+    // Collision hurts — big rocks hit like a truck.
+    const px = rock.position.x - player.position.x;
+    const py = rock.position.y - player.position.y;
+    const pz = rock.position.z - player.position.z;
+    const playerDist = px * px + py * py + pz * pz;
+    const crashRange = (ud.radius + 1.6) * (ud.radius + 1.6);
+    if (playerDist < crashRange) {
+      damagePlayer(ud.tier.dmg);
+      spawnBurst(rock.position, ['red', 'dust'], 16, 9);
+      recycleAsteroid(i);
+      if (state.value !== 'running') {
+        return;
+      }
+      continue;
+    }
+
+    // A near pass pays out like a graze.
+    const grazeRange = (ud.radius + 5) * (ud.radius + 5);
+    if (!ud.grazed && Math.abs(pz) < 2.5 && playerDist < grazeRange) {
+      ud.grazed = true;
+      triggerGraze();
+    }
+  }
+
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x * 0.5, 4, delta);
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, player.position.y + 3.2, 4, delta);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, player.position.z + 10, 4, delta);
+  camera.fov = THREE.MathUtils.damp(camera.fov, 64 + Math.abs(planeVelX) * 0.2, 3, delta);
+  camera.updateProjectionMatrix();
+  lookAtTarget.set(player.position.x * 0.85, player.position.y + 0.3, player.position.z - 12);
+  camera.lookAt(lookAtTarget);
+};
+
 const updatePlane = (delta) => {
   const inputX = THREE.MathUtils.clamp(
     (planeKeys.right ? 1 : 0) - (planeKeys.left ? 1 : 0) + joyVec.x,
@@ -5656,12 +6193,11 @@ const updatePlane = (delta) => {
           runMotherKills.value += 1;
           killsSinceMother = 0;
           setEclipse(false);
-          sfx.enemyDown();
-          sfx.smash();
-          spawnBurst(enemy.position, ['red', 'gold', 'flame'], 40, 14);
-          spawnBurst(enemy.position, ['dust', 'gold'], 30, 9);
-          bumpShakeTimer = 0.5;
-          enemySpawnTimer = 3.5;
+          // The wreck detonates and collapses into a black hole — zone 4.
+          const wreckAt = enemy.position.clone();
+          removeEnemy(i);
+          triggerMotherCollapse(wreckAt);
+          return;
         } else {
           score.value += 600;
           playerHp.value = Math.min(100, playerHp.value + 15);
@@ -5854,6 +6390,9 @@ const exitFinale = () => {
   clearProjectiles();
   clearEnemyBolts();
   clearSkyPickups();
+  // Zone 4 cleanup: black hole, shock rings, wreck debris, asteroids, flash.
+  clearVoidObjects();
+  asteroidSpawnTimer = 0;
   rapidFireTime = 0;
   spreadFireTime = 0;
   homingAmmo = 0;
@@ -5908,6 +6447,14 @@ const updateRunner = (delta) => {
   }
   if (finalePhase.value === 'plane') {
     updatePlane(delta);
+    return;
+  }
+  if (finalePhase.value === 'collapse') {
+    updateCollapse(delta);
+    return;
+  }
+  if (finalePhase.value === 'void') {
+    updateVoid(delta);
     return;
   }
 
@@ -6574,7 +7121,7 @@ const animate = (time) => {
   if (
     isEngineActive() &&
     (state.value !== 'running' ||
-      !['drive', 'ramp', 'launch', 'plane'].includes(finalePhase.value))
+      !['drive', 'ramp', 'launch', 'plane', 'collapse', 'void'].includes(finalePhase.value))
   ) {
     silenceEngineSound();
   }
@@ -7370,6 +7917,15 @@ onBeforeUnmount(() => {
   pointer-events: none;
   background: radial-gradient(ellipse at center, transparent 42%, rgba(255, 45, 65, 0.4) 100%);
   animation: damageFlash 0.45s ease-out forwards;
+}
+
+/* Mothership blast / wormhole white-out — opacity is driven from script. */
+.void-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: #fff;
 }
 
 @keyframes damageFlash {
