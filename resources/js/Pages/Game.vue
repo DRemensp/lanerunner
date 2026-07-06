@@ -2536,10 +2536,10 @@ const getCoin = () => {
   return new THREE.Mesh(coinGeometry, coinMaterial);
 };
 
-const spawnCoinLine = (laneIndex, baseZ, y = 1.0) => {
+const spawnCoinLine = (laneIndex, baseZ) => {
   for (let k = -2; k <= 2; k += 1) {
     const coin = getCoin();
-    coin.position.set(lanes[laneIndex], y, baseZ + k * 2.0);
+    coin.position.set(lanes[laneIndex], 1.0, baseZ + k * 2.0);
     coin.rotation.y = Math.random() * Math.PI;
     coins.push(coin);
     scene.add(coin);
@@ -3095,7 +3095,6 @@ const getObstacleAssets = () => {
     busBody: lambert(0xc22b3d, 0.25),
     busRoof: lambert(0xe8e2d0),
     frame: lambert(0x2a3350),
-    concrete: lambert(0x8b93a3),
   };
   return obstacleAssets;
 };
@@ -3268,147 +3267,12 @@ const obstacleBuilders = {
     });
     return { mesh: g, size: { w: 1.6, h: 0.7, d: 1.2 } };
   },
-  // Solid concrete wall with hazard stripes — taller than the jump apex
-  // (2.57), so the only way past is switching lanes. Pure dodge obstacle.
-  'tall-wall': () => {
-    const a = getObstacleAssets();
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(track(new THREE.BoxGeometry(2.0, 3.3, 0.5)), a.concrete);
-    g.add(body);
-    const stripeGeo = track(new THREE.BoxGeometry(0.34, 0.42, 0.52));
-    [-0.72, 0, 0.72].forEach((x) => {
-      const stripe = new THREE.Mesh(stripeGeo, a.hazard);
-      stripe.position.set(x, 1.28, 0);
-      g.add(stripe);
-    });
-    const base = new THREE.Mesh(track(new THREE.BoxGeometry(2.2, 0.3, 0.9)), a.ring);
-    base.position.y = -1.5;
-    g.add(base);
-    const lampGeo = track(new THREE.BoxGeometry(0.14, 0.1, 0.14));
-    [-0.85, 0.85].forEach((x) => {
-      const lamp = new THREE.Mesh(lampGeo, a.hazard);
-      lamp.position.set(x, 1.7, 0);
-      g.add(lamp);
-    });
-    return { mesh: g, size: { w: 2.0, h: 3.3, d: 0.5 } };
-  },
-  // London-style double decker: too tall to jump over from the ground, but
-  // its roof is a walkable deck (walk: 'flat') — reachable via ramp wedges
-  // or by hopping over from a box truck roof.
-  'tall-doubledecker': () => {
-    const a = getObstacleAssets();
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(track(new THREE.BoxGeometry(2.15, 2.9, 5.3)), a.busBody);
-    body.position.y = 0.15;
-    g.add(body);
-    const roof = new THREE.Mesh(track(new THREE.BoxGeometry(2.05, 0.14, 5.2)), a.busRoof);
-    roof.position.y = 1.67;
-    g.add(roof);
-    const windowGeo = track(new THREE.BoxGeometry(2.17, 0.52, 4.5));
-    [0.98, -0.42].forEach((y) => {
-      const win = new THREE.Mesh(windowGeo, a.carGlass);
-      win.position.y = y;
-      g.add(win);
-    });
-    const cabGlass = new THREE.Mesh(track(new THREE.BoxGeometry(1.8, 0.6, 0.1)), a.carGlass);
-    cabGlass.position.set(0, -0.35, 2.68);
-    g.add(cabGlass);
-    const wheelGeo = track(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 12));
-    [-1.6, 1.6].forEach((z) => [-0.95, 0.95].forEach((x) => {
-      const wheel = new THREE.Mesh(wheelGeo, a.wheel);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(x, -1.33, z);
-      g.add(wheel);
-    }));
-    g.userData.walk = { kind: 'flat' };
-    return { mesh: g, size: { w: 2.15, h: 3.5, d: 5.3 } };
-  },
-  // Box truck / container lorry: flat walkable roof over its whole length,
-  // used for Subway-Surfers-style rooftop runs. Just above jump height.
-  'tall-boxtruck': () => {
-    const a = getObstacleAssets();
-    const g = new THREE.Group();
-    const box = new THREE.Mesh(track(new THREE.BoxGeometry(2.1, 2.25, 4.9)), a.busRoof);
-    box.position.y = 0.325;
-    g.add(box);
-    const chassis = new THREE.Mesh(track(new THREE.BoxGeometry(1.9, 0.55, 4.9)), a.ring);
-    chassis.position.y = -1.05;
-    g.add(chassis);
-    const stripe = new THREE.Mesh(track(new THREE.BoxGeometry(2.12, 0.5, 4.6)), a.busBody);
-    stripe.position.y = -0.1;
-    g.add(stripe);
-    const cabGlass = new THREE.Mesh(track(new THREE.BoxGeometry(1.7, 0.55, 0.12)), a.carGlass);
-    cabGlass.position.set(0, 0.55, 2.48);
-    g.add(cabGlass);
-    const wheelGeo = track(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 12));
-    [-1.7, 1.7].forEach((z) => [-0.92, 0.92].forEach((x) => {
-      const wheel = new THREE.Mesh(wheelGeo, a.wheel);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(x, -1.05, z);
-      g.add(wheel);
-    }));
-    g.userData.walk = { kind: 'flat' };
-    return { mesh: g, size: { w: 2.1, h: 2.9, d: 4.9 } };
-  },
-  // Hazard-striped ramp wedge: run straight onto it and the ground check
-  // walks the player up the slope — the entry point for every rooftop route.
-  'ramp-wedge': () => {
-    const a = getObstacleAssets();
-    const g = new THREE.Group();
-    const d = 3.4;
-    const h = 2.2;
-    const slopeLen = Math.sqrt(d * d + h * h);
-    const plate = new THREE.Mesh(track(new THREE.BoxGeometry(2.0, 0.14, slopeLen)), a.concrete);
-    plate.rotation.x = -Math.atan2(h, d);
-    plate.position.y = 0;
-    g.add(plate);
-    const stripeGeo = track(new THREE.BoxGeometry(0.4, 0.15, slopeLen));
-    [-0.6, 0.6].forEach((x) => {
-      const stripe = new THREE.Mesh(stripeGeo, a.hazard);
-      stripe.rotation.x = -Math.atan2(h, d);
-      stripe.position.set(x, 0.006, 0);
-      g.add(stripe);
-    });
-    const back = new THREE.Mesh(track(new THREE.BoxGeometry(2.0, h, 0.16)), a.frame);
-    back.position.set(0, 0, -d / 2 + 0.08);
-    g.add(back);
-    g.userData.walk = { kind: 'ramp', low: 0.12 };
-    return { mesh: g, size: { w: 2.0, h, d } };
-  },
-  // Construction scaffold gate: slide under the planks. Visual posts reach
-  // the ground; the collision box only covers the plank deck.
-  'over-scaffold': () => {
-    const a = getObstacleAssets();
-    const g = new THREE.Group();
-    const plank = new THREE.Mesh(track(new THREE.BoxGeometry(1.9, 0.16, 0.9)), a.wood);
-    g.add(plank);
-    const plank2 = new THREE.Mesh(track(new THREE.BoxGeometry(1.9, 0.12, 0.4)), a.woodDark);
-    plank2.position.set(0, 0.14, 0.2);
-    g.add(plank2);
-    const postGeo = track(new THREE.BoxGeometry(0.09, 1.7, 0.09));
-    [-0.88, 0.88].forEach((x) => [-0.34, 0.34].forEach((z) => {
-      const post = new THREE.Mesh(postGeo, a.frame);
-      post.position.set(x, -0.85, z);
-      g.add(post);
-    }));
-    const braceGeo = track(new THREE.BoxGeometry(0.07, 1.1, 0.07));
-    [-0.88, 0.88].forEach((x) => {
-      const brace = new THREE.Mesh(braceGeo, a.frame);
-      brace.rotation.x = 0.55;
-      brace.position.set(x, -0.8, 0);
-      g.add(brace);
-    });
-    const lamp = new THREE.Mesh(track(new THREE.BoxGeometry(0.14, 0.1, 0.14)), a.hazard);
-    lamp.position.y = 0.28;
-    g.add(lamp);
-    return { mesh: g, size: { w: 1.8, h: 0.65, d: 1.0 } };
-  },
 };
 
 const obstacleVariants = {
   low: ['low-crate', 'low-barrel', 'car-any'],
-  tall: ['tall-stack', 'tall-any', 'tall-wall', 'tall-wall', 'tall-boxtruck', 'tall-doubledecker'],
-  over: ['over-barrier', 'over-scaffold'],
+  tall: ['tall-stack', 'tall-any'],
+  over: ['over-barrier'],
 };
 
 // Low-poly vehicles from Kenney's CC0 Car Kit (kenney.nl), loaded at runtime.
@@ -3430,15 +3294,6 @@ const glbVehicleDefs = [
   { key: 'garbage-truck', kind: 'tall', fitLength: 3.5 },
   { key: 'cone', kind: 'prop', fitHeight: 1.05 },
   { key: 'box', kind: 'prop', fitHeight: 1.1 },
-  { key: 'truck-flat', kind: 'tall', fitLength: 4.2 },
-  { key: 'delivery-flat', kind: 'tall', fitLength: 3.2 },
-  { key: 'tractor', kind: 'tall', fitLength: 2.9 },
-  // Construction-site set: shovel tractor blocks lanes in the roadworks
-  // chunk, barriers/lights fill the remaining ground lanes.
-  { key: 'tractor-shovel', kind: 'special', fitLength: 3.4 },
-  { key: 'cone-flat', kind: 'prop', fitHeight: 0.55 },
-  { key: 'construction-barrier', kind: 'prop', dir: 'props', fitHeight: 1.0 },
-  { key: 'construction-light', kind: 'special', dir: 'props', fitHeight: 1.8 },
 ];
 
 const glbTemplates = {};
@@ -3494,18 +3349,16 @@ const registerVehicleModel = (def, model) => {
     glbTraffic.car.push(def.key);
   } else if (def.kind === 'tall') {
     glbTraffic.tall.push(def.key);
-  } else if (def.kind === 'prop') {
+  } else {
     obstacleVariants.low.push(def.key);
   }
-  // kind 'special': builder only — placed deliberately by chunks, never
-  // mixed into the random variant pools.
 };
 
 const loadVehicleModels = () => {
   const loader = new GLTFLoader();
   glbVehicleDefs.forEach((def) => {
     loader.load(
-      `/models/${def.dir || 'carkit'}/${def.key}.glb`,
+      `/models/carkit/${def.key}.glb`,
       (gltf) => registerVehicleModel(def, gltf.scene),
       undefined,
       () => {},
@@ -3618,136 +3471,11 @@ const spawnOncoming = () => {
   return true;
 };
 
-// ---- Chunk set pieces (Subway-Surfers style) ------------------------------
-// Hand-built multi-row sections spawned as one rigid block: since every
-// static obstacle scrolls at the same speed, relative geometry (abutting
-// decks, jump gaps, slalom spacing) is preserved exactly. Lane indices are
-// mirrored randomly on spawn for variety. dz grows away from the player.
-const chunkDefs = [
-  {
-    // Ramp onto a chain of box-truck roofs, coins up top, light ground traffic.
-    name: 'rooftop-run',
-    depth: 24,
-    rows: [
-      { dz: 0, entries: [{ lane: 0, type: 'tall', key: 'ramp-wedge' }] },
-      { dz: 4.2, entries: [{ lane: 0, type: 'tall', key: 'tall-boxtruck' }], coins: { lane: 0, y: 3.9 } },
-      { dz: 8, entries: [{ lane: 2, type: 'low' }] },
-      { dz: 11.3, entries: [{ lane: 0, type: 'tall', key: 'tall-boxtruck' }], coins: { lane: 0, y: 3.9 } },
-      { dz: 15, entries: [{ lane: 1, type: 'over' }] },
-      { dz: 18.4, entries: [{ lane: 0, type: 'tall', key: 'tall-boxtruck' }] },
-      { dz: 22, entries: [{ lane: 2, type: 'low' }] },
-    ],
-  },
-  {
-    // Ramp -> box truck -> double-decker roofs, auto-climbing each step.
-    name: 'bus-line',
-    depth: 23,
-    rows: [
-      { dz: 0, entries: [{ lane: 0, type: 'tall', key: 'ramp-wedge' }] },
-      { dz: 4.2, entries: [{ lane: 0, type: 'tall', key: 'tall-boxtruck' }] },
-      { dz: 6, entries: [{ lane: 2, type: 'tall' }] },
-      { dz: 9.3, entries: [{ lane: 0, type: 'tall', key: 'tall-doubledecker' }], coins: { lane: 0, y: 4.5 } },
-      { dz: 12, entries: [{ lane: 1, type: 'low' }] },
-      { dz: 17.2, entries: [{ lane: 0, type: 'tall', key: 'tall-doubledecker' }], coins: { lane: 0, y: 4.5 } },
-      { dz: 18, entries: [{ lane: 2, type: 'over' }] },
-    ],
-  },
-  {
-    // Roadworks: shovel tractor + barriers block the middle, warning lights
-    // and cones on the side — or take the ramp over everything.
-    name: 'roadworks',
-    depth: 18,
-    rows: [
-      { dz: 0, entries: [{ lane: 1, type: 'low', key: 'cone-flat' }, { lane: 2, type: 'low', key: 'cone-flat' }] },
-      {
-        dz: 4,
-        entries: [
-          { lane: 0, type: 'tall', key: 'ramp-wedge' },
-          { lane: 1, type: 'tall', key: 'tractor-shovel' },
-          { lane: 2, type: 'low', key: 'construction-light' },
-        ],
-      },
-      { dz: 8.2, entries: [{ lane: 0, type: 'tall', key: 'tall-boxtruck' }], coins: { lane: 0, y: 3.9 } },
-      { dz: 9, entries: [{ lane: 1, type: 'low', key: 'construction-barrier' }] },
-      { dz: 14, entries: [{ lane: 1, type: 'low', key: 'construction-barrier' }, { lane: 2, type: 'low', key: 'construction-barrier' }] },
-    ],
-  },
-  {
-    // Concrete wall slalom — nothing to jump here, pure lane work. The free
-    // lane always moves by exactly one lane per row.
-    name: 'wall-slalom',
-    depth: 24,
-    rows: [
-      { dz: 0, entries: [{ lane: 0, type: 'tall', key: 'tall-wall' }, { lane: 1, type: 'tall', key: 'tall-wall' }] },
-      { dz: 7, entries: [{ lane: 0, type: 'tall', key: 'tall-wall' }, { lane: 2, type: 'tall', key: 'tall-wall' }], coins: { lane: 1 } },
-      { dz: 14, entries: [{ lane: 1, type: 'tall', key: 'tall-wall' }, { lane: 2, type: 'tall', key: 'tall-wall' }] },
-      { dz: 21, entries: [{ lane: 0, type: 'tall', key: 'tall-wall' }, { lane: 2, type: 'tall', key: 'tall-wall' }], coins: { lane: 1 } },
-    ],
-  },
-  {
-    // Double-decker corridor: solid bus walls left and right, a slide/jump
-    // gauntlet down the middle.
-    name: 'bus-corridor',
-    depth: 21,
-    rows: [
-      { dz: 2.7, entries: [{ lane: 0, type: 'tall', key: 'tall-doubledecker' }, { lane: 2, type: 'tall', key: 'tall-doubledecker' }] },
-      { dz: 4, entries: [{ lane: 1, type: 'over' }] },
-      { dz: 8, entries: [{ lane: 0, type: 'tall', key: 'tall-doubledecker' }, { lane: 2, type: 'tall', key: 'tall-doubledecker' }], coins: { lane: 1 } },
-      { dz: 13, entries: [{ lane: 1, type: 'low' }] },
-      { dz: 13.3, entries: [{ lane: 0, type: 'tall', key: 'tall-doubledecker' }, { lane: 2, type: 'tall', key: 'tall-doubledecker' }] },
-      { dz: 18.6, entries: [{ lane: 0, type: 'tall', key: 'tall-doubledecker' }, { lane: 2, type: 'tall', key: 'tall-doubledecker' }] },
-    ],
-  },
-];
-
-// GLB-based chunk pieces fall back to procedural builders until loaded.
-const chunkFallbacks = { low: 'low-crate', tall: 'tall-stack', over: 'over-barrier' };
-const resolveChunkKey = (entry) => {
-  if (!entry.key) return null;
-  if (obstacleBuilders[entry.key]) return entry.key;
-  return chunkFallbacks[entry.type];
-};
-
-let chunkCooldownRows = 5;
-
-const spawnChunk = () => {
-  const def = chunkDefs[Math.floor(Math.random() * chunkDefs.length)];
-  const mirror = Math.random() < 0.5;
-  const mapLane = (lane) => (mirror ? 2 - lane : lane);
-  const baseZ = -(70 + Math.min(45, speed.value));
-  def.rows.forEach((row) => {
-    row.entries.forEach((entry) => {
-      const obstacle = getObstacle(entry.type, resolveChunkKey(entry));
-      const size = obstacle.userData.size;
-      const y = entry.type === 'over' ? 1.55 : size.h / 2 + 0.02;
-      obstacle.rotation.y = 0;
-      obstacle.position.set(lanes[mapLane(entry.lane)], y, baseZ - row.dz);
-      obstacles.push(obstacle);
-      scene.add(obstacle);
-    });
-    if (row.coins) {
-      spawnCoinLine(mapLane(row.coins.lane), baseZ - row.dz, row.coins.y || 1.0);
-    }
-  });
-  lastRowFull = false;
-  // Hold regular spawns until the whole block has cleared the spawn plane.
-  return (def.depth + 8) / Math.max(10, speed.value);
-};
-
 const spawnRow = () => {
   // Occasionally oncoming traffic instead of a row — far less often than
   // before, and only when a fully clear lane exists for it.
   if (Math.random() < 0.12 && spawnOncoming()) {
-    return 0;
-  }
-
-  // Hand-built chunks replace a handful of random rows every so often —
-  // never while a moving vehicle still owns a lane on the approach.
-  if (chunkCooldownRows > 0) {
-    chunkCooldownRows -= 1;
-  } else if (!movingBlockedLanes().size && Math.random() < 0.28) {
-    chunkCooldownRows = 5 + Math.floor(Math.random() * 5);
-    return spawnChunk();
+    return;
   }
 
   // Never two fully blocked rows back to back: after a 3-lane wall the next
@@ -4022,24 +3750,6 @@ const updateZoneEvents = (delta) => {
   }
 };
 
-// Height of a walkable obstacle's surface at a world z, or null when that z
-// is not over the obstacle. Ramps rise from their +z (player-facing) edge to
-// their full height at the back, flat decks sit at the bounding-box top.
-const walkStepTolerance = 0.8;
-const walkSurfaceY = (obstacle, worldZ) => {
-  const size = obstacle.userData.size;
-  const localZ = worldZ - obstacle.position.z;
-  if (Math.abs(localZ) > size.d / 2 + 0.25) return null;
-  const bottom = obstacle.position.y - size.h / 2;
-  const walk = obstacle.userData.walk;
-  if (walk.kind === 'ramp') {
-    const low = walk.low || 0.1;
-    const t = THREE.MathUtils.clamp((size.d / 2 - localZ) / size.d, 0, 1);
-    return bottom + low + (size.h - low) * t;
-  }
-  return bottom + size.h;
-};
-
 const checkCollision = (obstacle, playerHeight) => {
   const oSize = obstacle.userData.size;
   const box = finalePhase.value === 'drive' ? carPlayerSize : playerSize;
@@ -4057,15 +3767,6 @@ const checkCollision = (obstacle, playerHeight) => {
 
   const obstacleTop = obstacle.position.y + oSize.h / 2;
   const playerBottom = player.position.y - playerHeight / 2;
-
-  // On or above a walkable surface (ramp slope, bus roof, truck deck) is
-  // never a hit — the ground logic carries the player instead.
-  if (obstacle.userData.walk) {
-    const surf = walkSurfaceY(obstacle, player.position.z);
-    if (surf !== null && playerBottom >= surf - 0.35) {
-      return false;
-    }
-  }
 
   return playerBottom < obstacleTop - 0.05;
 };
@@ -6984,16 +6685,6 @@ const updateRunner = (delta) => {
       if (dx >= (playerSize.w + oSize.w) / 2 || dz >= (playerSize.d + oSize.d) / 2) {
         continue;
       }
-      // Walkable surfaces carry the player without a preceding jump: running
-      // straight onto a ramp wedge walks up the slope, and small steps up
-      // (deck -> higher deck) within the tolerance are climbed automatically.
-      if (obstacle.userData.walk && playerVelocityY <= 0.01) {
-        const surf = walkSurfaceY(obstacle, player.position.z);
-        if (surf !== null && nextBottom >= surf - walkStepTolerance && surf > bestTop) {
-          bestTop = surf;
-          continue;
-        }
-      }
       const top = obstacle.position.y + oSize.h / 2;
       const landing =
         playerVelocityY <= 0 &&
@@ -7177,7 +6868,7 @@ const updateRunner = (delta) => {
     if (!eventSpawnHoldActive()) {
       spawnTimer -= delta;
       if (spawnTimer <= 0) {
-        const chunkHold = spawnRow() || 0;
+        spawnRow();
         // Arrival gap between hazards, tiered per 2.5k checkpoint block.
         // The floor always stays above the 0.86s jump airtime in tier 0, and
         // oncoming cars are arrival-normalized (see spawnOncoming), so this
@@ -7186,7 +6877,7 @@ const updateRunner = (delta) => {
         // Floor stays above a full jump chain (0.86s airtime + reaction):
         // tier 0 never dips below 1.1s between arrivals.
         const baseGap = [1.0, 0.85, 0.75, 0.65][speedTier];
-        spawnTimer = Math.max(chunkHold, THREE.MathUtils.randFloat(1.1, 1.45) * baseGap);
+        spawnTimer = THREE.MathUtils.randFloat(1.1, 1.45) * baseGap;
       }
     } else {
       spawnTimer = Math.max(spawnTimer, 0.7);
