@@ -2813,6 +2813,23 @@ const updateGallery = (delta) => {
       ((((diff + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) -
       Math.PI;
     galleryYaw += diff * Math.min(1, delta * 12);
+    // The chase cam eases around behind the run direction (same turn as
+    // the character) while the player is NOT actively dragging the camera.
+    // Camera forward is (sin(yaw), -cos(yaw)), so the yaw that looks along
+    // (moveX, moveZ) is atan2(moveX, -moveZ). Skip when running toward the
+    // camera — otherwise it would flip 180° and you could never run into
+    // the view.
+    if (galleryCamPointerId === null) {
+      const camTargetYaw = Math.atan2(moveX, -moveZ);
+      let camDiff = camTargetYaw - galleryCamYaw;
+      camDiff =
+        ((((camDiff + Math.PI) % (Math.PI * 2)) + Math.PI * 2) %
+          (Math.PI * 2)) -
+        Math.PI;
+      if (Math.abs(camDiff) < Math.PI * 0.75) {
+        galleryCamYaw += camDiff * Math.min(1, delta * 2.5) * inLen;
+      }
+    }
   }
   player.position.x = THREE.MathUtils.clamp(player.position.x, -20, 20);
   player.position.z = THREE.MathUtils.clamp(player.position.z, -46, 8);
@@ -6771,9 +6788,12 @@ const galleryCamMove = (event) => {
   const dx = event.clientX - galleryCamLast.x;
   const dy = event.clientY - galleryCamLast.y;
   galleryCamLast = { x: event.clientX, y: event.clientY };
+  // Drag moves the camera itself around the character. Yaw already orbits
+  // the cam in the finger direction (drag right -> camera swings right),
+  // so pitch must match: drag up (dy < 0) lifts the camera (pitch up).
   galleryCamYaw -= dx * 0.006;
   galleryCamPitch = THREE.MathUtils.clamp(
-    galleryCamPitch + dy * 0.004,
+    galleryCamPitch - dy * 0.004,
     -0.1,
     1.1,
   );
@@ -7455,23 +7475,26 @@ const updateRunner = (delta) => {
     camera.lookAt(lookAtTarget);
     camera.rotation.z += player.rotation.z * 0.5;
   } else {
-    if (driving) {
-      // Recover smoothly after switching back from the hood cam.
-      camera.position.y = THREE.MathUtils.damp(
-        camera.position.y,
-        cameraBase.y * cameraZoom.value,
-        6,
-        delta,
-      );
-      camera.position.z = THREE.MathUtils.damp(
-        camera.position.z,
-        cameraBase.z * cameraZoom.value,
-        6,
-        delta,
-      );
-    }
-    camera.position.x = THREE.MathUtils.damp(camera.position.x, player.position.x * 0.35, 4, delta);
-    lookAtTarget.set(player.position.x * 0.4, 1.2, -15);
+    // Zone 1+2 chase cam: 1:1 the showroom orbit cam at its default angle
+    // (dist 4.6, pitch 0.35, eye offset +0.9, aim at chest height +1.1) —
+    // much lower than the old bird's-eye framing. The menu zoom slider
+    // scales the orbit distance, so 100% matches the showroom exactly.
+    const chaseDist = galleryCamDist * cameraZoom.value;
+    const chaseY = player.position.y + 0.9 + Math.sin(0.35) * chaseDist;
+    const chaseZ = player.position.z + Math.cos(0.35) * chaseDist;
+    camera.position.x = THREE.MathUtils.damp(
+      camera.position.x,
+      player.position.x,
+      8,
+      delta,
+    );
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, chaseY, 8, delta);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, chaseZ, 8, delta);
+    lookAtTarget.set(
+      player.position.x,
+      player.position.y + 1.1,
+      player.position.z,
+    );
     camera.lookAt(lookAtTarget);
   }
 };
