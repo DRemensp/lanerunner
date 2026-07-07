@@ -7475,25 +7475,27 @@ const updateRunner = (delta) => {
     camera.lookAt(lookAtTarget);
     camera.rotation.z += player.rotation.z * 0.5;
   } else {
-    // Zone 1+2 chase cam, Subway-Surfers style: keeps the low showroom
-    // framing (dist 4.6, pitch 0.35, eye +0.9, aim +1.1) but is anchored
-    // to the RESTING height — jumping/sliding never moves the camera.
-    // Lane changes only glide it slightly sideways (partial follow with a
-    // slow damp), no bob, no shake.
+    // Zone 1+2 chase cam, Subway-Surfers style (matched against the
+    // reference capture frame by frame): anchored to the RESTING height —
+    // jumping/sliding never moves the camera. A lane change is nothing but
+    // a smooth lateral glide FULLY into the new lane; the camera keeps
+    // looking straight down the track (lookAt shares the camera x), so
+    // there is zero yaw swing, zero roll, no bob, no shake. The character
+    // drifts briefly off-center during the move and recenters softly.
     const chaseDist = galleryCamDist * cameraZoom.value;
     const restY = playerSize.h / 2;
     const chaseY = restY + 0.9 + Math.sin(0.35) * chaseDist;
     const chaseZ = player.position.z + Math.cos(0.35) * chaseDist;
     camera.position.x = THREE.MathUtils.damp(
       camera.position.x,
-      player.position.x * 0.3,
-      6,
+      player.position.x,
+      5,
       delta,
     );
     camera.position.y = THREE.MathUtils.damp(camera.position.y, chaseY, 8, delta);
     camera.position.z = THREE.MathUtils.damp(camera.position.z, chaseZ, 8, delta);
     lookAtTarget.set(
-      player.position.x * 0.35,
+      camera.position.x,
       restY + 1.1,
       player.position.z,
     );
@@ -7540,8 +7542,9 @@ const animate = (time) => {
       spawnBurst(player.position.clone(), ['gold', 'skin'], 14, 6);
     }
     if (bumpShakeTimer > 0) {
+      // Reference cam has zero shake — keep the timer for gameplay logic but
+      // never wobble the camera.
       bumpShakeTimer -= delta;
-      camera.position.x += (Math.random() - 0.5) * 0.14 * Math.max(0, bumpShakeTimer);
     }
   } else if (state.value === 'gallery') {
     updateGallery(delta);
