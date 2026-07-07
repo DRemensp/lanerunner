@@ -1,0 +1,7 @@
+CC0 1.0 Universal (kenney.nl)
+
+Baustelle/Schrott-Modelle:
+- construction-barrier, construction-light, sign-highway, bridge-pillar: Kenney City Kit Roads (2.0)
+- metal-panel-screws, resource-planks, box-large, structure-metal: Kenney Survival Kit (2.0)
+
+https://kenney.nl — License: Creative Commons CC0

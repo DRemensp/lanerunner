@@ -3646,6 +3646,21 @@ const glbVehicleDefs = [
   { key: 'garbage-truck', kind: 'tall', fitLength: 3.5 },
   { key: 'cone', kind: 'prop', fitHeight: 1.05 },
   { key: 'box', kind: 'prop', fitHeight: 1.1 },
+  // Baustellenfahrzeuge (Kenney Car Kit, CC0)
+  { key: 'tractor', kind: 'tall', fitLength: 3.0 },
+  { key: 'tractor-shovel', kind: 'tall', fitLength: 3.4 },
+  { key: 'truck-flat', kind: 'tall', fitLength: 3.6 },
+  // Baustelle & Schrott (Kenney City Kit Roads + Survival Kit, CC0).
+  // 'tall-prop' = statisches hohes Hindernis (nicht überspringbar, fährt nie),
+  // 'prop' = niedriges statisches Hindernis (überspringbar).
+  { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, dir: 'obstacles' },
+  { key: 'metal-panel-screws', kind: 'prop', fitHeight: 1.15, dir: 'obstacles' },
+  { key: 'resource-planks', kind: 'prop', fitHeight: 1.0, dir: 'obstacles' },
+  { key: 'box-large', kind: 'prop', fitHeight: 1.2, dir: 'obstacles' },
+  { key: 'construction-light', kind: 'tall-prop', fitHeight: 2.7, dir: 'obstacles' },
+  { key: 'structure-metal', kind: 'tall-prop', fitHeight: 2.8, dir: 'obstacles' },
+  { key: 'bridge-pillar', kind: 'tall-prop', fitHeight: 3.0, dir: 'obstacles' },
+  { key: 'sign-highway', kind: 'tall-prop', fitHeight: 3.2, dir: 'obstacles' },
 ];
 
 const glbTemplates = {};
@@ -3693,7 +3708,7 @@ const registerVehicleModel = (def, model) => {
       }
     });
     mesh.userData.wheels = wheels;
-    if (def.kind !== 'prop') {
+    if (def.kind === 'car' || def.kind === 'tall') {
       addVehicleLights(mesh, size);
     }
     return { mesh, size: { ...size } };
@@ -3703,8 +3718,18 @@ const registerVehicleModel = (def, model) => {
     glbTraffic.car.push(def.key);
   } else if (def.kind === 'tall') {
     glbTraffic.tall.push(def.key);
+  } else if (def.kind === 'tall-prop') {
+    // Hohe statische Hindernisse (Gerüst, Pfeiler, Schild): blockieren die
+    // Lane wie ein Truck, tauchen aber nie als fahrender Verkehr auf.
+    obstacleVariants.tall.push(def.key);
   } else {
     obstacleVariants.low.push(def.key);
+  }
+
+  // Showroom offen während ein Modell fertig lädt? Direkt neu aufbauen,
+  // damit wirklich ALLE Hindernisse ausgestellt sind.
+  if (state.value === 'gallery') {
+    buildGallery();
   }
 };
 
@@ -3712,7 +3737,7 @@ const loadVehicleModels = () => {
   const loader = new GLTFLoader();
   glbVehicleDefs.forEach((def) => {
     loader.load(
-      `/models/carkit/${def.key}.glb`,
+      `/models/${def.dir || 'carkit'}/${def.key}.glb`,
       (gltf) => registerVehicleModel(def, gltf.scene),
       undefined,
       () => {},
