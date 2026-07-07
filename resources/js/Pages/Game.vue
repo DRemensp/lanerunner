@@ -3596,16 +3596,15 @@ const glbVehicleDefs = [
   { key: 'tractor-shovel', kind: 'tall', fitLength: 3.5 },
   { key: 'truck-flat', kind: 'tall', fitLength: 3.6 },
   // Baustelle & Schrott (Kenney City Kit Roads + Survival Kit, CC0).
-  // 'tall-prop' = statisches hohes Hindernis (nicht überspringbar, fährt nie),
-  // 'prop' = niedriges statisches Hindernis (überspringbar).
+  // 'prop' = niedriges statisches Hindernis (überspringbar),
+  // 'set-piece' = spawnt nie einzeln, nur im Baustellen-Set (spawnConstructionSet),
+  // 'decor' = reine Deko ohne Kollision (Schilderbrücke über der Straße).
   { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, dir: 'obstacles/roads' },
-  { key: 'metal-panel-screws', kind: 'prop', fitHeight: 1.15, dir: 'obstacles/survival' },
-  { key: 'resource-planks', kind: 'prop', fitHeight: 1.0, dir: 'obstacles/survival' },
+  { key: 'resource-planks', kind: 'set-piece', fitHeight: 0.6, dir: 'obstacles/survival' },
   { key: 'box-large', kind: 'prop', fitHeight: 1.2, dir: 'obstacles/survival' },
-  { key: 'construction-light', kind: 'tall-prop', fitHeight: 2.7, dir: 'obstacles/roads' },
-  { key: 'structure-metal', kind: 'tall-prop', fitHeight: 2.8, dir: 'obstacles/survival' },
-  { key: 'bridge-pillar', kind: 'tall-prop', fitHeight: 3.0, dir: 'obstacles/roads' },
-  { key: 'sign-highway', kind: 'tall-prop', fitHeight: 3.2, dir: 'obstacles/roads' },
+  { key: 'construction-light', kind: 'set-piece', fitHeight: 2.7, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
+  { key: 'structure-metal', kind: 'set-piece', fitHeight: 2.8, scaleX: 0.6, dir: 'obstacles/survival' },
+  { key: 'sign-highway', kind: 'decor', fitWidth: 9, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
 ];
 
 const glbTemplates = {};
@@ -3630,12 +3629,67 @@ const addVehicleLights = (group, size) => {
   });
 };
 
+// Baustellen-Zone-Optik fürs Gerüst: kleine rot-weiße Absperrbaken links und
+// rechts plus ein Stop-Schild vorne. Rein dekorativ — die Hitbox bleibt die
+// Bounding-Box des Gerüsts selbst.
+const addConstructionDressing = (group, size) => {
+  const a = getObstacleAssets();
+  const groundY = -size.h / 2;
+  const beamGeo = track(new THREE.BoxGeometry(0.85, 0.2, 0.1));
+  const stripeGeo = track(new THREE.BoxGeometry(0.2, 0.22, 0.12));
+  const legGeo = track(new THREE.BoxGeometry(0.07, 0.6, 0.07));
+  [-1, 1].forEach((side) => {
+    const barrier = new THREE.Group();
+    const beam = new THREE.Mesh(beamGeo, a.barrel);
+    beam.position.y = 0.62;
+    barrier.add(beam);
+    [-0.28, 0.04, 0.36].forEach((x) => {
+      const stripe = new THREE.Mesh(stripeGeo, a.busRoof);
+      stripe.position.set(x, 0.62, 0);
+      barrier.add(stripe);
+    });
+    [-0.36, 0.36].forEach((x) => {
+      const leg = new THREE.Mesh(legGeo, a.frame);
+      leg.position.set(x, 0.3, 0);
+      barrier.add(leg);
+    });
+    barrier.position.set(side * (size.w / 2 + 0.35), groundY, size.d / 2 + 0.2);
+    barrier.rotation.y = side * 0.45;
+    group.add(barrier);
+  });
+  const sign = new THREE.Group();
+  const pole = new THREE.Mesh(track(new THREE.CylinderGeometry(0.045, 0.045, 1.45, 8)), a.frame);
+  pole.position.y = 0.72;
+  sign.add(pole);
+  const faceGeo = track(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 8));
+  faceGeo.rotateX(Math.PI / 2);
+  const face = new THREE.Mesh(faceGeo, a.barrel);
+  face.position.y = 1.55;
+  sign.add(face);
+  const text = new THREE.Mesh(track(new THREE.BoxGeometry(0.36, 0.09, 0.02)), a.busRoof);
+  text.position.set(0, 1.55, 0.04);
+  sign.add(text);
+  sign.position.set(0, groundY, size.d / 2 + 0.4);
+  group.add(sign);
+};
+
 const registerVehicleModel = (def, model) => {
+  if (def.rotateY) {
+    model.rotation.y = def.rotateY;
+  }
   const rawSize = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
   const scale =
-    (def.fitLength ? def.fitLength / rawSize.z : def.fitHeight / rawSize.y) *
-    (def.scaleMultiplier || 1);
+    (def.fitLength
+      ? def.fitLength / rawSize.z
+      : def.fitWidth
+        ? def.fitWidth / rawSize.x
+        : def.fitHeight / rawSize.y) * (def.scaleMultiplier || 1);
   model.scale.setScalar(scale);
+  if (def.scaleX) {
+    // Nur schmaler machen (X), Höhe und Tiefe unverändert lassen. scaleX wirkt
+    // auf die lokale Achse, deshalb vor einer etwaigen rotateY-Drehung denken.
+    model.scale.x *= def.scaleX;
+  }
   const box = new THREE.Box3().setFromObject(model);
   model.position.sub(box.getCenter(new THREE.Vector3()));
   const dims = box.getSize(new THREE.Vector3());
@@ -3656,6 +3710,9 @@ const registerVehicleModel = (def, model) => {
     if (def.kind === 'car' || def.kind === 'tall') {
       addVehicleLights(mesh, size);
     }
+    if (def.key === 'structure-metal') {
+      addConstructionDressing(mesh, size);
+    }
     return { mesh, size: { ...size } };
   };
 
@@ -3663,10 +3720,9 @@ const registerVehicleModel = (def, model) => {
     glbTraffic.car.push(def.key);
   } else if (def.kind === 'tall') {
     glbTraffic.tall.push(def.key);
-  } else if (def.kind === 'tall-prop') {
-    // Hohe statische Hindernisse (Gerüst, Pfeiler, Schild): blockieren die
-    // Lane wie ein Truck, tauchen aber nie als fahrender Verkehr auf.
-    obstacleVariants.tall.push(def.key);
+  } else if (def.kind === 'set-piece' || def.kind === 'decor') {
+    // Nicht in die normalen Spawn-Pools: Set-Teile kommen nur über
+    // spawnConstructionSet, Deko nur über spawnSignGantry.
   } else {
     obstacleVariants.low.push(def.key);
   }
@@ -3719,6 +3775,7 @@ const getObstacle = (type, forcedKey = null) => {
   obstacle.userData.vz = 0;
   obstacle.userData.passed = false;
   obstacle.userData.jam = false;
+  obstacle.userData.decor = false;
   delete obstacle.userData.driftTo;
   obstacle.userData.driftHonked = false;
   if (obstacle.userData.beams) {
@@ -3733,6 +3790,39 @@ const getObstacle = (type, forcedKey = null) => {
     });
   }
   return obstacle;
+};
+
+// Erster Test für handgebaute Hindernis-Sets: die Baustellen-Zone.
+// Reihenfolge aus Spielersicht: Warnleuchte, dann Planken (überspringbar),
+// dahinter das abgesperrte Gerüst mit Stop-Schild — alles in EINER Lane.
+const constructionSetPieces = [
+  { key: 'construction-light', z: 0 },
+  { key: 'resource-planks', z: -2.4 },
+  { key: 'structure-metal', z: -5.0 },
+];
+
+const constructionSetReady = () =>
+  constructionSetPieces.every((piece) => obstacleBuilders[piece.key]);
+
+const spawnConstructionSet = (laneIndex, baseZ) => {
+  constructionSetPieces.forEach((piece) => {
+    const obstacle = getObstacle('tall', piece.key);
+    const size = obstacle.userData.size;
+    obstacle.rotation.y = 0;
+    obstacle.position.set(lanes[laneIndex], size.h / 2 + 0.02, baseZ + piece.z);
+    obstacles.push(obstacle);
+    scene.add(obstacle);
+  });
+};
+
+// Schilderbrücke: spannt mittig über die ganze Straße, keine Kollision —
+// der Scroll-Loop bewegt und recycelt sie wie jedes andere Hindernis.
+const spawnSignGantry = (z) => {
+  const gantry = getObstacle('tall', 'sign-highway');
+  gantry.userData.decor = true;
+  gantry.position.set(0, gantry.userData.size.h / 2, z);
+  obstacles.push(gantry);
+  scene.add(gantry);
 };
 
 // Lane reservation (standard endless-runner technique): every moving
@@ -3765,6 +3855,7 @@ const spawnOncoming = () => {
     !blocked.has(index) &&
     !obstacles.some(
       (obstacle) =>
+        !obstacle.userData.decor &&
         (obstacle.userData.vz || 0) === 0 &&
         Math.abs(obstacle.position.x - lanes[index]) < 0.9 &&
         obstacle.position.z < 0,
@@ -3818,8 +3909,22 @@ const spawnRow = () => {
   // Spawn farther out the faster we go, so there is always time to react.
   const baseZ = -(70 + Math.min(45, speed.value));
 
+  // Gelegentlich eine große Schilderbrücke als reine Deko über der Straße —
+  // spannt alle Lanes, blockiert nichts.
+  if (obstacleBuilders['sign-highway'] && Math.random() < 0.06) {
+    spawnSignGantry(baseZ - 16);
+  }
+
+  let setSpawned = false;
   pattern.forEach((type, laneIndex) => {
     if (type === 'none') return;
+    // Baustellen-Set statt einzelnem hohen Hindernis: Warnleuchte →
+    // Planken → Gerüst hintereinander in derselben Lane. Max. eins pro Reihe.
+    if (type === 'tall' && !setSpawned && constructionSetReady() && Math.random() < 0.22) {
+      spawnConstructionSet(laneIndex, baseZ);
+      setSpawned = true;
+      return;
+    }
     const obstacle = getObstacle(type);
     const size = obstacle.userData.size;
     const y = type === 'over' ? 1.55 : size.h / 2 + 0.02;
@@ -7332,6 +7437,7 @@ const updateRunner = (delta) => {
       obstacles.splice(i, 1);
       continue;
     }
+    if (obstacle.userData.decor) continue;
     if (checkCollision(obstacle, collisionPlayerHeight)) {
       // Jam vehicles are trampolines: landing on a roof bounces the player
       // onward instead of crashing — the intended way through rush hour.
