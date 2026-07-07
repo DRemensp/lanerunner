@@ -2803,8 +2803,11 @@ const updateGallery = (delta) => {
     player.position.x += (moveX / moveLen) * inLen * galleryMoveSpeed * delta;
     player.position.z += (moveZ / moveLen) * inLen * galleryMoveSpeed * delta;
     // Turn the character toward the direction they are running, taking the
-    // shortest way around the circle (rotation.y = 0 faces -z).
-    const targetYaw = Math.atan2(moveX, -moveZ);
+    // shortest way around the circle. three.js convention: models rest
+    // facing -Z and positive rotation.y turns counter-clockwise seen from
+    // above (right-hand rule), so forward(yaw) = (-sin(yaw), -cos(yaw))
+    // and the yaw facing (moveX, moveZ) is atan2(-moveX, -moveZ).
+    const targetYaw = Math.atan2(-moveX, -moveZ);
     let diff = targetYaw - galleryYaw;
     diff =
       ((((diff + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) -
