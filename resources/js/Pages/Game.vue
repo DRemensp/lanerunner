@@ -224,6 +224,29 @@
     </div>
 
     <div
+      v-if="state === 'gallery'"
+      class="joystick joystick--right"
+      @pointerdown="galleryJoyStart"
+      @pointermove="galleryJoyMove"
+      @pointerup="galleryJoyEnd"
+      @pointercancel="galleryJoyEnd"
+    >
+      <div
+        class="joystick-knob"
+        :style="{ transform: `translate(${galleryJoyKnob.x}px, ${galleryJoyKnob.y}px)` }"
+      ></div>
+    </div>
+
+    <button
+      v-if="state === 'gallery'"
+      class="jump-btn"
+      type="button"
+      @pointerdown.prevent="galleryJump"
+    >
+      Jump
+    </button>
+
+    <div
       v-if="
         state === 'running' &&
         (finalePhase === 'drive' || finalePhase === 'ramp') &&
@@ -986,6 +1009,13 @@ const planeKeys = { up: false, down: false, left: false, right: false };
 const joyKnob = ref({ x: 0, y: 0 });
 let joyVec = { x: 0, y: 0 };
 let joyPointerId = null;
+// Gallery showroom joystick: only visible while browsing the free-roam
+// showroom. Steers the character the same way WASD/arrows do there — it's a
+// separate stick from the runner/finale ones above since it needs its own
+// pointer id and never overlaps with them (different `state`).
+const galleryJoyKnob = ref({ x: 0, y: 0 });
+let galleryJoyVec = { x: 0, y: 0 };
+let galleryJoyPointerId = null;
 let rampHintShown = false;
 let clouds = [];
 let cloudAssets = null;
@@ -1287,6 +1317,9 @@ const startGallery = () => {
   galleryKeys.back = false;
   galleryKeys.left = false;
   galleryKeys.right = false;
+  galleryJoyVec = { x: 0, y: 0 };
+  galleryJoyKnob.value = { x: 0, y: 0 };
+  galleryJoyPointerId = null;
   if (player) {
     player.scale.y = 1;
     player.rotation.set(0, galleryYaw, 0);
@@ -1778,6 +1811,38 @@ const clearGallery = () => {
 };
 
 // Lays out one instance of every registered obstacle/vehicle builder in a
+// Floating name tag above each showroom exhibit so it's obvious which
+// obstacle key builds which mesh. Canvas-based sprite: always faces the
+// camera, sized from the measured text so long keys don't get squished.
+const makeGalleryLabel = (text) => {
+  const canvas = document.createElement('canvas');
+  const font = '600 44px "Segoe UI", system-ui, sans-serif';
+  const ctx = canvas.getContext('2d');
+  ctx.font = font;
+  const padX = 26;
+  canvas.width = Math.ceil(ctx.measureText(text).width) + padX * 2;
+  canvas.height = 88;
+  // Resizing the canvas resets the 2D context state, so restyle after.
+  ctx.font = font;
+  ctx.fillStyle = 'rgba(8, 12, 22, 0.72)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = 'rgba(120, 180, 255, 0.65)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, canvas.width - 3, canvas.height - 3);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#cfe0ff';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
+  const texture = track(new THREE.CanvasTexture(canvas));
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    track(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })),
+  );
+  const worldH = 0.5;
+  sprite.scale.set((canvas.width / canvas.height) * worldH, worldH, 1);
+  return sprite;
+};
+
 // grid on a dedicated showroom floor. Rebuilt each time the gallery opens so
 // GLB variants that finish loading late (see glbVehicleDefs) still show up.
 const buildGallery = () => {
@@ -1813,6 +1878,10 @@ const buildGallery = () => {
         paintMesh.material = paint;
       });
     }
+    // Child of the exhibit mesh so clearGallery removes it along with it.
+    const label = makeGalleryLabel(key);
+    label.position.set(0, size.h / 2 + 0.55, 0);
+    mesh.add(label);
     scene.add(mesh);
     galleryProps.push(mesh);
   });
@@ -1904,6 +1973,9 @@ const handleKeydown = (event) => {
       case 'ArrowRight':
       case 'KeyD':
         galleryKeys.right = true;
+        break;
+      case 'Space':
+        galleryJump();
         break;
       case 'Escape':
         exitGallery();
@@ -2696,7 +2768,9 @@ const updateGallery = (delta) => {
   if (!player) return;
   if (galleryKeys.left) galleryYaw += galleryTurnSpeed * delta;
   if (galleryKeys.right) galleryYaw -= galleryTurnSpeed * delta;
-  const forwardInput = (galleryKeys.forward ? 1 : 0) - (galleryKeys.back ? 1 : 0);
+  galleryYaw += -galleryJoyVec.x * galleryTurnSpeed * delta;
+  const forwardInput =
+    (galleryKeys.forward ? 1 : 0) - (galleryKeys.back ? 1 : 0) + -galleryJoyVec.y;
   // rotation.y = 0 faces -z (matches the run direction used everywhere else).
   const dirX = Math.sin(galleryYaw);
   const dirZ = -Math.cos(galleryYaw);
@@ -2707,6 +2781,16 @@ const updateGallery = (delta) => {
   player.position.x = THREE.MathUtils.clamp(player.position.x, -20, 20);
   player.position.z = THREE.MathUtils.clamp(player.position.z, -46, 8);
   player.rotation.y = galleryYaw;
+
+  // Simple jump arc for the showroom: same gravity/jump tuning as the run,
+  // clamped to the flat gallery floor.
+  playerVelocityY += gravity * delta;
+  player.position.y += playerVelocityY * delta;
+  const galleryGroundY = playerSize.h / 2;
+  if (player.position.y <= galleryGroundY) {
+    player.position.y = galleryGroundY;
+    playerVelocityY = 0;
+  }
 
   if (activeCharacter) {
     setCharacterAction(forwardInput !== 0 ? 'run' : 'idle');
@@ -6604,6 +6688,44 @@ const joyEnd = (event) => {
   joyVec = { x: 0, y: 0 };
 };
 
+const galleryJoyStart = (event) => {
+  galleryJoyPointerId = event.pointerId;
+  event.currentTarget.setPointerCapture(event.pointerId);
+  galleryJoyMove(event);
+};
+
+const galleryJoyMove = (event) => {
+  if (galleryJoyPointerId !== event.pointerId) return;
+  const rect = event.currentTarget.getBoundingClientRect();
+  let dx = event.clientX - (rect.left + rect.width / 2);
+  let dy = event.clientY - (rect.top + rect.height / 2);
+  const max = rect.width / 2 - 18;
+  const len = Math.hypot(dx, dy);
+  if (len > max) {
+    dx *= max / len;
+    dy *= max / len;
+  }
+  galleryJoyKnob.value = { x: dx, y: dy };
+  galleryJoyVec = { x: dx / max, y: dy / max };
+};
+
+const galleryJoyEnd = (event) => {
+  if (galleryJoyPointerId !== event.pointerId) return;
+  galleryJoyPointerId = null;
+  galleryJoyKnob.value = { x: 0, y: 0 };
+  galleryJoyVec = { x: 0, y: 0 };
+};
+
+// Left-side jump button in the showroom: only fires when the character is
+// actually standing on the floor so mashing it mid-air does nothing.
+const galleryJump = () => {
+  if (state.value !== 'gallery' || !player) return;
+  const groundY = playerSize.h / 2;
+  if (player.position.y > groundY + 0.01) return;
+  playerVelocityY = jumpVelocity;
+  sfx.jump();
+};
+
 const exitFinale = () => {
   finaleTriggered = false;
   finalePhase.value = 'none';
@@ -8331,6 +8453,36 @@ onBeforeUnmount(() => {
   background: rgba(120, 180, 255, 0.55);
   border: 1px solid rgba(190, 225, 255, 0.7);
   pointer-events: none;
+}
+
+.joystick--right {
+  left: auto;
+  right: calc(24px + env(safe-area-inset-right));
+  transform: none;
+}
+
+.jump-btn {
+  position: absolute;
+  bottom: calc(50px + env(safe-area-inset-bottom));
+  left: calc(24px + env(safe-area-inset-left));
+  z-index: 5;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 180, 255, 0.45);
+  background: rgba(8, 12, 22, 0.45);
+  color: #cfe0ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.jump-btn:active {
+  background: rgba(120, 180, 255, 0.35);
 }
 
 .cam-btn {
