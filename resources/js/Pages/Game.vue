@@ -7475,24 +7475,26 @@ const updateRunner = (delta) => {
     camera.lookAt(lookAtTarget);
     camera.rotation.z += player.rotation.z * 0.5;
   } else {
-    // Zone 1+2 chase cam: 1:1 the showroom orbit cam at its default angle
-    // (dist 4.6, pitch 0.35, eye offset +0.9, aim at chest height +1.1) —
-    // much lower than the old bird's-eye framing. The menu zoom slider
-    // scales the orbit distance, so 100% matches the showroom exactly.
+    // Zone 1+2 chase cam, Subway-Surfers style: keeps the low showroom
+    // framing (dist 4.6, pitch 0.35, eye +0.9, aim +1.1) but is anchored
+    // to the RESTING height — jumping/sliding never moves the camera.
+    // Lane changes only glide it slightly sideways (partial follow with a
+    // slow damp), no bob, no shake.
     const chaseDist = galleryCamDist * cameraZoom.value;
-    const chaseY = player.position.y + 0.9 + Math.sin(0.35) * chaseDist;
+    const restY = playerSize.h / 2;
+    const chaseY = restY + 0.9 + Math.sin(0.35) * chaseDist;
     const chaseZ = player.position.z + Math.cos(0.35) * chaseDist;
     camera.position.x = THREE.MathUtils.damp(
       camera.position.x,
-      player.position.x,
-      8,
+      player.position.x * 0.3,
+      6,
       delta,
     );
     camera.position.y = THREE.MathUtils.damp(camera.position.y, chaseY, 8, delta);
     camera.position.z = THREE.MathUtils.damp(camera.position.z, chaseZ, 8, delta);
     lookAtTarget.set(
-      player.position.x,
-      player.position.y + 1.1,
+      player.position.x * 0.35,
+      restY + 1.1,
       player.position.z,
     );
     camera.lookAt(lookAtTarget);
