@@ -1,6 +1,13 @@
 <template>
   <div class="runner-page">
-    <div ref="canvasWrap" class="runner-canvas"></div>
+    <div
+      ref="canvasWrap"
+      class="runner-canvas"
+      @pointerdown="galleryCamStart"
+      @pointermove="galleryCamMove"
+      @pointerup="galleryCamEnd"
+      @pointercancel="galleryCamEnd"
+    ></div>
 
     <div
       v-if="!showAuthGate"
@@ -1016,6 +1023,11 @@ let joyPointerId = null;
 const galleryJoyKnob = ref({ x: 0, y: 0 });
 let galleryJoyVec = { x: 0, y: 0 };
 let galleryJoyPointerId = null;
+// Free-look orbit camera for the showroom, driven by dragging on the scene.
+let galleryCamYaw = 0;
+let galleryCamPitch = 0.35;
+let galleryCamPointerId = null;
+let galleryCamLast = { x: 0, y: 0 };
 let rampHintShown = false;
 let clouds = [];
 let cloudAssets = null;
@@ -1320,6 +1332,9 @@ const startGallery = () => {
   galleryJoyVec = { x: 0, y: 0 };
   galleryJoyKnob.value = { x: 0, y: 0 };
   galleryJoyPointerId = null;
+  galleryCamYaw = 0;
+  galleryCamPitch = 0.35;
+  galleryCamPointerId = null;
   if (player) {
     player.scale.y = 1;
     player.rotation.set(0, galleryYaw, 0);
@@ -2762,28 +2777,39 @@ const animateIdle = (delta) => {
 };
 
 const galleryMoveSpeed = 3.6;
-const galleryTurnSpeed = 2.4;
+const galleryCamDist = 4.6;
 
 const updateGallery = (delta) => {
   if (!player) return;
-  if (galleryKeys.left) galleryYaw += galleryTurnSpeed * delta;
-  if (galleryKeys.right) galleryYaw -= galleryTurnSpeed * delta;
-  const forwardInput =
-    (galleryKeys.forward ? 1 : 0) - (galleryKeys.back ? 1 : 0) + -galleryJoyVec.y;
-  // Joystick x strafes sideways instead of turning the camera.
-  const strafeInput = galleryJoyVec.x;
-  // rotation.y = 0 faces -z (matches the run direction used everywhere else).
-  const dirX = Math.sin(galleryYaw);
-  const dirZ = -Math.cos(galleryYaw);
-  // Right vector relative to the facing direction (forward × up).
-  const rightX = Math.cos(galleryYaw);
-  const rightZ = Math.sin(galleryYaw);
-  const moving = forwardInput !== 0 || strafeInput !== 0;
+  // Stick + WASD are camera-relative, like any mobile open-world game:
+  // push the stick right and the character runs to the right of the view.
+  const inX =
+    galleryJoyVec.x + (galleryKeys.right ? 1 : 0) - (galleryKeys.left ? 1 : 0);
+  const inY =
+    -galleryJoyVec.y +
+    (galleryKeys.forward ? 1 : 0) -
+    (galleryKeys.back ? 1 : 0);
+  const inLen = Math.min(1, Math.hypot(inX, inY));
+  const moving = inLen > 0.001;
+  // Camera basis vectors projected onto the ground plane.
+  const camFwdX = Math.sin(galleryCamYaw);
+  const camFwdZ = -Math.cos(galleryCamYaw);
+  const camRightX = Math.cos(galleryCamYaw);
+  const camRightZ = Math.sin(galleryCamYaw);
   if (moving) {
-    player.position.x +=
-      (dirX * forwardInput + rightX * strafeInput) * galleryMoveSpeed * delta;
-    player.position.z +=
-      (dirZ * forwardInput + rightZ * strafeInput) * galleryMoveSpeed * delta;
+    const moveX = camFwdX * inY + camRightX * inX;
+    const moveZ = camFwdZ * inY + camRightZ * inX;
+    const moveLen = Math.hypot(moveX, moveZ) || 1;
+    player.position.x += (moveX / moveLen) * inLen * galleryMoveSpeed * delta;
+    player.position.z += (moveZ / moveLen) * inLen * galleryMoveSpeed * delta;
+    // Turn the character toward the direction they are running, taking the
+    // shortest way around the circle (rotation.y = 0 faces -z).
+    const targetYaw = Math.atan2(moveX, -moveZ);
+    let diff = targetYaw - galleryYaw;
+    diff =
+      ((((diff + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) -
+      Math.PI;
+    galleryYaw += diff * Math.min(1, delta * 12);
   }
   player.position.x = THREE.MathUtils.clamp(player.position.x, -20, 20);
   player.position.z = THREE.MathUtils.clamp(player.position.z, -46, 8);
@@ -2804,7 +2830,9 @@ const updateGallery = (delta) => {
     if (activeCharacter.actions.run) {
       activeCharacter.actions.run.paused = !moving;
     }
-    activeCharacter.mixer.timeScale = forwardInput < 0 ? -0.85 : 1;
+    // The character always turns into the run direction now, so the
+    // animation never needs to play backwards.
+    activeCharacter.mixer.timeScale = 1;
     activeCharacter.root.rotation.x = THREE.MathUtils.damp(
       activeCharacter.root.rotation.x,
       0,
@@ -2815,18 +2843,20 @@ const updateGallery = (delta) => {
   }
   player.rotation.z = THREE.MathUtils.damp(player.rotation.z, 0, 6, delta);
 
-  // Third-person chase cam that trails behind wherever the runner is facing.
-  const camDist = 4.6;
-  const camHeight = 2.0;
-  const targetX = player.position.x - dirX * camDist;
-  const targetZ = player.position.z - dirZ * camDist;
-  camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 5, delta);
-  camera.position.y = THREE.MathUtils.damp(camera.position.y, player.position.y + camHeight, 5, delta);
-  camera.position.z = THREE.MathUtils.damp(camera.position.z, targetZ, 5, delta);
+  // Orbit chase cam: the drag gesture controls where the camera sits on a
+  // sphere around the character, independent of the run direction.
+  const cosPitch = Math.cos(galleryCamPitch);
+  const targetX = player.position.x - camFwdX * cosPitch * galleryCamDist;
+  const targetY =
+    player.position.y + 0.9 + Math.sin(galleryCamPitch) * galleryCamDist;
+  const targetZ = player.position.z - camFwdZ * cosPitch * galleryCamDist;
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 8, delta);
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, targetY, 8, delta);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, targetZ, 8, delta);
   lookAtTarget.set(
-    player.position.x + dirX * 4,
-    player.position.y + 0.7,
-    player.position.z + dirZ * 4,
+    player.position.x,
+    player.position.y + 1.1,
+    player.position.z,
   );
   camera.lookAt(lookAtTarget);
 };
@@ -6721,6 +6751,34 @@ const galleryJoyEnd = (event) => {
   galleryJoyPointerId = null;
   galleryJoyKnob.value = { x: 0, y: 0 };
   galleryJoyVec = { x: 0, y: 0 };
+};
+
+// Open-world style free look: dragging anywhere on the scene (the controls
+// are overlays and swallow their own pointer events) orbits the camera
+// around the character. Works with touch and mouse alike.
+const galleryCamStart = (event) => {
+  if (state.value !== 'gallery') return;
+  galleryCamPointerId = event.pointerId;
+  galleryCamLast = { x: event.clientX, y: event.clientY };
+  event.currentTarget.setPointerCapture(event.pointerId);
+};
+
+const galleryCamMove = (event) => {
+  if (galleryCamPointerId !== event.pointerId) return;
+  const dx = event.clientX - galleryCamLast.x;
+  const dy = event.clientY - galleryCamLast.y;
+  galleryCamLast = { x: event.clientX, y: event.clientY };
+  galleryCamYaw -= dx * 0.006;
+  galleryCamPitch = THREE.MathUtils.clamp(
+    galleryCamPitch + dy * 0.004,
+    -0.1,
+    1.1,
+  );
+};
+
+const galleryCamEnd = (event) => {
+  if (galleryCamPointerId !== event.pointerId) return;
+  galleryCamPointerId = null;
 };
 
 // Left-side jump button in the showroom: only fires when the character is
