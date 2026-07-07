@@ -2768,15 +2768,22 @@ const updateGallery = (delta) => {
   if (!player) return;
   if (galleryKeys.left) galleryYaw += galleryTurnSpeed * delta;
   if (galleryKeys.right) galleryYaw -= galleryTurnSpeed * delta;
-  galleryYaw += -galleryJoyVec.x * galleryTurnSpeed * delta;
   const forwardInput =
     (galleryKeys.forward ? 1 : 0) - (galleryKeys.back ? 1 : 0) + -galleryJoyVec.y;
+  // Joystick x strafes sideways instead of turning the camera.
+  const strafeInput = galleryJoyVec.x;
   // rotation.y = 0 faces -z (matches the run direction used everywhere else).
   const dirX = Math.sin(galleryYaw);
   const dirZ = -Math.cos(galleryYaw);
-  if (forwardInput !== 0) {
-    player.position.x += dirX * forwardInput * galleryMoveSpeed * delta;
-    player.position.z += dirZ * forwardInput * galleryMoveSpeed * delta;
+  // Right vector relative to the facing direction (forward × up).
+  const rightX = Math.cos(galleryYaw);
+  const rightZ = Math.sin(galleryYaw);
+  const moving = forwardInput !== 0 || strafeInput !== 0;
+  if (moving) {
+    player.position.x +=
+      (dirX * forwardInput + rightX * strafeInput) * galleryMoveSpeed * delta;
+    player.position.z +=
+      (dirZ * forwardInput + rightZ * strafeInput) * galleryMoveSpeed * delta;
   }
   player.position.x = THREE.MathUtils.clamp(player.position.x, -20, 20);
   player.position.z = THREE.MathUtils.clamp(player.position.z, -46, 8);
@@ -2793,9 +2800,9 @@ const updateGallery = (delta) => {
   }
 
   if (activeCharacter) {
-    setCharacterAction(forwardInput !== 0 ? 'run' : 'idle');
+    setCharacterAction(moving ? 'run' : 'idle');
     if (activeCharacter.actions.run) {
-      activeCharacter.actions.run.paused = forwardInput === 0;
+      activeCharacter.actions.run.paused = !moving;
     }
     activeCharacter.mixer.timeScale = forwardInput < 0 ? -0.85 : 1;
     activeCharacter.root.rotation.x = THREE.MathUtils.damp(
