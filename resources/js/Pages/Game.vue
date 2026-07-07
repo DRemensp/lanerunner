@@ -3653,14 +3653,14 @@ const glbVehicleDefs = [
   // Baustelle & Schrott (Kenney City Kit Roads + Survival Kit, CC0).
   // 'tall-prop' = statisches hohes Hindernis (nicht überspringbar, fährt nie),
   // 'prop' = niedriges statisches Hindernis (überspringbar).
-  { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, dir: 'obstacles' },
-  { key: 'metal-panel-screws', kind: 'prop', fitHeight: 1.15, dir: 'obstacles' },
-  { key: 'resource-planks', kind: 'prop', fitHeight: 1.0, dir: 'obstacles' },
-  { key: 'box-large', kind: 'prop', fitHeight: 1.2, dir: 'obstacles' },
-  { key: 'construction-light', kind: 'tall-prop', fitHeight: 2.7, dir: 'obstacles' },
-  { key: 'structure-metal', kind: 'tall-prop', fitHeight: 2.8, dir: 'obstacles' },
-  { key: 'bridge-pillar', kind: 'tall-prop', fitHeight: 3.0, dir: 'obstacles' },
-  { key: 'sign-highway', kind: 'tall-prop', fitHeight: 3.2, dir: 'obstacles' },
+  { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, dir: 'obstacles/roads' },
+  { key: 'metal-panel-screws', kind: 'prop', fitHeight: 1.15, dir: 'obstacles/survival' },
+  { key: 'resource-planks', kind: 'prop', fitHeight: 1.0, dir: 'obstacles/survival' },
+  { key: 'box-large', kind: 'prop', fitHeight: 1.2, dir: 'obstacles/survival' },
+  { key: 'construction-light', kind: 'tall-prop', fitHeight: 2.7, dir: 'obstacles/roads' },
+  { key: 'structure-metal', kind: 'tall-prop', fitHeight: 2.8, dir: 'obstacles/survival' },
+  { key: 'bridge-pillar', kind: 'tall-prop', fitHeight: 3.0, dir: 'obstacles/roads' },
+  { key: 'sign-highway', kind: 'tall-prop', fitHeight: 3.2, dir: 'obstacles/roads' },
 ];
 
 const glbTemplates = {};
