@@ -3521,61 +3521,6 @@ const obstacleBuilders = {
     g.userData.beams = beams;
     return { mesh: g, size: { w: 1.5, h: 1.1, d: 2.6 } };
   },
-  'tall-bus': () => {
-    const a = getObstacleAssets();
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(track(new THREE.BoxGeometry(1.5, 2.6, 3.4)), a.busBody);
-    body.position.y = 0.15;
-    g.add(body);
-    const roof = new THREE.Mesh(track(new THREE.BoxGeometry(1.52, 0.12, 3.42)), a.busRoof);
-    roof.position.y = 1.39;
-    g.add(roof);
-    const frontWinGeo = track(new THREE.BoxGeometry(1.3, 0.55, 0.06));
-    const sideWinGeo = track(new THREE.BoxGeometry(0.06, 0.55, 3.0));
-    [0.75, -0.35].forEach((y) => {
-      const front = new THREE.Mesh(frontWinGeo, a.carGlass);
-      front.position.set(0, y, 1.71);
-      g.add(front);
-      [-0.76, 0.76].forEach((x) => {
-        const sideWin = new THREE.Mesh(sideWinGeo, a.carGlass);
-        sideWin.position.set(x, y, 0);
-        g.add(sideWin);
-      });
-    });
-    const wheelGeo = track(new THREE.CylinderGeometry(0.3, 0.3, 0.22, 10));
-    wheelGeo.rotateZ(Math.PI / 2);
-    const wheels = [];
-    [[-0.72, 1.1], [0.72, 1.1], [-0.72, -1.1], [0.72, -1.1]].forEach(([x, z]) => {
-      const wheel = new THREE.Mesh(wheelGeo, a.wheel);
-      wheel.position.set(x, -1.15, z);
-      wheels.push(wheel);
-      g.add(wheel);
-    });
-    const lightGeo = track(new THREE.BoxGeometry(0.2, 0.12, 0.06));
-    [-0.5, 0.5].forEach((x) => {
-      const headlight = new THREE.Mesh(lightGeo, a.lightMat);
-      headlight.position.set(x, -0.95, 1.71);
-      g.add(headlight);
-      const taillight = new THREE.Mesh(lightGeo, a.tailMat);
-      taillight.position.set(x, -0.95, -1.71);
-      g.add(taillight);
-    });
-    const beams = new THREE.Group();
-    const beamGeo = track(new THREE.PlaneGeometry(0.55, 3.4));
-    [-0.5, 0.5].forEach((x) => {
-      const beam = new THREE.Mesh(beamGeo, a.beamMat);
-      beam.rotation.x = -Math.PI / 2;
-      beam.position.set(x, -1.42, 3.5);
-      beams.add(beam);
-    });
-    beams.visible = false;
-    g.add(beams);
-    g.userData.paintMeshes = [body];
-    g.userData.paintSet = 'bus';
-    g.userData.wheels = wheels;
-    g.userData.beams = beams;
-    return { mesh: g, size: { w: 1.5, h: 2.9, d: 3.4 } };
-  },
   'tall-stack': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -3628,27 +3573,27 @@ const obstacleVariants = {
 };
 
 // Low-poly vehicles from Kenney's CC0 Car Kit (kenney.nl), loaded at runtime.
-// Until a model is ready the procedural fallbacks ('low-car'/'tall-bus') fill in.
+// Until a model is ready the procedural fallbacks ('low-car'/'tall-stack') fill in.
 const glbVehicleDefs = [
-  { key: 'sedan', kind: 'car', fitLength: 2.6 },
-  { key: 'sedan-sports', kind: 'car', fitLength: 2.6 },
-  { key: 'hatchback-sports', kind: 'car', fitLength: 2.4 },
-  { key: 'race', kind: 'car', fitLength: 2.5 },
-  { key: 'taxi', kind: 'car', fitLength: 2.6 },
-  { key: 'police', kind: 'car', fitLength: 2.7 },
-  { key: 'suv', kind: 'car', fitLength: 2.6 },
-  { key: 'suv-luxury', kind: 'car', fitLength: 2.7 },
-  { key: 'van', kind: 'car', fitLength: 2.9 },
-  { key: 'delivery', kind: 'car', fitLength: 2.9 },
-  { key: 'ambulance', kind: 'tall', fitLength: 3.2 },
+  { key: 'sedan', kind: 'car', fitLength: 2.7 },
+  { key: 'sedan-sports', kind: 'car', fitLength: 2.9 },
+  { key: 'hatchback-sports', kind: 'car', fitLength: 2.65 },
+  { key: 'race', kind: 'car', fitLength: 2.75 },
+  { key: 'taxi', kind: 'car', fitLength: 2.7 },
+  { key: 'police', kind: 'car', fitLength: 3.2 },
+  { key: 'suv', kind: 'car', fitLength: 2.7 },
+  { key: 'suv-luxury', kind: 'car', fitLength: 3.0 },
+  { key: 'van', kind: 'car', fitLength: 3.0 },
+  { key: 'delivery', kind: 'car', fitLength: 3.2 },
+  { key: 'ambulance', kind: 'tall', fitLength: 3.5 },
   { key: 'truck', kind: 'tall', fitLength: 3.4 },
-  { key: 'firetruck', kind: 'tall', fitLength: 3.6 },
-  { key: 'garbage-truck', kind: 'tall', fitLength: 3.5 },
+  { key: 'firetruck', kind: 'tall', fitLength: 4.3 },
+  { key: 'garbage-truck', kind: 'tall', fitLength: 3.9 },
   { key: 'cone', kind: 'prop', fitHeight: 1.05 },
   { key: 'box', kind: 'prop', fitHeight: 1.1 },
   // Baustellenfahrzeuge (Kenney Car Kit, CC0)
-  { key: 'tractor', kind: 'tall', fitLength: 3.0 },
-  { key: 'tractor-shovel', kind: 'tall', fitLength: 3.4 },
+  { key: 'tractor', kind: 'tall', fitLength: 3.1 },
+  { key: 'tractor-shovel', kind: 'tall', fitLength: 3.5 },
   { key: 'truck-flat', kind: 'tall', fitLength: 3.6 },
   // Baustelle & Schrott (Kenney City Kit Roads + Survival Kit, CC0).
   // 'tall-prop' = statisches hohes Hindernis (nicht überspringbar, fährt nie),
@@ -3752,7 +3697,7 @@ const resolveVariantKey = (key) => {
     return glbTraffic.car.length ? pickFrom(glbTraffic.car) : 'low-car';
   }
   if (key === 'tall-any') {
-    return glbTraffic.tall.length ? pickFrom(glbTraffic.tall) : 'tall-bus';
+    return glbTraffic.tall.length ? pickFrom(glbTraffic.tall) : 'tall-stack';
   }
   return key;
 };
