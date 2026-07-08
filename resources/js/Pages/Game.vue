@@ -5382,8 +5382,10 @@ const updateFinaleWalk = (delta) => {
 };
 
 const buildParkedCar = () => {
-  // Any ride will do when you're stealing it — pick a random template.
-  const keys = Object.keys(glbTemplates);
+  // NUR echte Autos sind klaubar — glbTemplates enthält auch Pylonen,
+  // Barrikaden und Schilder, und genau die standen sonst gelegentlich als
+  // "Fluchtwagen" am Bordstein. Der Drive-Pool (race) darf mit rein.
+  const keys = [...glbTraffic.car, ...glbTraffic.drive];
   const template = keys.length
     ? glbTemplates[keys[Math.floor(Math.random() * keys.length)]]
     : null;
@@ -5442,9 +5444,10 @@ const ejectFromCar = () => {
   carjackFrom.copy(player.position);
   carjackLand.set(carLanes[0] - 1.6, currentGroundCenter, player.position.z + 1.2);
 
-  // The getaway ride, parked at the left curb a few meters ahead.
+  // The getaway ride: AUF der Straße am linken Fahrbahnrand geparkt —
+  // x -7.2 stand vorher mitten im Häuserband.
   carjackCar = buildParkedCar();
-  carjackCar.position.set(-7.2, carjackCar.userData.restY, player.position.z - 9);
+  carjackCar.position.set(-3.6, carjackCar.userData.restY, player.position.z - 9);
   carjackCar.rotation.y = Math.PI;
   scene.add(carjackCar);
 
