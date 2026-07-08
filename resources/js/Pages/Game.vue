@@ -704,6 +704,17 @@
       </div>
     </div>
 
+    <div v-if="state === 'revive'" class="revive-overlay">
+      <div class="revive-card">
+        <div class="revive-title">Continue?</div>
+        <div class="revive-count">{{ Math.max(0, reviveCountdown) }}</div>
+        <button class="revive-btn" type="button" :disabled="reviveBusy" @click="acceptRevive">
+          Revive — {{ reviveCost }} Coins
+        </button>
+        <button class="revive-skip" type="button" @click="declineRevive">Give up</button>
+      </div>
+    </div>
+
     <div v-if="state === 'crashed'" class="death-overlay">
       <div class="death-card">
         <div class="death-title">Run Complete</div>
@@ -1697,6 +1708,9 @@ const resetRun = () => {
   magnetTime.value = 0;
   multiTime.value = 0;
   invulnUntil = 0;
+  reviveUsed = false;
+  reviveBusy.value = false;
+  clearInterval(reviveTimerId);
   lastBumpAt = -Infinity;
   bumpProtectUntil = 0;
   bumpShakeTimer = 0;
@@ -1736,6 +1750,89 @@ const endRun = () => {
   }
   persistRun();
   loadLeaderboard();
+};
+
+// Revive: EIN bezahlter Continue pro Run nach einem Zone-1-Crash. Das
+// Coin-Konto liegt serverseitig (POST /api/runner/revive zieht ab), deshalb
+// nur für eingeloggte Spieler mit laufender Run-Session. Kosten synchron
+// halten mit REVIVE_COST im RunnerController.
+const reviveCost = 250;
+const reviveCountdown = ref(5);
+const reviveBusy = ref(false);
+let reviveUsed = false;
+let reviveTimerId = null;
+
+const canOfferRevive = () =>
+  !reviveUsed &&
+  !devRun.value &&
+  !!authUser.value &&
+  !!runToken.value &&
+  totalCoins.value >= reviveCost &&
+  ['none', 'approach'].includes(finalePhase.value);
+
+const openReviveOffer = () => {
+  state.value = 'revive';
+  reviveCountdown.value = 5;
+  setMusicDuck(0.5);
+  reviveTimerId = setInterval(() => {
+    reviveCountdown.value -= 1;
+    if (reviveCountdown.value <= 0) {
+      declineRevive();
+    }
+  }, 1000);
+};
+
+const declineRevive = () => {
+  clearInterval(reviveTimerId);
+  if (state.value !== 'revive') return;
+  setMusicDuck(1);
+  endRun();
+};
+
+const acceptRevive = async () => {
+  if (reviveBusy.value || state.value !== 'revive') return;
+  reviveBusy.value = true;
+  try {
+    const response = await axios.post('/api/runner/revive', { run_id: runToken.value });
+    if (!response.data?.accepted) {
+      throw new Error('revive declined');
+    }
+    if (typeof response.data.coins === 'number') {
+      totalCoins.value = response.data.coins;
+    }
+    reviveUsed = true;
+    clearInterval(reviveTimerId);
+    resumeAfterRevive();
+  } catch (error) {
+    // Server sagt nein (Coins/Session) oder Netzwerk weg: normal beenden.
+    clearInterval(reviveTimerId);
+    setMusicDuck(1);
+    endRun();
+  } finally {
+    reviveBusy.value = false;
+  }
+};
+
+const resumeAfterRevive = () => {
+  // Freie Bahn plus Schutz: alle Hindernisse räumen, Ein-Treffer-Schild an,
+  // kurze Spawn-Pause — der Wiedereinstieg darf nie ein Instant-Tod sein.
+  clearObstacles();
+  if (isSliding) {
+    stopSlide();
+  }
+  playerVelocityY = 0;
+  if (player) {
+    player.visible = true;
+    player.rotation.z = 0;
+  }
+  shieldActive.value = true;
+  invulnUntil = performance.now() + 1200;
+  spawnTimer = Math.max(spawnTimer, 1.4);
+  state.value = 'running';
+  setMusicDuck(1);
+  sfx.powerup();
+  showEventToast('Revived!', 'Shield up — keep running!', 1800);
+  spawnBurst(player.position.clone(), ['gold', 'skin'], 16, 6);
 };
 
 const runSaveNotice = ref(null);
@@ -7928,7 +8025,11 @@ const animate = (time) => {
     camera.position.y += (Math.random() - 0.5) * 0.08 * Math.max(0, crashTimer);
     if (crashTimer <= 0) {
       applyCameraZoom();
-      endRun();
+      if (canOfferRevive()) {
+        openReviveOffer();
+      } else {
+        endRun();
+      }
     }
   }
 
@@ -8292,6 +8393,84 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   text-shadow: 0 0 18px rgba(255, 190, 70, 0.65);
   animation: nearMissPop 0.95s ease-out forwards;
+}
+
+.revive-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 7, 15, 0.55);
+}
+
+.revive-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 34px;
+  border-radius: 18px;
+  border: 1px solid rgba(53, 224, 255, 0.4);
+  background: rgba(10, 16, 30, 0.92);
+  box-shadow: 0 0 40px rgba(53, 224, 255, 0.18);
+}
+
+.revive-title {
+  color: #eaf6ff;
+  font-family: var(--display);
+  font-size: 1.5rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.revive-count {
+  width: 62px;
+  height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid rgba(53, 224, 255, 0.65);
+  color: #35e0ff;
+  font-family: var(--display);
+  font-size: 1.7rem;
+  animation: revivePulse 1s ease-in-out infinite;
+}
+
+.revive-btn {
+  padding: 12px 26px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #2fe6b2, #35b4ff);
+  color: #04121c;
+  font-family: var(--display);
+  font-size: 0.95rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.revive-btn:disabled {
+  opacity: 0.6;
+}
+
+.revive-skip {
+  padding: 8px 18px;
+  border: 1px solid rgba(160, 180, 210, 0.4);
+  border-radius: 10px;
+  background: transparent;
+  color: #9fb3d0;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+@keyframes revivePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
 }
 
 .dev-badge {

@@ -1,9 +1,8 @@
 <?php
 
-use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RunnerController;
-use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -31,6 +30,7 @@ Route::prefix('api/runner')->group(function () {
     Route::get('/profile', [RunnerController::class, 'profile']);
     Route::post('/run/start', [RunnerController::class, 'startRun']);
     Route::post('/run/end', [RunnerController::class, 'endRun']);
+    Route::post('/revive', [RunnerController::class, 'revive']);
     Route::post('/skin', [RunnerController::class, 'setSkin']);
     Route::post('/skin/buy', [RunnerController::class, 'buySkin']);
     Route::get('/leaderboard', [RunnerController::class, 'leaderboard']);
