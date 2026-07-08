@@ -1345,6 +1345,7 @@ const startGallery = () => {
   exitFinale();
   clearObstacles();
   clearCoins();
+  clearCivilians();
   clearPowerups();
   buildGallery();
   floorSegments.forEach((segment) => {
@@ -1752,6 +1753,7 @@ const resetRun = () => {
   eventToast.value = null;
   clearObstacles();
   clearCoins();
+  clearCivilians();
   clearPowerups();
   resetFloor();
 };
@@ -2427,6 +2429,150 @@ const updateWindStreaks = (delta) => {
   });
 };
 
+// ---- Civis: rein dekorative Fußgänger auf den Gehwegen (keine Kollision).
+// Prozedurale Low-Poly-Figuren im Stil der Stadt, gepoolt wie alles andere;
+// sie scrollen mit der Welt und laufen dabei vor oder zurück.
+let civilians = [];
+let civilianPool = [];
+let civTimer = 0;
+let civAssets = null;
+
+const getCivAssets = () => {
+  if (civAssets) return civAssets;
+  const legGeo = new THREE.BoxGeometry(0.11, 0.42, 0.13);
+  legGeo.translate(0, -0.21, 0); // Drehpunkt an der Hüfte
+  const armGeo = new THREE.BoxGeometry(0.09, 0.38, 0.1);
+  armGeo.translate(0, -0.17, 0); // Drehpunkt an der Schulter
+  civAssets = {
+    legGeo,
+    armGeo,
+    bodyGeo: new THREE.BoxGeometry(0.36, 0.55, 0.22),
+    headGeo: new THREE.BoxGeometry(0.24, 0.26, 0.24),
+    phoneGeo: new THREE.BoxGeometry(0.08, 0.12, 0.02),
+    clothMats: [0x2a3550, 0x3a2b4d, 0x1f3a3a, 0x4d2b35, 0x2b4030, 0x50596e].map(
+      (color) => new THREE.MeshLambertMaterial({ color }),
+    ),
+    pantsMats: [0x1a2233, 0x262230, 0x20303c].map(
+      (color) => new THREE.MeshLambertMaterial({ color }),
+    ),
+    headMats: [0xc9a184, 0x8a6248, 0xe0b89a, 0x6b4a36].map(
+      (color) => new THREE.MeshLambertMaterial({ color }),
+    ),
+    phoneMat: new THREE.MeshBasicMaterial({ color: 0x9fd8ff }),
+  };
+  return civAssets;
+};
+
+const buildCivilian = () => {
+  const a = getCivAssets();
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  const civ = new THREE.Group();
+  const cloth = pick(a.clothMats);
+  const pants = pick(a.pantsMats);
+  const body = new THREE.Mesh(a.bodyGeo, cloth);
+  body.position.y = 0.7;
+  civ.add(body);
+  const head = new THREE.Mesh(a.headGeo, pick(a.headMats));
+  head.position.y = 1.12;
+  civ.add(head);
+  const legL = new THREE.Mesh(a.legGeo, pants);
+  legL.position.set(-0.09, 0.42, 0);
+  civ.add(legL);
+  const legR = new THREE.Mesh(a.legGeo, pants);
+  legR.position.set(0.09, 0.42, 0);
+  civ.add(legR);
+  const armL = new THREE.Mesh(a.armGeo, cloth);
+  armL.position.set(-0.23, 0.95, 0);
+  civ.add(armL);
+  const armR = new THREE.Mesh(a.armGeo, cloth);
+  armR.position.set(0.23, 0.95, 0);
+  civ.add(armR);
+  // Ein Teil der Leute läuft aufs leuchtende Handy starrend — Nachtstadt.
+  const phoneUser = Math.random() < 0.3;
+  if (phoneUser) {
+    armR.rotation.x = -1.15;
+    const phone = new THREE.Mesh(a.phoneGeo, a.phoneMat);
+    phone.position.set(0.23, 0.98, 0.32);
+    phone.rotation.x = 0.5;
+    civ.add(phone);
+  }
+  civ.scale.setScalar(0.92 + Math.random() * 0.2);
+  civ.userData = { legL, legR, armL, armR, phoneUser };
+  return civ;
+};
+
+const spawnCivilian = () => {
+  const civ = civilianPool.pop() || buildCivilian();
+  const side = Math.random() < 0.5 ? -1 : 1;
+  // Gehweg: Mitte ±4.92, 2.6 breit — mit Abstand zu Bordstein und Häusern.
+  civ.position.set(
+    side * (4.2 + Math.random() * 1.3),
+    0.26,
+    -(110 + Math.random() * 60),
+  );
+  const toward = Math.random() < 0.5; // auf den Spieler zu oder von ihm weg
+  const walk = 1.1 + Math.random() * 0.9;
+  civ.userData.vz = toward ? walk : -walk;
+  civ.userData.phase = Math.random() * Math.PI * 2;
+  civ.userData.stride = 5 + walk * 2.5;
+  civ.rotation.y = toward ? 0 : Math.PI;
+  civilians.push(civ);
+  scene.add(civ);
+};
+
+const updateCivilians = (delta) => {
+  const spawnable =
+    finalePhase.value === 'none' ||
+    finalePhase.value === 'approach' ||
+    finalePhase.value === 'drive';
+  if (spawnable) {
+    civTimer -= delta;
+    if (civTimer <= 0 && civilians.length < 10) {
+      spawnCivilian();
+      // Gelegentlich ein Pärchen nebeneinander.
+      if (Math.random() < 0.25 && civilians.length < 10) {
+        const first = civilians[civilians.length - 1];
+        spawnCivilian();
+        const second = civilians[civilians.length - 1];
+        second.position.set(
+          first.position.x + (Math.random() < 0.5 ? -0.55 : 0.55),
+          0.26,
+          first.position.z + 0.3,
+        );
+        second.rotation.y = first.rotation.y;
+        second.userData.vz = first.userData.vz;
+      }
+      civTimer = 0.6 + Math.random() * 1.5;
+    }
+  }
+  for (let i = civilians.length - 1; i >= 0; i -= 1) {
+    const civ = civilians[i];
+    civ.position.z += (speed.value + civ.userData.vz) * delta;
+    civ.userData.phase += delta * civ.userData.stride;
+    const swing = Math.sin(civ.userData.phase) * 0.5;
+    civ.userData.legL.rotation.x = swing;
+    civ.userData.legR.rotation.x = -swing;
+    civ.userData.armL.rotation.x = -swing * 0.7;
+    if (!civ.userData.phoneUser) {
+      civ.userData.armR.rotation.x = swing * 0.7;
+    }
+    if (civ.position.z > 20) {
+      scene.remove(civ);
+      civilianPool.push(civ);
+      civilians.splice(i, 1);
+    }
+  }
+};
+
+const clearCivilians = () => {
+  civilians.forEach((civ) => {
+    scene.remove(civ);
+    civilianPool.push(civ);
+  });
+  civilians = [];
+  civTimer = 0;
+};
+
 const buildHouse = (side) => {
   const group = new THREE.Group();
   const w = 3.2 + Math.random() * 2.6;
@@ -2457,6 +2603,11 @@ const buildHouse = (side) => {
       (Math.random() - 0.5) * d * 0.4,
     );
     group.add(antenna);
+    // Rotes Flugwarnlicht an der Spitze — winziges Detail, große Wirkung
+    // in der Skyline-Silhouette.
+    const blink = new THREE.Mesh(houseAssets.blinkGeo, houseAssets.blinkMat);
+    blink.position.set(antenna.position.x, h + 2.45, antenna.position.z);
+    group.add(blink);
   }
   if (Math.random() < 0.3) {
     const tank = new THREE.Mesh(houseAssets.tankGeo, houseAssets.trimMat);
@@ -2502,22 +2653,84 @@ const buildHouse = (side) => {
     billboard.rotation.y = faceRotation;
     group.add(billboard);
   }
-  const rows = Math.max(1, Math.min(6, Math.floor((h - 2.4) / 1.9)));
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = -1; col <= 1; col += 1) {
-      if (Math.random() < 0.12) continue;
-      const litRoll = Math.random();
-      const material =
-        litRoll < 0.3
-          ? houseAssets.windowLit
-          : litRoll < 0.42
-            ? houseAssets.windowCool
-            : houseAssets.windowDark;
-      const win = new THREE.Mesh(houseAssets.windowGeometry, material);
-      win.position.set(faceX, 2.5 + row * 1.9, col * d * 0.26);
-      win.rotation.y = faceRotation;
-      group.add(win);
+  // Fassaden-Stil: hohe Häuser werden manchmal zum Glasturm (durchgehende
+  // Lichtbänder statt Fensterraster) — bricht die immer gleiche Lochfassade.
+  const glassTower = h >= 9 && Math.random() < 0.22;
+  if (glassTower) {
+    const stripCount = d > 5.5 ? 3 : 2;
+    for (let s = 0; s < stripCount; s += 1) {
+      const strip = new THREE.Mesh(
+        houseAssets.glassStripGeo,
+        houseAssets.glassStripMats[Math.floor(Math.random() * houseAssets.glassStripMats.length)],
+      );
+      strip.scale.y = h * 0.82;
+      strip.position.set(faceX, h * 0.47, (s - (stripCount - 1) / 2) * d * 0.3);
+      strip.rotation.y = faceRotation;
+      group.add(strip);
     }
+  } else {
+    const rows = Math.max(1, Math.min(6, Math.floor((h - 2.4) / 1.9)));
+    // Spaltenzahl folgt der Haus-Tiefe statt fix 3 — breite Blocks wirken
+    // sonst leer, schmale überfüllt.
+    const cols = Math.max(2, Math.min(4, Math.round(d / 1.8)));
+    const colSpread = (d * 0.72) / cols;
+    const wantsBalconies = Math.random() < 0.4;
+    let balconies = 0;
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        if (Math.random() < 0.12) continue;
+        const litRoll = Math.random();
+        const material =
+          litRoll < 0.3
+            ? houseAssets.windowLit
+            : litRoll < 0.42
+              ? houseAssets.windowCool
+              : houseAssets.windowDark;
+        const winY = 2.5 + row * 1.9;
+        const winZ = (col - (cols - 1) / 2) * colSpread;
+        const win = new THREE.Mesh(houseAssets.windowGeometry, material);
+        win.position.set(faceX, winY, winZ);
+        win.rotation.y = faceRotation;
+        group.add(win);
+        // Balkone unter einzelnen Fenstern (nie im Erdgeschossbereich).
+        if (wantsBalconies && balconies < 2 && row > 0 && Math.random() < 0.14) {
+          balconies += 1;
+          const plate = new THREE.Mesh(houseAssets.balconyFloorGeo, houseAssets.trimMat);
+          plate.position.set(faceX - side * 0.26, winY - 0.5, winZ);
+          group.add(plate);
+          const rail = new THREE.Mesh(houseAssets.balconyRailGeo, houseAssets.grayMat);
+          rail.position.set(faceX - side * 0.5, winY - 0.32, winZ);
+          group.add(rail);
+        }
+      }
+    }
+    // Penthouse: oberste Etage hoher Häuser bekommt ein breites Panorama-
+    // Fenster — die Skyline liest sich oben nicht mehr als schwarze Wand.
+    if (h >= 9 && Math.random() < 0.5) {
+      const pent = new THREE.Mesh(houseAssets.penthouseGeo, houseAssets.windowLit);
+      pent.position.set(faceX, h - 1.1, 0);
+      pent.rotation.y = faceRotation;
+      group.add(pent);
+    }
+  }
+
+  // Neon-Dachkante entlang der Straßenfront — DAS Nachtstadt-Signal.
+  if (Math.random() < 0.45) {
+    const edge = new THREE.Mesh(
+      houseAssets.roofEdgeGeo,
+      houseAssets.neonMats[Math.floor(Math.random() * houseAssets.neonMats.length)],
+    );
+    edge.scale.z = d + 0.3;
+    edge.position.set(faceX - side * 0.04, h + 0.24, 0);
+    group.add(edge);
+  }
+
+  // Regenrohr an einer Fassadenkante.
+  if (Math.random() < 0.4) {
+    const pipe = new THREE.Mesh(houseAssets.pipeGeo, houseAssets.grayMat);
+    pipe.scale.y = h * 0.92;
+    pipe.position.set(faceX - side * 0.02, h * 0.46, (Math.random() < 0.5 ? -1 : 1) * d * 0.42);
+    group.add(pipe);
   }
 
   if (Math.random() < 0.45) {
@@ -2529,6 +2742,37 @@ const buildHouse = (side) => {
     sign.position.set(-side * (w / 2 + 0.09), h * 0.55, (Math.random() - 0.5) * d * 0.5);
     sign.rotation.y = faceRotation;
     group.add(sign);
+  }
+
+  // Erdgeschoss: gut die Hälfte der Häuser wird zum Laden — leuchtende
+  // Schaufensterfront, Markise, teils Schild über der Tür. Das Straßenlevel
+  // ist die Zone, die man beim Spielen wirklich SIEHT.
+  if (Math.random() < 0.55) {
+    const glow = new THREE.Mesh(
+      houseAssets.shopGlowGeo,
+      houseAssets.shopGlowMats[Math.floor(Math.random() * houseAssets.shopGlowMats.length)],
+    );
+    glow.scale.x = Math.max(1.6, d * 0.55);
+    glow.position.set(faceX, 1.15, side < 0 ? d * 0.12 : -d * 0.12);
+    glow.rotation.y = faceRotation;
+    group.add(glow);
+    const awning = new THREE.Mesh(
+      houseAssets.awningGeo,
+      houseAssets.awningMats[Math.floor(Math.random() * houseAssets.awningMats.length)],
+    );
+    awning.scale.z = Math.max(1.7, d * 0.58);
+    awning.position.set(faceX - side * 0.27, 2.0, glow.position.z);
+    awning.rotation.z = side * 0.16;
+    group.add(awning);
+    if (Math.random() < 0.6) {
+      const shopSign = new THREE.Mesh(
+        houseAssets.shopSignGeo,
+        houseAssets.neonMats[Math.floor(Math.random() * houseAssets.neonMats.length)],
+      );
+      shopSign.position.set(faceX - side * 0.03, 2.55, glow.position.z);
+      shopSign.rotation.y = faceRotation;
+      group.add(shopSign);
+    }
   }
 
   const door = new THREE.Mesh(houseAssets.doorGeometry, houseAssets.doorMat);
@@ -3316,6 +3560,27 @@ const initScene = () => {
     neonMats: [0xff4fd8, 0x2ee5ff, 0xffa22e, 0x67f05a, 0xff5a6e].map(
       (color) => new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
     ),
+    // Detail-Pass: Shopfronten, Balkone, Neon-Dachkanten, Glasfassaden.
+    shopGlowGeo: new THREE.PlaneGeometry(1, 1.05),
+    shopSignGeo: new THREE.PlaneGeometry(1.5, 0.42),
+    awningGeo: new THREE.BoxGeometry(0.55, 0.05, 1),
+    awningMats: [0x8f2438, 0x1f6e62, 0x8a5a1e, 0x33356e].map(
+      (color) => new THREE.MeshLambertMaterial({ color }),
+    ),
+    shopGlowMats: [0x3fd8c2, 0xffc46b, 0x7fb8ff, 0xff9fb2].map(
+      (color) => new THREE.MeshBasicMaterial({ color }),
+    ),
+    balconyFloorGeo: new THREE.BoxGeometry(0.5, 0.05, 1.0),
+    balconyRailGeo: new THREE.BoxGeometry(0.04, 0.34, 1.0),
+    pipeGeo: new THREE.BoxGeometry(0.09, 1, 0.09),
+    roofEdgeGeo: new THREE.BoxGeometry(0.07, 0.07, 1),
+    glassStripGeo: new THREE.PlaneGeometry(0.3, 1),
+    glassStripMats: [0x2a6a8f, 0x3a5580, 0x5a3a80].map(
+      (color) => new THREE.MeshBasicMaterial({ color }),
+    ),
+    penthouseGeo: new THREE.PlaneGeometry(1.7, 0.72),
+    blinkGeo: new THREE.BoxGeometry(0.1, 0.1, 0.1),
+    blinkMat: new THREE.MeshBasicMaterial({ color: 0xff3a4a }),
   };
 
   const lampPoleGeometry = new THREE.BoxGeometry(0.11, 4.2, 0.11);
@@ -5781,6 +6046,7 @@ const doLaunch = () => {
   sfx.launch();
   clearObstacles();
   clearCoins();
+  clearCivilians();
   clearPowerups();
   clearFlyingCars();
   buildDockingPlane();
@@ -7272,6 +7538,7 @@ const updateRunner = (delta) => {
         finalePhase.value = 'walk';
         clearObstacles();
         clearCoins();
+        clearCivilians();
         clearPowerups();
       }
     }
@@ -7405,6 +7672,7 @@ const updateRunner = (delta) => {
   });
 
   updateWindStreaks(delta);
+  updateCivilians(delta);
 
   if (plaza) {
     plaza.position.z += speed.value * delta;
