@@ -2347,6 +2347,56 @@ const handleResize = () => {
 
 let houseAssets = null;
 
+// Wind-Streaks: dünne additive Lichtstriche neben der Strecke, die schneller
+// als die Welt scrollen — machen das Tempo sichtbar. Deckkraft wächst mit dem
+// Speed (unter ~15 unsichtbar), ein geteiltes Material für alle Striche.
+let windStreaks = null;
+let windStreakMat = null;
+
+const resetWindStreak = (streak, anywhere = false) => {
+  const side = Math.random() < 0.5 ? -1 : 1;
+  streak.position.set(
+    side * (2.8 + Math.random() * 4.2),
+    0.5 + Math.random() * 3.6,
+    anywhere ? -Math.random() * 70 : -(55 + Math.random() * 25),
+  );
+};
+
+const ensureWindStreaks = () => {
+  if (windStreaks || !scene) return;
+  windStreakMat = new THREE.MeshBasicMaterial({
+    color: 0xbfe6ff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const streakGeo = new THREE.PlaneGeometry(0.055, 3.4);
+  windStreaks = new THREE.Group();
+  for (let i = 0; i < 16; i += 1) {
+    const streak = new THREE.Mesh(streakGeo, windStreakMat);
+    streak.rotation.x = Math.PI / 2;
+    resetWindStreak(streak, true);
+    windStreaks.add(streak);
+  }
+  scene.add(windStreaks);
+};
+
+const updateWindStreaks = (delta) => {
+  ensureWindStreaks();
+  if (!windStreaks) return;
+  const strength = THREE.MathUtils.clamp((speed.value - 15) / 30, 0, 1);
+  windStreakMat.opacity = strength * 0.45;
+  if (strength <= 0) return;
+  windStreaks.children.forEach((streak) => {
+    streak.position.z += speed.value * 2.1 * delta;
+    if (streak.position.z > 10) {
+      resetWindStreak(streak);
+    }
+  });
+};
+
 const buildHouse = (side) => {
   const group = new THREE.Group();
   const w = 3.2 + Math.random() * 2.6;
@@ -2386,6 +2436,42 @@ const buildHouse = (side) => {
 
   const faceX = -side * (w / 2 + 0.03);
   const faceRotation = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+
+  // Silhouetten-Vielfalt: gestufte Türme oder leuchtende Dach-Billboards,
+  // damit die Skyline nicht wie eine Reihe gleicher Klötze wirkt.
+  if (h >= 8 && Math.random() < 0.25) {
+    const upper = new THREE.Mesh(
+      buildingGeometry,
+      buildingMaterials[Math.floor(Math.random() * buildingMaterials.length)],
+    );
+    upper.scale.set(w * 0.55, h * 0.35, d * 0.6);
+    upper.position.y = h;
+    group.add(upper);
+    const upperParapet = new THREE.Mesh(buildingGeometry, houseAssets.trimMat);
+    upperParapet.scale.set(w * 0.55 + 0.14, 0.22, d * 0.6 + 0.14);
+    upperParapet.position.y = h + h * 0.35 - 0.04;
+    group.add(upperParapet);
+  } else if (h >= 9 && Math.random() < 0.3) {
+    const billboard = new THREE.Group();
+    const face = new THREE.Mesh(
+      houseAssets.billboardGeo,
+      houseAssets.neonMats[Math.floor(Math.random() * houseAssets.neonMats.length)],
+    );
+    face.position.y = 1.05;
+    billboard.add(face);
+    const back = new THREE.Mesh(houseAssets.billboardGeo, houseAssets.grayMat);
+    back.position.set(0, 1.05, -0.05);
+    back.rotation.y = Math.PI;
+    billboard.add(back);
+    [-0.9, 0.9].forEach((x) => {
+      const pole = new THREE.Mesh(houseAssets.billboardPoleGeo, houseAssets.grayMat);
+      pole.position.set(x, 0.28, -0.03);
+      billboard.add(pole);
+    });
+    billboard.position.y = h;
+    billboard.rotation.y = faceRotation;
+    group.add(billboard);
+  }
   const rows = Math.max(1, Math.min(6, Math.floor((h - 2.4) / 1.9)));
   for (let row = 0; row < rows; row += 1) {
     for (let col = -1; col <= 1; col += 1) {
@@ -2404,7 +2490,7 @@ const buildHouse = (side) => {
     }
   }
 
-  if (Math.random() < 0.35) {
+  if (Math.random() < 0.45) {
     const sign = new THREE.Mesh(
       houseAssets.signGeo,
       houseAssets.neonMats[Math.floor(Math.random() * houseAssets.neonMats.length)],
@@ -3231,6 +3317,8 @@ const initScene = () => {
     antennaGeo: new THREE.BoxGeometry(0.07, 2.4, 0.07),
     tankGeo: new THREE.CylinderGeometry(0.5, 0.5, 0.9, 10),
     signGeo: new THREE.PlaneGeometry(0.42, 2.4),
+    billboardGeo: new THREE.PlaneGeometry(2.4, 1.3),
+    billboardPoleGeo: new THREE.BoxGeometry(0.08, 0.75, 0.08),
     neonMats: [0xff4fd8, 0x2ee5ff, 0xffa22e, 0x67f05a, 0xff5a6e].map(
       (color) => new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
     ),
@@ -7384,6 +7472,8 @@ const updateRunner = (delta) => {
       }
     }
   });
+
+  updateWindStreaks(delta);
 
   if (plaza) {
     plaza.position.z += speed.value * delta;
