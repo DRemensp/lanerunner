@@ -2900,20 +2900,20 @@ const placeCoin = (x, y, z) => {
 // aus einer Nachbar-Lane in die freie Lane der kommenden Reihe (der Blick
 // folgt den Coins zum sicheren Slot), sonst eine kurze gerade Linie.
 const spawnCoinTrail = (laneIndex, baseZ) => {
-  const others = [0, 1, 2].filter((lane) => lane !== laneIndex);
-  const fromLane = others[Math.floor(Math.random() * others.length)];
+  // Nur NACHBAR-Lanes als Startpunkt — der Wechsel geht nie quer über die
+  // ganze Straße.
+  const neighbors = [laneIndex - 1, laneIndex + 1].filter((lane) => lane >= 0 && lane <= 2);
+  const fromLane = neighbors[Math.floor(Math.random() * neighbors.length)];
   if (Math.random() < 0.6) {
-    // Lane-Wechsel als steiler Knick mit genau 3 Münzen: Start in der alten
-    // Lane, eine auf halbem Weg, eine in der Ziel-Lane — danach kurze Gerade.
-    placeCoin(lanes[fromLane], 1.0, baseZ + 7.5);
-    placeCoin((lanes[fromLane] + lanes[laneIndex]) / 2, 1.0, baseZ + 5.5);
-    placeCoin(lanes[laneIndex], 1.0, baseZ + 3.5);
-    for (let k = 0; k < 3; k += 1) {
-      placeCoin(lanes[laneIndex], 1.0, baseZ + 1.0 - k * 2.0);
-    }
+    // Lane-Wechsel mit genau 3 Münzen: eine in der alten Lane, eine schon in
+    // der Ziel-Lane, die dritte auf dem normalen Weg — locker verteilt.
+    placeCoin(lanes[fromLane], 1.0, baseZ + 8.0);
+    placeCoin(lanes[laneIndex], 1.0, baseZ + 5.0);
+    placeCoin(lanes[laneIndex], 1.0, baseZ + 2.0);
   } else {
-    for (let k = 0; k < 6; k += 1) {
-      placeCoin(lanes[laneIndex], 1.0, baseZ + 4.0 - k * 2.0);
+    // Gerade Linie, mit ein paar Metern Luft zwischen den Münzen.
+    for (let k = 0; k < 5; k += 1) {
+      placeCoin(lanes[laneIndex], 1.0, baseZ + 5.0 - k * 3.0);
     }
   }
 };
