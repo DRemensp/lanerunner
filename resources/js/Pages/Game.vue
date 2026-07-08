@@ -754,7 +754,10 @@
         <div class="death-actions">
           <button class="primary-btn" @click="startRun" type="button">Run Again</button>
           <button class="ghost-btn" @click="shareScore" type="button">{{ shareLabel }}</button>
-          <button class="ghost-btn" @click="backToMenu" type="button">Return to Menu</button>
+          <!-- quitRun statt backToMenu: räumt die Welt auf (Hindernisse, Zone,
+               Spielerposition) — sonst steht die Skin-Vorschau danach mitten
+               in einer liegengebliebenen Barrikade. -->
+          <button class="ghost-btn" @click="quitRun" type="button">Return to Menu</button>
         </div>
       </div>
     </div>
@@ -1240,6 +1243,10 @@ const obstacleResources = [];
 let obstacleAssets = null;
 // Geteiltes Material für blinkende Baustellen-Lampen (Takt in animate()).
 let hazardBlinkMat = null;
+// Blaulicht-Paar für Einsatzfahrzeuge: zwei Materialien, die in animate()
+// gegenphasig takten — alle sichtbaren Beacons wechselblinken synchron.
+let beaconMatA = null;
+let beaconMatB = null;
 
 const lookAtTarget = new THREE.Vector3();
 
@@ -3958,6 +3965,8 @@ const getObstacleAssets = () => {
   // ALLE Baustellen-Lampen der Szene blinken damit synchron und kostenlos.
   hazardBlinkMat = track(new THREE.MeshBasicMaterial({ color: 0xffb023 }));
   obstacleAssets.hazardBlink = hazardBlinkMat;
+  beaconMatA = track(new THREE.MeshBasicMaterial({ color: 0x55baff }));
+  beaconMatB = track(new THREE.MeshBasicMaterial({ color: 0x0c2a4a }));
   // Kartonschild des Obdachlosen: Canvas-Textur mit krakeligem "1$ PLS".
   const signCanvas = document.createElement('canvas');
   signCanvas.width = 256;
@@ -4358,6 +4367,28 @@ const glbVehicleDefs = [
 const glbTemplates = {};
 const glbTraffic = { car: [], tall: [], drive: [] };
 
+// Blaulichtbalken für Polizei/Rettung/Feuerwehr: zwei Leuchtkörper auf dem
+// Dach, die gegenphasig blinken (Materialien taktet animate()). Standard
+// unsichtbar — nur Einsatz-Konvois an Kreuzungen schalten ihn an.
+const addEmergencyBeacon = (group, size) => {
+  getObstacleAssets();
+  const beacon = new THREE.Group();
+  const lampGeo = new THREE.BoxGeometry(0.18, 0.12, 0.16);
+  const lampA = new THREE.Mesh(lampGeo, beaconMatA);
+  lampA.position.x = -0.14;
+  beacon.add(lampA);
+  const lampB = new THREE.Mesh(lampGeo, beaconMatB);
+  lampB.position.x = 0.14;
+  beacon.add(lampB);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.2), getObstacleAssets().black);
+  bar.position.y = -0.08;
+  beacon.add(bar);
+  beacon.position.y = size.h / 2 + 0.1;
+  beacon.visible = false;
+  group.add(beacon);
+  group.userData.emergencyBeacon = beacon;
+};
+
 const addVehicleLights = (group, size) => {
   const assets = getObstacleAssets();
   const beams = new THREE.Group();
@@ -4478,6 +4509,9 @@ const registerVehicleModel = (def, model) => {
     if (def.kind === 'car' || def.kind === 'tall' || def.kind === 'drive-car') {
       addVehicleLights(mesh, size);
     }
+    if (def.key === 'police' || def.key === 'ambulance' || def.key === 'firetruck') {
+      addEmergencyBeacon(mesh, size);
+    }
     if (def.key === 'structure-metal') {
       addConstructionDressing(mesh, size);
     }
@@ -4556,6 +4590,9 @@ const getObstacle = (type, forcedKey = null) => {
   obstacle.userData.driftHonked = false;
   if (obstacle.userData.beams) {
     obstacle.userData.beams.visible = false;
+  }
+  if (obstacle.userData.emergencyBeacon) {
+    obstacle.userData.emergencyBeacon.visible = false;
   }
   if (obstacle.userData.paintMeshes) {
     const assets = getObstacleAssets();
@@ -4718,8 +4755,64 @@ const spawnCrossing = () => {
   }
   crossingGroup.position.z = -(150 + Math.min(45, speed.value));
   scene.add(crossingGroup);
-  crossing = { group: crossingGroup, carTimer: 0.4, lastDir: 1 };
+  // 1/4 der Kreuzungen: Einsatz-Konvoi. Der normale Querverkehr pausiert
+  // kurz, dann jagen Polizeiwagen mit Blaulicht einem Flüchtigen hinterher —
+  // oder ein 112-Konvoi (Rettungswagen + Feuerwehr) zieht durch. Nur wenn
+  // die nötigen Modelle schon geladen sind.
+  let convoy = null;
+  if (Math.random() < 0.25) {
+    const policeReady = !!obstacleBuilders.police;
+    const rescueReady = !!obstacleBuilders.ambulance && !!obstacleBuilders.firetruck;
+    const type = Math.random() < 0.5 && policeReady ? 'police' : rescueReady ? 'rescue' : policeReady ? 'police' : null;
+    if (type) {
+      convoy = { type, fired: false };
+    }
+  }
+  crossing = { group: crossingGroup, carTimer: 0.4, lastDir: 1, convoy };
   floorSegments.forEach(syncCrossingHouses);
+};
+
+// Einsatz-Konvoi über die Kreuzung: eine Kette gleicher Richtung mit engem
+// Abstand. Polizei jagt einen zivilen Flüchtigen (der minimal schneller ist
+// und davonzieht), der 112-Konvoi fährt geschlossen. Blaulicht an.
+const spawnCrossingConvoy = () => {
+  const dir = crossing.lastDir * -1;
+  crossing.lastDir = dir;
+  const chain = [];
+  if (crossing.convoy.type === 'police') {
+    chain.push({ key: 'car-any', tall: false, beacon: false, speed: 20 });
+    const count = 3 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < count; i += 1) {
+      chain.push({ key: 'police', tall: false, beacon: true, speed: 18 });
+    }
+  } else {
+    const ambulances = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < ambulances; i += 1) {
+      chain.push({ key: 'ambulance', tall: true, beacon: true, speed: 15 });
+    }
+    const trucks = 1 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < trucks; i += 1) {
+      chain.push({ key: 'firetruck', tall: true, beacon: true, speed: 15 });
+    }
+  }
+  chain.forEach((entry, index) => {
+    const vehicle = getObstacle(entry.tall ? 'tall' : 'low', entry.key);
+    vehicle.userData.vx = dir * entry.speed;
+    vehicle.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+    if (vehicle.userData.beams) {
+      vehicle.userData.beams.visible = true;
+    }
+    if (entry.beacon && vehicle.userData.emergencyBeacon) {
+      vehicle.userData.emergencyBeacon.visible = true;
+    }
+    vehicle.position.set(
+      -dir * (20 + index * 5.4),
+      vehicle.userData.size.h / 2 + 0.02,
+      crossing.group.position.z + dir * 1.75,
+    );
+    obstacles.push(vehicle);
+    scene.add(vehicle);
+  });
 };
 
 const clearCrossing = () => {
@@ -4760,13 +4853,21 @@ const updateCrossing = (delta) => {
   if (!crossing) return;
   crossing.group.position.z += speed.value * delta;
   const z = crossing.group.position.z;
+  // Einsatz-Konvoi: feuert einmal, wenn die Kreuzung gut sichtbar ist, und
+  // reißt eine kurze Lücke in den normalen Querverkehr ("Rettungsgasse").
+  if (crossing.convoy && !crossing.convoy.fired && z > -110) {
+    crossing.convoy.fired = true;
+    spawnCrossingConvoy();
+    crossing.carTimer = 4.5;
+  }
   // Nachschub nur, solange die Kreuzung weit genug weg ist — was näher kommt,
   // ist längst sichtbar und damit fair ausweichbar.
   if (z > -145 && z < -32) {
     crossing.carTimer -= delta;
     if (crossing.carTimer <= 0) {
       spawnCrossingCar();
-      crossing.carTimer = 0.75 + Math.random() * 0.9;
+      // 0.45–1.0 statt 0.75–1.65: spürbar dichterer Querverkehr.
+      crossing.carTimer = 0.45 + Math.random() * 0.55;
     }
   }
   if (z > 30) {
@@ -8409,10 +8510,11 @@ const updateRunner = (delta) => {
       }
     }
     // Querverkehr der Seitenstraßen: bewegt sich in X, raus aus der Szene
-    // sobald die Gegenseite erreicht ist.
+    // sobald die GEGENseite erreicht ist. Nur in Fahrtrichtung cullen —
+    // Konvoi-Ketten spawnen weit hinter der Startkante (|x| bis ~50).
     if (obstacle.userData.vx) {
       obstacle.position.x += obstacle.userData.vx * delta;
-      if (Math.abs(obstacle.position.x) > 24) {
+      if (obstacle.position.x * Math.sign(obstacle.userData.vx) > 24) {
         scene.remove(obstacle);
         const poolKey = obstacle.userData?.poolKey;
         if (poolKey) {
@@ -8635,6 +8737,12 @@ const animate = (time) => {
   // Baustellen-Blinker: ein geteiltes Material, alle Lampen takten synchron.
   if (hazardBlinkMat) {
     hazardBlinkMat.color.setHex(time % 900 < 450 ? 0xffb023 : 0x4d3410);
+  }
+  // Blaulicht: schnelles Wechselblinken der beiden Beacon-Lampen.
+  if (beaconMatA) {
+    const phase = time % 340 < 170;
+    beaconMatA.color.setHex(phase ? 0x66c8ff : 0x0c2a4a);
+    beaconMatB.color.setHex(phase ? 0x0c2a4a : 0x66c8ff);
   }
 
   if (state.value === 'running') {
