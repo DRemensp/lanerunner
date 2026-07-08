@@ -9,8 +9,11 @@ export const cameraBase = {
 // Speed jumps once per 2,500-point checkpoint (5x the old per-500 step), so
 // every checkpoint is a distinct tempo change.
 export const levelOptions = [
+  // Topspeed = base + 3·step (Tier-Cap 3): Rush 42, Night 56. Night stand
+  // seit jeher auf 74 (Step 20) — auf Daniels Wunsch auf ~55 gesenkt.
+  // MUSS synchron bleiben mit LEVELS in RunnerController (Anti-Cheat)!
   { id: 'rush', label: 'City Rush', baseSpeed: 12, stepDistance: 2500, speedStep: 10 },
-  { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 2500, speedStep: 20 },
+  { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 2500, speedStep: 14 },
 ];
 
 export const lanes = [-2, 0, 2];
