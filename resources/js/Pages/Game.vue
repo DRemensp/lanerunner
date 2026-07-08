@@ -3556,10 +3556,6 @@ const initScene = () => {
   }
 
   coinGeometry = new THREE.CylinderGeometry(0.32, 0.32, 0.09, 18);
-  // Aufrecht statt flach liegend: Zylinderachse nach Z kippen, dann liest
-  // sich die Münze frontal als Kreis und der Y-Spin wird ein Münz-Dreher —
-  // flach wirkte sie aus der Verfolgerkamera nur als schmales Oval.
-  coinGeometry.rotateX(Math.PI / 2);
   coinGeometry.rotateX(Math.PI / 2);
   coinMaterial = new THREE.MeshBasicMaterial({ color: 0xffcf4d });
 
