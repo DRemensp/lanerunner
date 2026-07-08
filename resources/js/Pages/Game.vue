@@ -729,6 +729,27 @@
           <div class="death-stat"><span>Near misses</span><strong>{{ runNearMisses }}</strong></div>
         </div>
         <div v-if="runSaveNoticeText" class="death-notice">{{ runSaveNoticeText }}</div>
+        <div class="death-missions">
+          <div
+            v-for="mission in dailyMissions"
+            :key="mission.key"
+            class="death-mission"
+            :class="{ done: missionProgress(mission) >= mission.target }"
+          >
+            <div class="death-mission-top">
+              <span class="death-mission-label">{{ mission.label }}</span>
+              <span class="death-mission-count">
+                {{ Math.min(missionProgress(mission), mission.target) }}/{{ mission.target }}
+              </span>
+            </div>
+            <div class="death-mission-bar">
+              <div
+                class="death-mission-fill"
+                :style="{ width: `${Math.min(100, (missionProgress(mission) / mission.target) * 100)}%` }"
+              ></div>
+            </div>
+          </div>
+        </div>
         <div class="death-actions">
           <button class="primary-btn" @click="startRun" type="button">Run Again</button>
           <button class="ghost-btn" @click="shareScore" type="button">{{ shareLabel }}</button>
@@ -8435,6 +8456,58 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   text-shadow: 0 0 18px rgba(255, 190, 70, 0.65);
   animation: nearMissPop 0.95s ease-out forwards;
+}
+
+.death-missions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(120, 150, 190, 0.16);
+}
+
+.death-mission-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.death-mission-label {
+  color: #9fb3d0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.death-mission-count {
+  color: #cfe2ff;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.death-mission-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(120, 150, 190, 0.18);
+  overflow: hidden;
+}
+
+.death-mission-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2fe6b2, #35b4ff);
+  transition: width 0.5s ease;
+}
+
+.death-mission.done .death-mission-label {
+  color: #2fe6b2;
+}
+
+.death-mission.done .death-mission-fill {
+  background: #2fe6b2;
 }
 
 .revive-overlay {
