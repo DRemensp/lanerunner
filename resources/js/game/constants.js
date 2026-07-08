@@ -16,7 +16,10 @@ export const levelOptions = [
 export const lanes = [-2, 0, 2];
 export const groundY = 0.7;
 export const gravity = -28;
-export const jumpVelocity = 12;
+// 11.4 statt 12: Apex ~2.32 m — komfortabel über Barrieren (1.9) und auf
+// Autodächer (1.5), aber zusammen mit dem Dachlauf-Step-Up nicht mehr hoch
+// genug, um hohe Hindernisse (2.75+) zu erklimmen.
+export const jumpVelocity = 11.4;
 export const slideScale = 0.55;
 export const slideDuration = 0.6;
 export const dropBoost = 1.6;
