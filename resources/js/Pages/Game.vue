@@ -5066,13 +5066,15 @@ const startDriveConvoy = () => {
   showEventToast('Convoy', 'Heavy loads ahead — swing wide!', 1600);
 };
 
-// Zone-2 pickup: a short coin line on one of the four drive lanes.
+// Zone-2 pickup: a coin line on one of the four drive lanes. Der Abstand
+// wächst mit dem Tempo, damit die Linie bei 100+ nicht als Klumpen vorbeizischt.
 const spawnDriveCoins = () => {
   const laneX = carLanes[Math.floor(Math.random() * carLanes.length)];
   const baseZ = -(150 + Math.min(150, speed.value * 0.9));
-  for (let k = 0; k < 6; k += 1) {
+  const gap = 3.2 + Math.min(4, speed.value * 0.04);
+  for (let k = 0; k < 8; k += 1) {
     const coin = getCoin();
-    coin.position.set(laneX, 1.0, baseZ - k * 3.2);
+    coin.position.set(laneX, 1.0, baseZ - k * gap);
     coin.rotation.y = Math.random() * Math.PI;
     coins.push(coin);
     scene.add(coin);
@@ -7736,12 +7738,14 @@ const updateRunner = (delta) => {
     driveSpawnTimer -= delta;
     if (driveSpawnTimer <= 0) {
       spawnDriveTraffic();
-      if (Math.random() < 0.28) {
+      if (Math.random() < 0.4) {
         spawnDriveCoins();
       }
+      // 22 statt 26: bei niedrigem Drive-Tempo war die vierspurige Straße
+      // fast leer (1 Fahrzeug auf 160 m).
       driveSpawnTimer = Math.max(
         0.28,
-        THREE.MathUtils.randFloat(0.7, 1.5) * (26 / Math.max(14, speed.value)),
+        THREE.MathUtils.randFloat(0.7, 1.5) * (22 / Math.max(14, speed.value)),
       );
     }
     driveEventTimer -= delta;
