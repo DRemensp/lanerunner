@@ -2898,26 +2898,38 @@ const placeCoin = (x, y, z) => {
 
 // Coin-Trails, die den Weg WEISEN statt nur herumzuliegen: meist ein Schwenk
 // aus einer Nachbar-Lane in die freie Lane der kommenden Reihe (der Blick
-// folgt den Coins zum sicheren Slot), sonst eine lange gerade Linie.
+// folgt den Coins zum sicheren Slot), sonst eine kurze gerade Linie.
 const spawnCoinTrail = (laneIndex, baseZ) => {
   const others = [0, 1, 2].filter((lane) => lane !== laneIndex);
   const fromLane = others[Math.floor(Math.random() * others.length)];
-  const swerve = Math.random() < 0.6;
-  for (let k = 0; k < 8; k += 1) {
-    // Erste 4 Coins schwenken rüber, der Rest läuft gerade durch die Reihe.
-    const t = swerve ? Math.min(1, k / 3) : 1;
-    const eased = t * t * (3 - 2 * t);
-    const x = THREE.MathUtils.lerp(lanes[fromLane], lanes[laneIndex], eased);
-    placeCoin(x, 1.0, baseZ + 8.4 - k * 2.0);
+  if (Math.random() < 0.6) {
+    // Lane-Wechsel als steiler Knick mit genau 3 Münzen: Start in der alten
+    // Lane, eine auf halbem Weg, eine in der Ziel-Lane — danach kurze Gerade.
+    placeCoin(lanes[fromLane], 1.0, baseZ + 7.5);
+    placeCoin((lanes[fromLane] + lanes[laneIndex]) / 2, 1.0, baseZ + 5.5);
+    placeCoin(lanes[laneIndex], 1.0, baseZ + 3.5);
+    for (let k = 0; k < 3; k += 1) {
+      placeCoin(lanes[laneIndex], 1.0, baseZ + 1.0 - k * 2.0);
+    }
+  } else {
+    for (let k = 0; k < 6; k += 1) {
+      placeCoin(lanes[laneIndex], 1.0, baseZ + 4.0 - k * 2.0);
+    }
   }
 };
 
 // Sprung-Köder: Bogen über ein niedriges Hindernis — wer springt, kassiert.
-const coinArcLift = [0, 1.15, 1.85, 1.15, 0];
+// Der Bogen folgt der ECHTEN Sprungparabel: die Flugzeit (~0.86s) ist fix,
+// die Sprungweite wächst also linear mit dem Tempo — feste Coin-Abstände
+// liegen ab ~Speed 15 sichtbar neben der tatsächlichen Flugbahn.
+const jumpAirtime = 0.86;
+const jumpApexLift = 1.85;
 const spawnCoinArc = (laneIndex, z) => {
-  coinArcLift.forEach((lift, i) => {
-    placeCoin(lanes[laneIndex], 1.0 + lift, z + (2 - i) * 1.7);
-  });
+  const arcSpan = speed.value * jumpAirtime;
+  for (let i = 0; i < 5; i += 1) {
+    const f = i / 4;
+    placeCoin(lanes[laneIndex], 1.0 + jumpApexLift * 4 * f * (1 - f), z + (0.5 - f) * arcSpan);
+  }
 };
 
 const clearCoins = () => {
@@ -4013,6 +4025,7 @@ const spawnRow = () => {
   }
 
   let setSpawned = false;
+  let jamSpawned = false;
   const arcLanes = [];
   pattern.forEach((type, laneIndex) => {
     if (type === 'none') return;
@@ -4026,6 +4039,7 @@ const spawnRow = () => {
     if (type === 'low' && !setSpawned && glbTraffic.car.length && Math.random() < 0.1) {
       spawnJamSet(laneIndex, baseZ);
       setSpawned = true;
+      jamSpawned = true;
       return;
     }
     const obstacle = getObstacle(type);
@@ -4043,14 +4057,16 @@ const spawnRow = () => {
   const freeLanes = pattern
     .map((type, laneIndex) => (type === 'none' ? laneIndex : -1))
     .filter((laneIndex) => laneIndex >= 0);
+  // Höchstens EIN Coin-Feature pro Reihe: Jam-Set-Coins ODER Trail ODER
+  // Sprungbogen — nie gestapelt, sonst wird es eine Münzflut.
   let coinLane = -1;
-  if (freeLanes.length && Math.random() < 0.7) {
-    coinLane = freeLanes[Math.floor(Math.random() * freeLanes.length)];
-    spawnCoinTrail(coinLane, baseZ);
-  }
-  // Zusätzlich ab und zu ein Coin-Bogen über einem springbaren Hindernis.
-  if (arcLanes.length && Math.random() < 0.35) {
-    spawnCoinArc(pickFrom(arcLanes), baseZ);
+  if (!jamSpawned) {
+    if (freeLanes.length && Math.random() < 0.7) {
+      coinLane = freeLanes[Math.floor(Math.random() * freeLanes.length)];
+      spawnCoinTrail(coinLane, baseZ);
+    } else if (arcLanes.length && Math.random() < 0.5) {
+      spawnCoinArc(pickFrom(arcLanes), baseZ);
+    }
   }
   const powerupLanes = freeLanes.filter((laneIndex) => laneIndex !== coinLane);
   if (powerupLanes.length && Math.random() < 0.08) {
@@ -4148,15 +4164,19 @@ const startCoinRush = () => {
   // A single jump arc: two arcs on the shorter trail would sit too close
   // together to land and jump again at low speeds.
   const arcCenters = [7];
-  const arcLift = [0, 1.2, 1.9, 1.2, 0];
   const snapToLane = (x) =>
     lanes.reduce((best, lane) => (Math.abs(lane - x) < Math.abs(best - x) ? lane : best), lanes[0]);
   const arcX = arcCenters.map((c) => snapToLane(Math.sin(c * 0.45) * 2));
+  // Bogen wie in spawnCoinArc entlang der echten Sprungparabel: Weite und
+  // betroffene Coins skalieren mit dem Tempo statt fester ±2-Fenster.
+  const arcSpan = speed.value * jumpAirtime;
+  const arcCoinRadius = Math.ceil(arcSpan / 2 / coinRushStep);
 
   for (let k = 0; k < count; k += 1) {
-    const arcIndex = arcCenters.findIndex((c) => Math.abs(k - c) <= 2);
+    const arcIndex = arcCenters.findIndex((c) => Math.abs(k - c) <= arcCoinRadius);
+    const f = arcIndex >= 0 ? 0.5 - ((k - arcCenters[arcIndex]) * coinRushStep) / arcSpan : 0;
     const x = arcIndex >= 0 ? arcX[arcIndex] : Math.sin(k * 0.45) * 2;
-    const lift = arcIndex >= 0 ? arcLift[k - arcCenters[arcIndex] + 2] : 0;
+    const lift = f > 0 && f < 1 ? jumpApexLift * 4 * f * (1 - f) : 0;
     const coin = getCoin();
     coin.position.set(x, 1.0 + lift, baseZ - k * coinRushStep);
     coin.rotation.y = Math.random() * Math.PI;
