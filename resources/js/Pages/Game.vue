@@ -3091,7 +3091,9 @@ const driveCharacter = (delta, running) => {
     // Freeze the stride mid-air and in the slide; lean sells the pose.
     character.actions.run.paused = isSliding || !grounded;
   }
-  character.mixer.timeScale = 0.7 + speed.value / 16;
+  // Halbiert (war 0.7 + speed/16): die Schrittfrequenz sah viel zu hektisch
+  // aus, besonders im Endgame-Tempo.
+  character.mixer.timeScale = 0.35 + speed.value / 32;
   let lean = 0.12;
   if (isSliding) {
     lean = 0.45;
