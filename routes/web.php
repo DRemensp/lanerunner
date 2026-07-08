@@ -30,7 +30,6 @@ Route::prefix('api/runner')->group(function () {
     Route::get('/profile', [RunnerController::class, 'profile']);
     Route::post('/run/start', [RunnerController::class, 'startRun']);
     Route::post('/run/end', [RunnerController::class, 'endRun']);
-    Route::post('/revive', [RunnerController::class, 'revive']);
     Route::post('/skin', [RunnerController::class, 'setSkin']);
     Route::post('/skin/buy', [RunnerController::class, 'buySkin']);
     Route::get('/leaderboard', [RunnerController::class, 'leaderboard']);

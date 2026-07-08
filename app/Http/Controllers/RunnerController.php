@@ -39,9 +39,6 @@ class RunnerController extends Controller
 
     private const DRIVE_MAX_SPEED = 160.0;
 
-    // Keep in sync with reviveCost in resources/js/Pages/Game.vue.
-    private const REVIVE_COST = 250;
-
     // Past FINALE_DISTANCE the run leaves the runner speed curve entirely:
     // zone 2 driving pays 2.4 * speed (client-capped at 80), zones 3+ stack
     // flat kill bonuses on top (drones +600, motherships +2500) plus
@@ -131,50 +128,6 @@ class RunnerController extends Controller
         return response([
             'run_id' => $profile->active_run_id,
             'started_at' => $profile->run_started_at?->toIso8601String(),
-        ]);
-    }
-
-    // One paid continue per run: the client offers it once after a zone-1
-    // crash; the wallet lives server-side, so the deduction must too. The run
-    // session stays open — duration-based anti-cheat is unaffected (a revive
-    // only ever makes the run SLOWER per meter).
-    public function revive(Request $request, RunnerProfileService $service): Response
-    {
-        $validated = $request->validate([
-            'run_id' => ['required', 'uuid'],
-        ]);
-
-        $user = $request->user();
-        if (! $user) {
-            return response([
-                'guest' => true,
-                'accepted' => false,
-            ], 401);
-        }
-
-        $profile = $service->ensureProfile($user);
-        if (! $profile->active_run_id || $validated['run_id'] !== $profile->active_run_id) {
-            return response([
-                'accepted' => false,
-                'message' => 'No active run.',
-            ], 422);
-        }
-
-        if ($profile->coins < self::REVIVE_COST) {
-            return response([
-                'accepted' => false,
-                'message' => 'Not enough coins.',
-                'coins' => $profile->coins,
-            ], 422);
-        }
-
-        $profile->coins -= self::REVIVE_COST;
-        $profile->save();
-
-        return response([
-            'accepted' => true,
-            'coins' => $profile->coins,
-            'cost' => self::REVIVE_COST,
         ]);
     }
 
