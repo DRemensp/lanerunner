@@ -8483,21 +8483,6 @@ const updateRunner = (delta) => {
       if (now < invulnUntil || now < bumpProtectUntil) {
         continue;
       }
-      // Dachlauf-Step-Up: Dachhöhen sind nicht genormt (Sedan ~1.1, SUV ~1.4)
-      // — eine Vorderkante, die weniger als 0.6 über den Füßen liegt, steigt
-      // man einfach hoch statt zu sterben. Fängt den Lauf über gemischte
-      // Reihen ab (Trampolin-Bounce greift nur im FALLEN, beim Laufen ist
-      // vy exakt 0). NUR auf Trampolin-Fahrzeugen (jam): sonst wird Sprung +
-      // Toleranz zur Kletterhilfe, mit der man hohe Statiker (2.75+) erklimmt.
-      const stepTop = obstacle.position.y + obstacle.userData.size.h / 2;
-      const stepRise = stepTop - (player.position.y - collisionPlayerHeight / 2);
-      if (!driving && obstacle.userData.jam && stepRise > 0 && stepRise < 0.6) {
-        player.position.y = stepTop + collisionPlayerHeight / 2 + 0.02;
-        currentSurfaceY = stepTop;
-        currentGroundCenter = player.position.y;
-        playerVelocityY = Math.max(0, playerVelocityY);
-        continue;
-      }
       // Side bump: the player is still travelling sideways into the target
       // lane and the obstacle sits in that lane — a frontal hit stays fatal.
       const laneX = activeLanes()[currentLane];
