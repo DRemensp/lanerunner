@@ -7745,7 +7745,10 @@ const startCrash = () => {
 
 const animate = (time) => {
   animationId = requestAnimationFrame(animate);
-  const delta = Math.min(0.05, (time - lastTime) / 1000 || 0);
+  // Clamp in BEIDE Richtungen: der erste rAF-Timestamp kann hinter lastTime
+  // liegen (anderer Zeitursprung) — negatives delta lässt damp() rückwärts
+  // extrapolieren (u.a. Musik-Duck unter 0 → volume-Exception).
+  const delta = Math.min(0.05, Math.max(0, (time - lastTime) / 1000 || 0));
   lastTime = time;
 
   if (state.value === 'running') {

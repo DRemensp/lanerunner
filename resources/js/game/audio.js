@@ -269,8 +269,11 @@ export function createAudioSystem({ state, speed }) {
     inactiveAudio = audioSecondary;
   };
 
+  // HTMLMediaElement wirft bei volume außerhalb [0,1] — immer clampen.
+  const clampVolume = (value) => Math.min(1, Math.max(0, value));
+
   const applyAudioVolume = () => {
-    const base = (isMuted.value ? 0 : audioVolume.value) * musicDuckCurrent;
+    const base = clampVolume((isMuted.value ? 0 : audioVolume.value) * musicDuckCurrent);
     if (activeAudio) {
       activeAudio.volume = base;
     }
@@ -286,7 +289,11 @@ export function createAudioSystem({ state, speed }) {
   // Called once per frame: eases the duck level toward its target.
   const updateMusicDuck = (delta) => {
     if (Math.abs(musicDuckCurrent - musicDuckTarget) > 0.005) {
-      musicDuckCurrent = MathUtils.damp(musicDuckCurrent, musicDuckTarget, 1.2, delta);
+      musicDuckCurrent = MathUtils.clamp(
+        MathUtils.damp(musicDuckCurrent, musicDuckTarget, 1.2, delta),
+        0,
+        1,
+      );
       applyAudioVolume();
     }
   };
@@ -383,11 +390,11 @@ export function createAudioSystem({ state, speed }) {
 
     const step = (now) => {
       if (token !== fadeToken) return;
-      const t = Math.min(1, (now - fadeStart) / fadeDuration);
+      const t = Math.min(1, Math.max(0, (now - fadeStart) / fadeDuration));
       if (prevAudio) {
-        prevAudio.volume = baseVolume * (1 - t);
+        prevAudio.volume = clampVolume(baseVolume * (1 - t));
       }
-      nextAudio.volume = baseVolume * t;
+      nextAudio.volume = clampVolume(baseVolume * t);
       if (t < 1) {
         requestAnimationFrame(step);
       } else {
@@ -440,6 +447,41 @@ export function createAudioSystem({ state, speed }) {
     audioUnlocked = true;
     syncPlaylist(true);
   };
+
+  // Hintergrund-Verhalten: Tab wechseln, Fenster minimieren oder die App
+  // verlassen (TWA) pausiert Musik UND den WebAudio-Kontext (Engine-Drone).
+  // Bei Rückkehr läuft die Musik nur weiter, wenn sie vorher lief und der
+  // Nutzer sie nicht selbst pausiert hat. blur/focus zusätzlich zu
+  // visibilitychange: ein alt-tabbtes Fenster bleibt "visible", soll aber
+  // trotzdem still sein.
+  let pausedByBackground = false;
+  const handleBackgroundChange = () => {
+    const inBackground = document.hidden || !document.hasFocus();
+    if (inBackground) {
+      if (activeAudio && !activeAudio.paused) {
+        pausedByBackground = true;
+      }
+      // Laufenden Crossfade abbrechen — rAF friert im Hintergrund ohnehin ein.
+      fadeToken += 1;
+      if (activeAudio) activeAudio.pause();
+      if (inactiveAudio) inactiveAudio.pause();
+      if (sfxCtx && sfxCtx.state === 'running') {
+        sfxCtx.suspend().catch(() => {});
+      }
+    } else {
+      if (sfxCtx && sfxCtx.state === 'suspended') {
+        sfxCtx.resume().catch(() => {});
+      }
+      if (pausedByBackground && activeAudio && !isPaused.value) {
+        applyAudioVolume();
+        activeAudio.play().catch(() => {});
+      }
+      pausedByBackground = false;
+    }
+  };
+  document.addEventListener('visibilitychange', handleBackgroundChange);
+  window.addEventListener('blur', handleBackgroundChange);
+  window.addEventListener('focus', handleBackgroundChange);
 
   const handleAudioButton = () => {
     unlockAudio();
@@ -511,6 +553,9 @@ export function createAudioSystem({ state, speed }) {
   // Tear-down for onBeforeUnmount: stops fades, players, and the synth.
   const disposeAudio = () => {
     fadeToken += 1;
+    document.removeEventListener('visibilitychange', handleBackgroundChange);
+    window.removeEventListener('blur', handleBackgroundChange);
+    window.removeEventListener('focus', handleBackgroundChange);
     [audioPrimary, audioSecondary].forEach((audio) => {
       if (!audio) return;
       audio.onended = null;
