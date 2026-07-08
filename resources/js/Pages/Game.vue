@@ -8587,7 +8587,11 @@ const updateRunner = (delta) => {
     // drifts briefly off-center during the move and recenters softly.
     const chaseDist = galleryCamDist * cameraZoom.value;
     const restY = playerSize.h / 2;
-    const chaseY = restY + 0.9 + Math.sin(0.35) * chaseDist;
+    // Höher sitzen (+1.6 statt +0.9) und tiefer zielen (lookAt 0.55 statt
+    // 1.1): der Läufer rückt ins untere Bilddrittel — im Sprung verdeckt er
+    // die Strecke nicht mehr, weil er von unten Richtung Mitte steigt statt
+    // von der Mitte übers ganze Bild.
+    const chaseY = restY + 1.6 + Math.sin(0.35) * chaseDist;
     const chaseZ = player.position.z + Math.cos(0.35) * chaseDist;
     // Normale Sprünge (Apex ~2.6 m bei v=12/g=-28) lassen die Kamera in Ruhe;
     // nur was darüber hinausgeht (Trampolin-Bounce vom Autodach) zieht sie
@@ -8610,7 +8614,7 @@ const updateRunner = (delta) => {
     camera.position.z = THREE.MathUtils.damp(camera.position.z, chaseZ, 8, delta);
     lookAtTarget.set(
       camera.position.x,
-      restY + 1.1 + chaseCamLift,
+      restY + 0.55 + chaseCamLift,
       player.position.z,
     );
     camera.lookAt(lookAtTarget);
