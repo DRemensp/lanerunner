@@ -4087,6 +4087,38 @@ const spawnObstacleSet = (laneIndex, baseZ) => {
   return true;
 };
 
+// Truck-Konvoi: ein Auto als "Treppe", dahinter zwei Box-Trucks — die hohe
+// Dachlauf-Route. Vom Boden ist kein Truckdach erreichbar (Sprunghöhe ~1.9,
+// Dach ~2.4+), deshalb führt der Einstieg IMMER über das Autodach.
+const spawnTruckConvoy = (laneIndex, baseZ) => {
+  const pieces = [
+    { key: 'car-any', z: 0 },
+    { key: 'truck', z: -2.9 },
+    { key: 'truck', z: -6.2 },
+  ];
+  let roofY = 0;
+  pieces.forEach((piece) => {
+    const vehicle = getObstacle(piece.key === 'truck' ? 'tall' : 'low', piece.key);
+    const size = vehicle.userData.size;
+    vehicle.userData.jam = true;
+    vehicle.rotation.y = Math.PI;
+    vehicle.position.set(lanes[laneIndex], size.h / 2 + 0.02, baseZ + piece.z);
+    roofY = Math.max(roofY, size.h + 0.02);
+    obstacles.push(vehicle);
+    scene.add(vehicle);
+  });
+  // Coins: Bogen aufs Autodach, dann entlang der Truck-Dachlinie.
+  [
+    { y: 1.2, z: 3.6 },
+    { y: 2.3, z: 1.4 },
+    { y: roofY + 1.3, z: -1.4 },
+    { y: roofY + 1.4, z: -3.8 },
+    { y: roofY + 1.3, z: -6.2 },
+  ].forEach((spot) => {
+    placeCoin(lanes[laneIndex], spot.y, baseZ + spot.z);
+  });
+};
+
 // Mini-Stau: drei Autos Stoßstange an Stoßstange mit Trampolin-Dächern (wie
 // Rush Hour) plus Coin-Spur, die aufs erste Dach und über die Dachlinie führt
 // — macht Dach-Hüpfen zur normalen Route statt zum Sonderevent.
@@ -4217,9 +4249,19 @@ const spawnRow = () => {
     // Themen-Sets statt einzelner Hindernisse: hohe Slots werden gelegentlich
     // zu Baustelle/Unfallstelle, niedrige zu einem Mini-Stau mit Trampolin-
     // Dächern. Max. ein Set pro Reihe.
-    if (type === 'tall' && !setSpawned && Math.random() < 0.25 && spawnObstacleSet(laneIndex, baseZ)) {
-      setSpawned = true;
-      return;
+    if (type === 'tall' && !setSpawned && Math.random() < 0.3) {
+      // Ein Drittel der Sets ist der Truck-Konvoi (Dachlauf-Route mit
+      // eigenen Coins), der Rest die statischen Themen-Sets.
+      if (glbTemplates.truck && glbTraffic.car.length && Math.random() < 0.35) {
+        spawnTruckConvoy(laneIndex, baseZ);
+        setSpawned = true;
+        jamSpawned = true;
+        return;
+      }
+      if (spawnObstacleSet(laneIndex, baseZ)) {
+        setSpawned = true;
+        return;
+      }
     }
     if (type === 'low' && !setSpawned && glbTraffic.car.length && Math.random() < 0.1) {
       spawnJamSet(laneIndex, baseZ);
