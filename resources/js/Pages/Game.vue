@@ -4935,11 +4935,14 @@ const spawnWaveRow = () => {
     const useTall = !trafficWave.first && Math.random() < 0.35;
     const vehicle = getObstacle(useTall ? 'tall' : 'low', useTall ? 'tall-any' : 'car-any');
     vehicle.userData.jam = true;
-    vehicle.rotation.y = Math.PI;
+    // Echte Rush Hour statt Parade: leicht schräg, quer in der Spur
+    // verschoben und individuell in z versetzt. Die Quer-Verschiebung bleibt
+    // klein genug, dass jedes Auto seine Lane für die Kollision voll abdeckt.
+    vehicle.rotation.y = Math.PI + (Math.random() - 0.5) * 0.16;
     vehicle.position.set(
-      lanes[laneIndex],
+      lanes[laneIndex] + (Math.random() - 0.5) * 0.7,
       vehicle.userData.size.h / 2 + 0.02,
-      baseZ - Math.random() * 0.15,
+      baseZ - Math.random() * 1.0,
     );
     obstacles.push(vehicle);
     scene.add(vehicle);
@@ -4949,15 +4952,17 @@ const spawnWaveRow = () => {
   if (trafficWave.rowsLeft <= 0) {
     trafficWave.endZ = baseZ;
   } else {
-    // Bumper to bumper: 2.8 units apart — even two kurze Sedans (2.7 tief)
-    // überlappen dann entlang z, die Dachfläche ist lückenlos.
-    trafficWave.rowTimer = 2.8 / speed.value;
+    // 3.2–3.8 statt 2.8: kleine Stoßstangen-Lücken, die nach Stau aussehen
+    // statt nach Blechteppich. Töten können sie nicht — Jam-Fahrzeuge
+    // schleudern bei JEDEM Frontkontakt hoch (siehe Kollisions-Loop).
+    trafficWave.rowTimer = (3.2 + Math.random() * 0.6) / speed.value;
   }
 };
 
 const startTrafficWave = () => {
   trafficWave = {
-    rowsLeft: 9 + Math.min(4, Math.floor(score.value / 3000)),
+    // 12–18 Reihen: mit dem neuen 3.2–3.8er Abstand ein 40–65 m langer Stau.
+    rowsLeft: 12 + Math.min(6, Math.floor(score.value / 2500)),
     rowTimer: 0,
     endZ: null,
     first: true,
@@ -8446,17 +8451,14 @@ const updateRunner = (delta) => {
     }
     if (obstacle.userData.decor) continue;
     if (checkCollision(obstacle, collisionPlayerHeight)) {
-      // Jam vehicles are trampolines: landing on a roof bounces the player
-      // onward instead of crashing — the intended way through rush hour.
-      // Fenster 1.25 statt 0.65: Dachhöhen sind nicht genormt (Sedan 1.1 vs
-      // SUV 1.4, Trucks ~2.6+); wer in eine Fuge oder gegen eine etwas
-      // höhere Front fällt, wird aufs Dach gezogen statt zu sterben.
-      if (
-        obstacle.userData.jam &&
-        playerVelocityY < 0 &&
-        player.position.y - collisionPlayerHeight / 2 >
-          obstacle.position.y + obstacle.userData.size.h / 2 - 1.25
-      ) {
+      // Jam-Fahrzeuge sind IMMER Trampoline: jeder Kontakt schleudert aufs
+      // Dach statt zu töten. Vorher galt ein 1.25er-Höhenfenster im Fallen —
+      // mit den versetzten Rush-Hour-Lücken konnte man aber in eine Fuge
+      // fallen, am Boden aufsetzen (vy=0) und starb an der nächsten Front,
+      // und ein zu später Absprung (steigend in die Front) tötete ebenso.
+      // Neue Regel, simpel und lesbar: Stau-Blech = todesfrei, die
+      // Herausforderung ist die Route obendrüber.
+      if (obstacle.userData.jam) {
         const roofY = obstacle.position.y + obstacle.userData.size.h / 2;
         player.position.y = roofY + collisionPlayerHeight / 2 + 0.02;
         // 1.08: der Bounce vom Autodach muss auch die höchste Truck-Front
