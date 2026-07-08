@@ -2888,14 +2888,36 @@ const getCoin = () => {
   return new THREE.Mesh(coinGeometry, coinMaterial);
 };
 
-const spawnCoinLine = (laneIndex, baseZ) => {
-  for (let k = -2; k <= 2; k += 1) {
-    const coin = getCoin();
-    coin.position.set(lanes[laneIndex], 1.0, baseZ + k * 2.0);
-    coin.rotation.y = Math.random() * Math.PI;
-    coins.push(coin);
-    scene.add(coin);
+const placeCoin = (x, y, z) => {
+  const coin = getCoin();
+  coin.position.set(x, y, z);
+  coin.rotation.y = Math.random() * Math.PI;
+  coins.push(coin);
+  scene.add(coin);
+};
+
+// Coin-Trails, die den Weg WEISEN statt nur herumzuliegen: meist ein Schwenk
+// aus einer Nachbar-Lane in die freie Lane der kommenden Reihe (der Blick
+// folgt den Coins zum sicheren Slot), sonst eine lange gerade Linie.
+const spawnCoinTrail = (laneIndex, baseZ) => {
+  const others = [0, 1, 2].filter((lane) => lane !== laneIndex);
+  const fromLane = others[Math.floor(Math.random() * others.length)];
+  const swerve = Math.random() < 0.6;
+  for (let k = 0; k < 8; k += 1) {
+    // Erste 4 Coins schwenken rüber, der Rest läuft gerade durch die Reihe.
+    const t = swerve ? Math.min(1, k / 3) : 1;
+    const eased = t * t * (3 - 2 * t);
+    const x = THREE.MathUtils.lerp(lanes[fromLane], lanes[laneIndex], eased);
+    placeCoin(x, 1.0, baseZ + 8.4 - k * 2.0);
   }
+};
+
+// Sprung-Köder: Bogen über ein niedriges Hindernis — wer springt, kassiert.
+const coinArcLift = [0, 1.15, 1.85, 1.15, 0];
+const spawnCoinArc = (laneIndex, z) => {
+  coinArcLift.forEach((lift, i) => {
+    placeCoin(lanes[laneIndex], 1.0 + lift, z + (2 - i) * 1.7);
+  });
 };
 
 const clearCoins = () => {
@@ -3671,9 +3693,41 @@ const addConstructionDressing = (group, size) => {
   sign.add(text);
   sign.position.set(0, groundY, size.d / 2 + 0.4);
   group.add(sign);
+  // Blinklampen auf den Baken (geteiltes hazard-Material pulsiert im Loop).
+  const lampGeo = track(new THREE.BoxGeometry(0.11, 0.09, 0.11));
+  [-1, 1].forEach((side) => {
+    const lamp = new THREE.Mesh(lampGeo, a.hazard);
+    lamp.position.set(side * (size.w / 2 + 0.35), groundY + 0.78, size.d / 2 + 0.2);
+    group.add(lamp);
+  });
+};
+
+// Neon-Kanten für die Schilderbrücke: Cyan-Streifen unter den Panels, Pink
+// an den Pfosten — sonst wirkt das braune Kenney-Schild nachts wie Pappe.
+const addGantryNeon = (group, size) => {
+  const cyan = track(new THREE.MeshBasicMaterial({ color: 0x35e0ff }));
+  const pink = track(new THREE.MeshBasicMaterial({ color: 0xff4fd8 }));
+  const strip = new THREE.Mesh(track(new THREE.BoxGeometry(size.w * 0.86, 0.09, 0.07)), cyan);
+  strip.position.set(0, size.h * 0.05, size.d / 2 + 0.04);
+  group.add(strip);
+  const postGeo = track(new THREE.BoxGeometry(0.07, size.h * 0.48, 0.07));
+  [-1, 1].forEach((side) => {
+    const post = new THREE.Mesh(postGeo, pink);
+    post.position.set(side * (size.w / 2 - 0.12), -size.h * 0.24, size.d / 2 + 0.04);
+    group.add(post);
+  });
 };
 
 const registerVehicleModel = (def, model) => {
+  // Neon-Pass: Kenney-Texturen leicht selbstleuchten lassen — in der dunklen
+  // Nachtszene saufen die Modelle sonst im Blauschwarz ab.
+  model.traverse((node) => {
+    if (node.isMesh && node.material && 'emissive' in node.material) {
+      node.material.emissive = new THREE.Color(0xffffff);
+      node.material.emissiveMap = node.material.map || null;
+      node.material.emissiveIntensity = 0.25;
+    }
+  });
   if (def.rotateY) {
     model.rotation.y = def.rotateY;
   }
@@ -3712,6 +3766,9 @@ const registerVehicleModel = (def, model) => {
     }
     if (def.key === 'structure-metal') {
       addConstructionDressing(mesh, size);
+    }
+    if (def.key === 'sign-highway') {
+      addGantryNeon(mesh, size);
     }
     return { mesh, size: { ...size } };
   };
@@ -3792,26 +3849,66 @@ const getObstacle = (type, forcedKey = null) => {
   return obstacle;
 };
 
-// Erster Test für handgebaute Hindernis-Sets: die Baustellen-Zone.
-// Reihenfolge aus Spielersicht: Warnleuchte, dann Planken (überspringbar),
-// dahinter das abgesperrte Gerüst mit Stop-Schild — alles in EINER Lane.
-const constructionSetPieces = [
-  { key: 'construction-light', z: 0 },
-  { key: 'resource-planks', z: -2.4 },
-  { key: 'structure-metal', z: -5.0 },
+// Handgebaute Hindernis-Sets: kleine Mini-Szenen in EINER Lane, Reihenfolge
+// aus Spielersicht (z 0 = am nächsten). rotY kippt ein Teil dekorativ an —
+// die Hitbox bleibt die achsenparallele Box des Templates.
+const obstacleSetDefs = [
+  {
+    id: 'construction',
+    pieces: [
+      { key: 'construction-light', z: 0 },
+      { key: 'resource-planks', z: -2.4 },
+      { key: 'structure-metal', z: -5.0 },
+    ],
+  },
+  {
+    id: 'accident',
+    // Unfallstelle: Pylone, quer geschleudertes Auto, Polizei dahinter.
+    pieces: [
+      { key: 'cone', z: 0 },
+      { key: 'car-any', z: -2.8, rotY: 0.55 },
+      { key: 'police', z: -5.8, rotY: -0.1 },
+    ],
+  },
 ];
 
-const constructionSetReady = () =>
-  constructionSetPieces.every((piece) => obstacleBuilders[piece.key]);
+const setPieceReady = (key) =>
+  key === 'car-any' ? glbTraffic.car.length > 0 : !!obstacleBuilders[key];
 
-const spawnConstructionSet = (laneIndex, baseZ) => {
-  constructionSetPieces.forEach((piece) => {
+const spawnObstacleSet = (laneIndex, baseZ) => {
+  const ready = obstacleSetDefs.filter((set) => set.pieces.every((p) => setPieceReady(p.key)));
+  if (!ready.length) return false;
+  const set = pickFrom(ready);
+  set.pieces.forEach((piece) => {
     const obstacle = getObstacle('tall', piece.key);
     const size = obstacle.userData.size;
-    obstacle.rotation.y = 0;
+    obstacle.rotation.y = piece.rotY || 0;
     obstacle.position.set(lanes[laneIndex], size.h / 2 + 0.02, baseZ + piece.z);
     obstacles.push(obstacle);
     scene.add(obstacle);
+  });
+  return true;
+};
+
+// Mini-Stau: drei Autos Stoßstange an Stoßstange mit Trampolin-Dächern (wie
+// Rush Hour) plus Coin-Spur, die aufs erste Dach und über die Dachlinie führt
+// — macht Dach-Hüpfen zur normalen Route statt zum Sonderevent.
+const spawnJamSet = (laneIndex, baseZ) => {
+  let roofY = 0;
+  for (let i = 0; i < 3; i += 1) {
+    const vehicle = getObstacle('low', 'car-any');
+    const size = vehicle.userData.size;
+    vehicle.userData.jam = true;
+    vehicle.rotation.y = Math.PI;
+    vehicle.position.set(lanes[laneIndex], size.h / 2 + 0.02, baseZ - i * 2.8);
+    roofY = Math.max(roofY, size.h + 0.02);
+    obstacles.push(vehicle);
+    scene.add(vehicle);
+  }
+  // Anlauf-Bogen aufs erste Dach, dann Coins über der Dachlinie.
+  const trailY = [1.1, 2.0, roofY + 1.5, roofY + 1.6, roofY + 1.5];
+  trailY.forEach((y, i) => {
+    placeCoin(lanes[laneIndex], y, baseZ + 3.6 - i * 2.4);
   });
 };
 
@@ -3916,12 +4013,18 @@ const spawnRow = () => {
   }
 
   let setSpawned = false;
+  const arcLanes = [];
   pattern.forEach((type, laneIndex) => {
     if (type === 'none') return;
-    // Baustellen-Set statt einzelnem hohen Hindernis: Warnleuchte →
-    // Planken → Gerüst hintereinander in derselben Lane. Max. eins pro Reihe.
-    if (type === 'tall' && !setSpawned && constructionSetReady() && Math.random() < 0.22) {
-      spawnConstructionSet(laneIndex, baseZ);
+    // Themen-Sets statt einzelner Hindernisse: hohe Slots werden gelegentlich
+    // zu Baustelle/Unfallstelle, niedrige zu einem Mini-Stau mit Trampolin-
+    // Dächern. Max. ein Set pro Reihe.
+    if (type === 'tall' && !setSpawned && Math.random() < 0.25 && spawnObstacleSet(laneIndex, baseZ)) {
+      setSpawned = true;
+      return;
+    }
+    if (type === 'low' && !setSpawned && glbTraffic.car.length && Math.random() < 0.1) {
+      spawnJamSet(laneIndex, baseZ);
       setSpawned = true;
       return;
     }
@@ -3932,15 +4035,22 @@ const spawnRow = () => {
     obstacle.position.set(lanes[laneIndex], y, baseZ);
     obstacles.push(obstacle);
     scene.add(obstacle);
+    if (type === 'low') {
+      arcLanes.push(laneIndex);
+    }
   });
 
   const freeLanes = pattern
     .map((type, laneIndex) => (type === 'none' ? laneIndex : -1))
     .filter((laneIndex) => laneIndex >= 0);
   let coinLane = -1;
-  if (freeLanes.length && Math.random() < 0.55) {
+  if (freeLanes.length && Math.random() < 0.7) {
     coinLane = freeLanes[Math.floor(Math.random() * freeLanes.length)];
-    spawnCoinLine(coinLane, baseZ);
+    spawnCoinTrail(coinLane, baseZ);
+  }
+  // Zusätzlich ab und zu ein Coin-Bogen über einem springbaren Hindernis.
+  if (arcLanes.length && Math.random() < 0.35) {
+    spawnCoinArc(pickFrom(arcLanes), baseZ);
   }
   const powerupLanes = freeLanes.filter((laneIndex) => laneIndex !== coinLane);
   if (powerupLanes.length && Math.random() < 0.08) {
@@ -3973,7 +4083,7 @@ const spawnWaveRow = () => {
     vehicle.position.set(
       lanes[laneIndex],
       vehicle.userData.size.h / 2 + 0.02,
-      baseZ - Math.random() * 0.3,
+      baseZ - Math.random() * 0.15,
     );
     obstacles.push(vehicle);
     scene.add(vehicle);
@@ -3991,15 +4101,15 @@ const spawnWaveRow = () => {
   if (trafficWave.rowsLeft <= 0) {
     trafficWave.endZ = baseZ;
   } else {
-    // Bumper to bumper: 3.2 units apart — collision boxes overlap along z,
-    // so the roof-bounce surface is continuous and you can't fall through.
-    trafficWave.rowTimer = 3.2 / speed.value;
+    // Bumper to bumper: 2.8 units apart — even two kurze Sedans (2.7 tief)
+    // überlappen dann entlang z, die Dachfläche ist lückenlos.
+    trafficWave.rowTimer = 2.8 / speed.value;
   }
 };
 
 const startTrafficWave = () => {
   trafficWave = {
-    rowsLeft: 7 + Math.min(3, Math.floor(score.value / 3000)),
+    rowsLeft: 9 + Math.min(4, Math.floor(score.value / 3000)),
     rowTimer: 0,
     endZ: null,
     first: true,
@@ -4089,11 +4199,11 @@ const startDriftCar = () => {
 
 const startRandomEvent = () => {
   const roll = Math.random();
-  if (roll < 0.34) {
+  if (roll < 0.42) {
     startTrafficWave();
-  } else if (roll < 0.6) {
+  } else if (roll < 0.62) {
     startWrongWayDriver();
-  } else if (roll < 0.82) {
+  } else if (roll < 0.84) {
     startCoinRush();
   } else {
     startDriftCar();
@@ -4107,8 +4217,9 @@ const eventSpawnHoldActive = () => {
   // speed step has been applied.
   if (checkpointPending) return true;
   // Speed-scaled margin: the landing arc after the final roof bounce must
-  // never come down on a freshly spawned row.
-  const spawnDepth = -(70 + Math.min(45, speed.value)) + 6 + speed.value * 0.45;
+  // never come down on a freshly spawned row. (0.6: Bounce ist jetzt 1.08x
+  // jumpVelocity statt 0.95x, der Bogen fliegt entsprechend weiter.)
+  const spawnDepth = -(70 + Math.min(45, speed.value)) + 6 + speed.value * 0.6;
   if (
     trafficWave &&
     (trafficWave.rowsLeft > 0 ||
@@ -7127,9 +7238,12 @@ const updateRunner = (delta) => {
     }
   } else {
     score.value += speed.value * delta * 2.4 * scoreMult;
-    // Speed follows the APPLIED tier (raised only after the checkpoint
-    // breather cleared the road), never raw score.
-    const targetSpeed = level.baseSpeed + speedTier * level.speedStep;
+    // Stufenlose Beschleunigung statt Treppenstufen alle 2500: exakt die
+    // Kurve, die das Anti-Cheat serverseitig modelliert (minPlausibleDuration
+    // löst d'(t) = 2.4·(base + d/2500·step); expectedSpeed spiegelt min(3, …)).
+    // Checkpoints/Districts alle 2500 bleiben als Events bestehen.
+    const targetSpeed =
+      level.baseSpeed + Math.min(3, score.value / level.stepDistance) * level.speedStep;
     speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, 4, delta);
     if (!finaleTriggered && score.value >= FINALE_SCORE) {
       triggerFinale();
@@ -7274,6 +7388,13 @@ const updateRunner = (delta) => {
     });
   }
 
+  // Warnlampen-Blinken: ein geteiltes Material, alle Baustellen-Lampen
+  // pulsieren synchron — ein Farbwert pro Frame, praktisch gratis.
+  if (obstacleAssets) {
+    const blink = 0.55 + 0.45 * Math.sin(performance.now() * 0.008);
+    obstacleAssets.hazard.color.setRGB(blink, 0.63 * blink, 0.18 * blink);
+  }
+
   for (let i = coins.length - 1; i >= 0; i -= 1) {
     const coin = coins[i];
     coin.position.z += speed.value * delta;
@@ -7373,9 +7494,10 @@ const updateRunner = (delta) => {
         // IS the real time between obstacles reaching the player.
         // Cadence follows the applied tier, in lockstep with the speed.
         // Floor stays above a full jump chain (0.86s airtime + reaction):
-        // tier 0 never dips below 1.1s between arrivals.
+        // tier 0 never dips below 1.05s between arrivals. (Vorher 1.1-1.45 —
+        // leicht dichter für weniger leeren Asphalt, Floor bleibt drüber.)
         const baseGap = [1.0, 0.85, 0.75, 0.65][speedTier];
-        spawnTimer = THREE.MathUtils.randFloat(1.1, 1.45) * baseGap;
+        spawnTimer = THREE.MathUtils.randFloat(1.05, 1.35) * baseGap;
       }
     } else {
       spawnTimer = Math.max(spawnTimer, 0.7);
@@ -7441,15 +7563,20 @@ const updateRunner = (delta) => {
     if (checkCollision(obstacle, collisionPlayerHeight)) {
       // Jam vehicles are trampolines: landing on a roof bounces the player
       // onward instead of crashing — the intended way through rush hour.
+      // Fenster 1.25 statt 0.65: Dachhöhen sind nicht genormt (Sedan 1.1 vs
+      // SUV 1.4, Trucks ~2.6+); wer in eine Fuge oder gegen eine etwas
+      // höhere Front fällt, wird aufs Dach gezogen statt zu sterben.
       if (
         obstacle.userData.jam &&
         playerVelocityY < 0 &&
         player.position.y - collisionPlayerHeight / 2 >
-          obstacle.position.y + obstacle.userData.size.h / 2 - 0.65
+          obstacle.position.y + obstacle.userData.size.h / 2 - 1.25
       ) {
         const roofY = obstacle.position.y + obstacle.userData.size.h / 2;
         player.position.y = roofY + collisionPlayerHeight / 2 + 0.02;
-        playerVelocityY = jumpVelocity * 0.95;
+        // 1.08: der Bounce vom Autodach muss auch die höchste Truck-Front
+        // (~2.9) sicher übersteigen, sonst stirbt man am Car→Truck-Übergang.
+        playerVelocityY = jumpVelocity * 1.08;
         score.value += 20;
         sfx.land();
         vibrate(12);

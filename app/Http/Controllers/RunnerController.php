@@ -30,11 +30,13 @@ class RunnerController extends Controller
     ];
 
     private const STEP_DISTANCE = 2500;
+
     private const SCORE_MULTIPLIER = 2.4;
 
     // Past this distance the run switches to zone 2 (driving), which allows
     // speeds up to 160 and its own score pacing.
     private const FINALE_DISTANCE = 10000;
+
     private const DRIVE_MAX_SPEED = 160.0;
 
     // Past FINALE_DISTANCE the run leaves the runner speed curve entirely:
@@ -59,7 +61,7 @@ class RunnerController extends Controller
         ]);
 
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             return response([
                 'guest' => true,
                 'skins' => $skins,
@@ -111,7 +113,7 @@ class RunnerController extends Controller
         ]);
 
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             return response([
                 'guest' => true,
             ]);
@@ -139,7 +141,7 @@ class RunnerController extends Controller
         ]);
 
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             return response([
                 'guest' => true,
                 'accepted' => false,
@@ -156,7 +158,7 @@ class RunnerController extends Controller
         $cheatReasons = [];
         $runId = $validated['run_id'] ?? null;
 
-        if (!$profile->active_run_id || !$profile->run_started_at || !$runId) {
+        if (! $profile->active_run_id || ! $profile->run_started_at || ! $runId) {
             // No run session (e.g. network hiccup on start): the run does not
             // count for records, but the player is not marked suspicious.
         } elseif ($runId !== $profile->active_run_id) {
@@ -181,8 +183,10 @@ class RunnerController extends Controller
                 $verified = false;
             }
 
+            // Mirrors the client's continuous ramp: base + min(3, d/2500) * step
+            // (Game.vue targetSpeed). Tier cap 3 == the old top tier.
             $expectedSpeed = $level['base_speed']
-                + (int) floor($distance / self::STEP_DISTANCE) * $level['speed_step'];
+                + min(3.0, $distance / self::STEP_DISTANCE) * $level['speed_step'];
             if ($distance >= self::FINALE_DISTANCE) {
                 $expectedSpeed = max($expectedSpeed, self::DRIVE_MAX_SPEED);
             }
@@ -206,14 +210,14 @@ class RunnerController extends Controller
                 $profile->best_speed = $maxSpeed;
             }
 
-            // Coins spawn in lines of 5 roughly every other obstacle row, which
-            // works out to well under distance/6; anything above that is fake.
-            $coinsCap = (int) floor($distance / 6) + 10;
+            // Coins spawn as trails of up to ~8 per row plus jump arcs and
+            // jam-roof lines; a perfect line hugger stays under distance/2.
+            $coinsCap = (int) floor($distance / 2) + 25;
             $coinsEarned = min((int) ($validated['coins'] ?? 0), $coinsCap);
             $profile->coins += $coinsEarned;
         }
 
-        if (!empty($cheatReasons)) {
+        if (! empty($cheatReasons)) {
             $profile->integrity_flags += 1;
             $profile->suspicious = true;
             $profile->suspicious_at = now();
@@ -245,7 +249,7 @@ class RunnerController extends Controller
         ]);
 
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             return response([
                 'guest' => true,
                 'message' => 'Login required.',
@@ -256,7 +260,7 @@ class RunnerController extends Controller
         $skin = \App\Models\Skin::findOrFail((int) $validated['skin_id']);
 
         $alreadyOwned = $user->skins()->where('skins.id', $skin->id)->exists();
-        if (!$alreadyOwned) {
+        if (! $alreadyOwned) {
             if ($profile->coins < $skin->price_coins) {
                 return response([
                     'message' => 'Not enough coins.',
@@ -282,7 +286,7 @@ class RunnerController extends Controller
         ]);
 
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             return response([
                 'guest' => true,
                 'message' => 'Login required.',
@@ -293,7 +297,7 @@ class RunnerController extends Controller
         $skinId = (int) $validated['skin_id'];
 
         $ownsSkin = $user->skins()->where('skins.id', $skinId)->exists();
-        if (!$ownsSkin) {
+        if (! $ownsSkin) {
             return response([
                 'message' => 'Skin not unlocked.',
             ], 403);
@@ -319,7 +323,7 @@ class RunnerController extends Controller
         ]);
 
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             return response(['message' => 'Login required.'], 401);
         }
 
