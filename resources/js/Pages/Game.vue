@@ -3533,8 +3533,6 @@ const getObstacleAssets = () => {
       emissiveIntensity: glow,
     }));
   obstacleAssets = {
-    wood: lambert(0x9a6632),
-    woodDark: lambert(0x6b4420),
     barrel: lambert(0xd23a4f, 0.3),
     ring: lambert(0x39404f),
     carBody: lambert(0xd7404f, 0.25),
@@ -3570,18 +3568,6 @@ const getObstacleAssets = () => {
 // Every variant is centered on its origin so the existing collision math
 // (position = center, userData.size = box extents) keeps working.
 const obstacleBuilders = {
-  'low-crate': () => {
-    const a = getObstacleAssets();
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(track(new THREE.BoxGeometry(1.15, 1.15, 1.15)), a.wood));
-    const plankGeo = track(new THREE.BoxGeometry(1.21, 0.16, 1.21));
-    const plankH = new THREE.Mesh(plankGeo, a.woodDark);
-    g.add(plankH);
-    const plankV = new THREE.Mesh(plankGeo, a.woodDark);
-    plankV.rotation.z = Math.PI / 2;
-    g.add(plankV);
-    return { mesh: g, size: { w: 1.15, h: 1.15, d: 1.15 } };
-  },
   'low-barrel': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -3682,9 +3668,11 @@ const obstacleBuilders = {
   },
 };
 
+// Kisten/Kartons bewusst NICHT im Pool: passen optisch nicht auf die Straße.
+// 'tall-stack' existiert nur noch als Fallback, solange die GLBs laden.
 const obstacleVariants = {
-  low: ['low-crate', 'low-barrel', 'car-any'],
-  tall: ['tall-stack', 'tall-any'],
+  low: ['low-barrel', 'car-any'],
+  tall: ['tall-any'],
   over: ['over-barrier'],
 };
 
@@ -3706,7 +3694,6 @@ const glbVehicleDefs = [
   { key: 'firetruck', kind: 'tall', fitLength: 4.3 },
   { key: 'garbage-truck', kind: 'tall', fitLength: 3.9 },
   { key: 'cone', kind: 'prop', fitHeight: 1.05 },
-  { key: 'box', kind: 'prop', fitHeight: 1.1 },
   // Baustellenfahrzeuge (Kenney Car Kit, CC0)
   { key: 'tractor', kind: 'tall', fitLength: 3.1 },
   { key: 'tractor-shovel', kind: 'tall', fitLength: 3.5 },
@@ -3717,7 +3704,6 @@ const glbVehicleDefs = [
   // 'decor' = reine Deko ohne Kollision (Schilderbrücke über der Straße).
   { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, dir: 'obstacles/roads' },
   { key: 'resource-planks', kind: 'set-piece', fitHeight: 0.6, dir: 'obstacles/survival' },
-  { key: 'box-large', kind: 'prop', fitHeight: 1.2, dir: 'obstacles/survival' },
   { key: 'construction-light', kind: 'set-piece', fitHeight: 2.7, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
   { key: 'structure-metal', kind: 'set-piece', fitHeight: 2.8, scaleX: 0.6, dir: 'obstacles/survival' },
   { key: 'sign-highway', kind: 'decor', fitWidth: 9, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
