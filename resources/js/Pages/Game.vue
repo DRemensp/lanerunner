@@ -729,6 +729,9 @@
           <div class="death-stat"><span>Near misses</span><strong>{{ runNearMisses }}</strong></div>
         </div>
         <div v-if="runSaveNoticeText" class="death-notice">{{ runSaveNoticeText }}</div>
+        <Link v-if="!authUser" class="death-guest-hint" href="/login">
+          Playing as guest — sign in to keep coins, climb ranks &amp; unlock revives
+        </Link>
         <div class="death-missions">
           <div
             v-for="mission in dailyMissions"
@@ -8472,6 +8475,20 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   text-shadow: 0 0 18px rgba(255, 190, 70, 0.65);
   animation: nearMissPop 0.95s ease-out forwards;
+}
+
+.death-guest-hint {
+  display: block;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(53, 224, 255, 0.35);
+  background: rgba(53, 224, 255, 0.08);
+  color: #7fd8f2;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  text-decoration: none;
 }
 
 .death-missions {
