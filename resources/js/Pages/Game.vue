@@ -876,6 +876,10 @@ let bumpToastTimer;
 let lastBumpAt = -Infinity;
 let bumpProtectUntil = 0;
 let bumpShakeTimer = 0;
+// Sanfter Kamera-Hub für Trampolin-Bounces: bleibt 0 bei normalen Sprüngen,
+// hebt die Chase-Cam nur an, wenn der Spieler höher als ein normaler Sprung
+// steigt (sonst fliegt er beim Dach-Bounce oben aus dem Bild).
+let chaseCamLift = 0;
 let laneOrigin = 1;
 
 // Zone-1 event director: periodically breaks up the random rows with scripted
@@ -1725,6 +1729,7 @@ const resetRun = () => {
   lastBumpAt = -Infinity;
   bumpProtectUntil = 0;
   bumpShakeTimer = 0;
+  chaseCamLift = 0;
   laneOrigin = 1;
   bumpToast.value = false;
   nearMissCombo.value = 0;
@@ -4971,21 +4976,6 @@ const startDriveConvoy = () => {
   showEventToast('Convoy', 'Heavy loads ahead — swing wide!', 1600);
 };
 
-// Zone-2 pickup: a coin line on one of the four drive lanes. Der Abstand
-// wächst mit dem Tempo, damit die Linie bei 100+ nicht als Klumpen vorbeizischt.
-const spawnDriveCoins = () => {
-  const laneX = carLanes[Math.floor(Math.random() * carLanes.length)];
-  const baseZ = -(150 + Math.min(150, speed.value * 0.9));
-  const gap = 3.2 + Math.min(4, speed.value * 0.04);
-  for (let k = 0; k < 8; k += 1) {
-    const coin = getCoin();
-    coin.position.set(laneX, 1.0, baseZ - k * gap);
-    coin.rotation.y = Math.random() * Math.PI;
-    coins.push(coin);
-    scene.add(coin);
-  }
-};
-
 const emitFireTrail = () => {
   const keys = ['flame', 'gold', 'red'];
   for (let i = 0; i < 3; i += 1) {
@@ -7649,9 +7639,6 @@ const updateRunner = (delta) => {
     driveSpawnTimer -= delta;
     if (driveSpawnTimer <= 0) {
       spawnDriveTraffic();
-      if (Math.random() < 0.4) {
-        spawnDriveCoins();
-      }
       // 22 statt 26: bei niedrigem Drive-Tempo war die vierspurige Straße
       // fast leer (1 Fahrzeug auf 160 m).
       driveSpawnTimer = Math.max(
@@ -7878,17 +7865,28 @@ const updateRunner = (delta) => {
     const restY = playerSize.h / 2;
     const chaseY = restY + 0.9 + Math.sin(0.35) * chaseDist;
     const chaseZ = player.position.z + Math.cos(0.35) * chaseDist;
+    // Normale Sprünge (Apex ~2.6 m bei v=12/g=-28) lassen die Kamera in Ruhe;
+    // nur was darüber hinausgeht (Trampolin-Bounce vom Autodach) zieht sie
+    // langsam mit hoch. Cam UND lookAt heben gleich viel — die Ansicht gleitet
+    // nach oben, ohne zu kippen, und sinkt nach der Landung wieder zurück.
+    const excessY = Math.max(0, player.position.y - restY - 2.6);
+    chaseCamLift = THREE.MathUtils.damp(chaseCamLift, excessY, 4, delta);
     camera.position.x = THREE.MathUtils.damp(
       camera.position.x,
       player.position.x,
       5,
       delta,
     );
-    camera.position.y = THREE.MathUtils.damp(camera.position.y, chaseY, 8, delta);
+    camera.position.y = THREE.MathUtils.damp(
+      camera.position.y,
+      chaseY + chaseCamLift,
+      8,
+      delta,
+    );
     camera.position.z = THREE.MathUtils.damp(camera.position.z, chaseZ, 8, delta);
     lookAtTarget.set(
       camera.position.x,
-      restY + 1.1,
+      restY + 1.1 + chaseCamLift,
       player.position.z,
     );
     camera.lookAt(lookAtTarget);
