@@ -1779,6 +1779,7 @@ const resetRun = () => {
   clearCrossing();
   crossingDistIn = 320 + Math.random() * 200;
   clearPowerups();
+  resetPlayerFade();
   resetFloor();
 };
 
@@ -2517,6 +2518,14 @@ const buildCivilian = () => {
     const template = characterTemplates[pick(humans)];
     const civ = new THREE.Group();
     const root = cloneSkeleton(template.scene);
+    // Eigene Material-Kopien: der Spieler nutzt DASSELBE Template und blendet
+    // seine Materialien im Sprung transparent — geteilte Referenzen würden
+    // die Passanten mit-ausblenden.
+    root.traverse((node) => {
+      if (node.isMesh && node.material && !Array.isArray(node.material)) {
+        node.material = node.material.clone();
+      }
+    });
     const height = 1.15 + Math.random() * 0.2;
     const scale = height / template.rawHeight;
     root.scale.setScalar(scale);
@@ -2999,6 +3008,8 @@ const characterKeyForSkin = (skin) => {
 
 const removeActiveCharacter = () => {
   if (!activeCharacter) return;
+  resetPlayerFade();
+  playerFadeKey = null;
   activeCharacter.mixer.stopAllAction();
   player.remove(activeCharacter.root);
   activeCharacter = null;
@@ -5324,6 +5335,7 @@ const startDriving = () => {
   clearObstacles();
   clearCoins();
   clearPowerups();
+  resetPlayerFade();
   setRoadZone(2);
   setMusicDuck(0.6);
   sfx.engineStart();
@@ -7761,6 +7773,52 @@ const updatePlane = (delta) => {
 
 // Floating-Joystick: die Mitte ist der Punkt des ersten Touches, nicht eine
 // feste Position — man greift nie daneben.
+// Sprung-Transparenz: im Flug wird der Charakter bis zu 60% durchsichtig,
+// damit er die Sicht auf die Strecke nicht blockiert. Materialliste wird pro
+// aktivem Skin einmal eingesammelt (GLB-Charakter oder Prozedural-Teile).
+let playerFadeMats = [];
+let playerFadeKey = null;
+let playerFade = 0;
+
+const collectPlayerFadeMats = () => {
+  const key = activeCharacter ? activeCharacter.key : 'procedural';
+  if (playerFadeKey === key && playerFadeMats.length) return playerFadeMats;
+  playerFadeKey = key;
+  playerFadeMats = [];
+  const register = (node) => {
+    if (node.isMesh && node.material && !Array.isArray(node.material)) {
+      playerFadeMats.push(node.material);
+    }
+  };
+  if (activeCharacter) {
+    activeCharacter.root.traverse(register);
+  } else {
+    proceduralParts.forEach((part) => part.traverse(register));
+  }
+  return playerFadeMats;
+};
+
+const resetPlayerFade = () => {
+  playerFade = 0;
+  playerFadeMats.forEach((mat) => {
+    mat.opacity = 1;
+    mat.transparent = false;
+  });
+};
+
+const applyPlayerFade = (delta) => {
+  // Höhe über der aktuellen Lauffläche (Boden ODER Dach) — nur echtes
+  // Abheben blendet aus, Dachlauf selbst bleibt voll sichtbar.
+  const above = player.position.y - currentGroundCenter;
+  const target = THREE.MathUtils.clamp((above - 0.35) / 0.5, 0, 1);
+  playerFade = THREE.MathUtils.damp(playerFade, target, 12, delta);
+  const opacity = 1 - playerFade * 0.6;
+  collectPlayerFadeMats().forEach((mat) => {
+    mat.transparent = opacity < 0.999;
+    mat.opacity = opacity;
+  });
+};
+
 const joyStart = (event) => {
   joyPointerId = event.pointerId;
   joyBase.value = { x: event.clientX, y: event.clientY };
@@ -8204,6 +8262,7 @@ const updateRunner = (delta) => {
       }
     }
 
+    applyPlayerFade(delta);
     animateRunner(delta);
   }
 
@@ -8587,11 +8646,7 @@ const updateRunner = (delta) => {
     // drifts briefly off-center during the move and recenters softly.
     const chaseDist = galleryCamDist * cameraZoom.value;
     const restY = playerSize.h / 2;
-    // Höher sitzen (+1.6 statt +0.9) und tiefer zielen (lookAt 0.55 statt
-    // 1.1): der Läufer rückt ins untere Bilddrittel — im Sprung verdeckt er
-    // die Strecke nicht mehr, weil er von unten Richtung Mitte steigt statt
-    // von der Mitte übers ganze Bild.
-    const chaseY = restY + 1.6 + Math.sin(0.35) * chaseDist;
+    const chaseY = restY + 0.9 + Math.sin(0.35) * chaseDist;
     const chaseZ = player.position.z + Math.cos(0.35) * chaseDist;
     // Normale Sprünge (Apex ~2.6 m bei v=12/g=-28) lassen die Kamera in Ruhe;
     // nur was darüber hinausgeht (Trampolin-Bounce vom Autodach) zieht sie
@@ -8614,7 +8669,7 @@ const updateRunner = (delta) => {
     camera.position.z = THREE.MathUtils.damp(camera.position.z, chaseZ, 8, delta);
     lookAtTarget.set(
       camera.position.x,
-      restY + 0.55 + chaseCamLift,
+      restY + 1.1 + chaseCamLift,
       player.position.z,
     );
     camera.lookAt(lookAtTarget);
