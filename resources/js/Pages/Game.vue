@@ -8174,6 +8174,12 @@ const handleVisibility = () => {
   }
 };
 
+// Alt-Tab pausiert auch: ein unfokussiertes Fenster bleibt "visible", aber
+// rAF läuft weiter — ohne Auto-Pause rennt der Läufer in den Tod.
+const handleWindowBlur = () => {
+  pauseRun();
+};
+
 onMounted(() => {
   loadAudioPrefs();
   loadLevelPref();
@@ -8183,6 +8189,7 @@ onMounted(() => {
   pointerUnlockHandler = () => unlockAudio();
   window.addEventListener('pointerdown', pointerUnlockHandler, { once: true });
   document.addEventListener('visibilitychange', handleVisibility);
+  window.addEventListener('blur', handleWindowBlur);
   initScene();
   loadVehicleModels();
   loadCharacterModels();
@@ -8209,6 +8216,7 @@ onBeforeUnmount(() => {
   }
   disposeAudio();
   document.removeEventListener('visibilitychange', handleVisibility);
+  window.removeEventListener('blur', handleWindowBlur);
   window.removeEventListener('resize', handleResize);
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('keyup', handleKeyup);

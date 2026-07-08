@@ -1,6 +1,8 @@
 /* Lane Runner service worker: network-first pages with an offline fallback,
    cache-first for immutable build assets, models, and audio. */
-const CACHE_NAME = 'lanerunner-v2';
+// v3: obstacle models moved into roads/survival subfolders (+ two removed) —
+// bump clears stale cached GLBs from every installed client.
+const CACHE_NAME = 'lanerunner-v3';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
