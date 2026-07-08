@@ -3682,7 +3682,11 @@ const glbVehicleDefs = [
   { key: 'sedan', kind: 'car', fitLength: 2.7 },
   { key: 'sedan-sports', kind: 'car', fitLength: 2.9 },
   { key: 'hatchback-sports', kind: 'car', fitLength: 2.65 },
-  { key: 'race', kind: 'car', fitLength: 2.75 },
+  // 'drive-car': nur Zone-2-Verkehr. Das Formel-Dach ist so flach (~0.7),
+  // dass der Step-Up (0.6) den Übergang zum nächsten normalen Dach nicht
+  // schafft — in Zone 1 (Dachlauf) wäre es eine Todesfalle. Als Spieler-Skin
+  // (car-race) läuft es weiter über glbTemplates.
+  { key: 'race', kind: 'drive-car', fitLength: 2.75 },
   { key: 'taxi', kind: 'car', fitLength: 2.7 },
   { key: 'police', kind: 'car', fitLength: 3.2 },
   { key: 'suv', kind: 'car', fitLength: 2.7 },
@@ -3710,7 +3714,7 @@ const glbVehicleDefs = [
 ];
 
 const glbTemplates = {};
-const glbTraffic = { car: [], tall: [] };
+const glbTraffic = { car: [], tall: [], drive: [] };
 
 const addVehicleLights = (group, size) => {
   const assets = getObstacleAssets();
@@ -3841,7 +3845,7 @@ const registerVehicleModel = (def, model) => {
       }
     });
     mesh.userData.wheels = wheels;
-    if (def.kind === 'car' || def.kind === 'tall') {
+    if (def.kind === 'car' || def.kind === 'tall' || def.kind === 'drive-car') {
       addVehicleLights(mesh, size);
     }
     if (def.key === 'structure-metal') {
@@ -3857,6 +3861,8 @@ const registerVehicleModel = (def, model) => {
     glbTraffic.car.push(def.key);
   } else if (def.kind === 'tall') {
     glbTraffic.tall.push(def.key);
+  } else if (def.kind === 'drive-car') {
+    glbTraffic.drive.push(def.key);
   } else if (def.kind === 'set-piece' || def.kind === 'decor') {
     // Nicht in die normalen Spawn-Pools: Set-Teile kommen nur über
     // spawnConstructionSet, Deko nur über spawnSignGantry.
@@ -3888,6 +3894,11 @@ const pickFrom = (list) => list[Math.floor(Math.random() * list.length)];
 const resolveVariantKey = (key) => {
   if (key === 'car-any') {
     return glbTraffic.car.length ? pickFrom(glbTraffic.car) : 'low-car';
+  }
+  if (key === 'drive-car-any') {
+    // Zone-2-Verkehr: normale Autos plus die Drive-only-Modelle (race).
+    const pool = [...glbTraffic.car, ...glbTraffic.drive];
+    return pool.length ? pickFrom(pool) : 'low-car';
   }
   if (key === 'tall-any') {
     return glbTraffic.tall.length ? pickFrom(glbTraffic.tall) : 'tall-stack';
@@ -4770,7 +4781,7 @@ const spawnDriveTraffic = () => {
   const lanePair = oncoming ? [0, 1] : [2, 3];
   const laneIndex = lanePair[Math.floor(Math.random() * lanePair.length)];
   const isTruck = Math.random() < 0.12;
-  const vehicle = getObstacle(isTruck ? 'tall' : 'low', isTruck ? 'tall-any' : 'car-any');
+  const vehicle = getObstacle(isTruck ? 'tall' : 'low', isTruck ? 'tall-any' : 'drive-car-any');
   const ownSpeed = oncoming ? 10 + Math.random() * 12 : 8 + Math.random() * 10;
   vehicle.userData.vz = oncoming ? ownSpeed : -ownSpeed;
   vehicle.rotation.y = oncoming ? 0 : Math.PI;
@@ -4791,7 +4802,7 @@ const spawnDriveTraffic = () => {
 const startDriveOvertaker = () => {
   const laneChoices = [0, 1, 2, 3].filter((index) => index !== currentLane);
   const laneIndex = laneChoices[Math.floor(Math.random() * laneChoices.length)];
-  const vehicle = getObstacle('low', 'car-any');
+  const vehicle = getObstacle('low', 'drive-car-any');
   // Own speed beats the world scroll, so it pulls away toward the horizon.
   vehicle.userData.vz = -(speed.value + 16 + Math.random() * 12);
   vehicle.rotation.y = Math.PI;
