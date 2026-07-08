@@ -8113,6 +8113,12 @@ const animate = (time) => {
     updateShootingStars(delta);
   }
 
+  // Wind-Streaks leben nur im Lauf: nach Tod/Quit bei hohem Tempo würden sie
+  // sonst eingefroren über Death-Screen oder Menü hängen bleiben.
+  if (windStreakMat && state.value !== 'running' && windStreakMat.opacity > 0) {
+    windStreakMat.opacity = Math.max(0, windStreakMat.opacity - delta * 2);
+  }
+
   updateMusicDuck(delta);
 
   lerpEnvironment(delta);
