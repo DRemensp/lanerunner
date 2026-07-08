@@ -1110,6 +1110,7 @@ const applyDistrict = (index) => {
   envSettings.night.bg = district.bg;
   envSettings.night.fog = district.fog;
   envSettings.night.hemiSky = district.hemiSky;
+  envSettings.night.edge = district.edge;
 };
 const tmpEnvColor = new THREE.Color();
 const finalePhase = ref('none'); // none | approach | walk | enter | drive
@@ -2473,6 +2474,8 @@ let houseAssets = null;
 // Speed (unter ~15 unsichtbar), ein geteiltes Material für alle Striche.
 let windStreaks = null;
 let windStreakMat = null;
+// Geteiltes Material der Neon-Straßenkanten — Farbe wandert pro District mit.
+let edgeLineMaterial = null;
 
 const resetWindStreak = (streak, anywhere = false) => {
   const side = Math.random() < 0.5 ? -1 : 1;
@@ -3396,7 +3399,7 @@ const initScene = () => {
   const laneDashGeometry = new THREE.BoxGeometry(0.09, 0.02, 1.3);
   const laneDashMaterial = new THREE.MeshBasicMaterial({ color: 0xcfd8ea });
   const edgeLineGeometry = new THREE.BoxGeometry(0.07, 0.02, segmentLength);
-  const edgeLineMaterial = new THREE.MeshBasicMaterial({ color: 0x2ee5ff });
+  edgeLineMaterial = new THREE.MeshBasicMaterial({ color: 0x2ee5ff });
   const centerLineGeometry = new THREE.BoxGeometry(0.06, 0.02, segmentLength);
   const centerLineMaterial = new THREE.MeshBasicMaterial({ color: 0xffc94d });
   const curbGeometry = new THREE.BoxGeometry(0.34, 0.26, segmentLength);
@@ -5192,6 +5195,9 @@ const lerpEnvironment = (delta) => {
   dirLight.intensity = THREE.MathUtils.damp(dirLight.intensity, target.dir, 0.9, delta);
   hemiLight.color.lerp(tmpEnvColor.set(target.hemiSky), k);
   dirLight.color.lerp(tmpEnvColor.set(target.dirColor), k);
+  if (edgeLineMaterial && target.edge !== undefined) {
+    edgeLineMaterial.color.lerp(tmpEnvColor.set(target.edge), k);
+  }
 };
 
 const applyEnvironmentNow = () => {
@@ -5205,6 +5211,9 @@ const applyEnvironmentNow = () => {
   dirLight.intensity = target.dir;
   hemiLight.color.set(target.hemiSky);
   dirLight.color.set(target.dirColor);
+  if (edgeLineMaterial && target.edge !== undefined) {
+    edgeLineMaterial.color.set(target.edge);
+  }
 };
 
 const getTerrainAssets = () => {

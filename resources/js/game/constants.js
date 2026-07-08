@@ -55,24 +55,25 @@ export const RAMP_SCORE = 20000;
 
 // Environment palettes per phase. envSettings.night is mutated at runtime by
 // applyDistrict() as the run travels through city districts.
+// edge = Farbe der leuchtenden Straßenkanten (Neon-Linien links/rechts).
 export const envSettings = {
   night: {
     bg: 0x05070f, fog: 0x05070f, fogNear: 40, fogFar: 165,
-    hemi: 1.6, dir: 1.7, hemiSky: 0x9fc1ff, dirColor: 0xffffff,
+    hemi: 1.6, dir: 1.7, hemiSky: 0x9fc1ff, dirColor: 0xffffff, edge: 0x2ee5ff,
   },
   sunrise: {
     bg: 0x2e1f45, fog: 0xb06a4a, fogNear: 60, fogFar: 320,
-    hemi: 1.9, dir: 2.3, hemiSky: 0xffc49a, dirColor: 0xffd9a8,
+    hemi: 1.9, dir: 2.3, hemiSky: 0xffc49a, dirColor: 0xffd9a8, edge: 0xffb07a,
   },
   day: {
     bg: 0x8ecdf0, fog: 0xaee0f8, fogNear: 90, fogFar: 460,
-    hemi: 2.6, dir: 3.0, hemiSky: 0xeaf6ff, dirColor: 0xfff4e0,
+    hemi: 2.6, dir: 3.0, hemiSky: 0xeaf6ff, dirColor: 0xfff4e0, edge: 0xeaf6ff,
   },
   // Zone 4: deep space beyond the wormhole — near-black sky, thin violet fog
   // so the asteroid field reads against the starfield.
   void: {
     bg: 0x02010a, fog: 0x060218, fogNear: 70, fogFar: 380,
-    hemi: 1.2, dir: 1.3, hemiSky: 0xa88fff, dirColor: 0xd8c8ff,
+    hemi: 1.2, dir: 1.3, hemiSky: 0xa88fff, dirColor: 0xd8c8ff, edge: 0xa88fff,
   },
 };
 
@@ -80,10 +81,10 @@ export const envSettings = {
 // visibly travels through different parts of the city. lerpEnvironment
 // blends the change in smoothly.
 export const nightDistricts = [
-  { bg: 0x05070f, fog: 0x05070f, hemiSky: 0x9fc1ff },
-  { bg: 0x0a0618, fog: 0x120a26, hemiSky: 0xbfa8ff },
-  { bg: 0x04120f, fog: 0x07211c, hemiSky: 0x8fffd9 },
-  { bg: 0x120609, fog: 0x220b12, hemiSky: 0xff9fb0 },
+  { bg: 0x05070f, fog: 0x05070f, hemiSky: 0x9fc1ff, edge: 0x2ee5ff },
+  { bg: 0x0a0618, fog: 0x120a26, hemiSky: 0xbfa8ff, edge: 0xbf7bff },
+  { bg: 0x04120f, fog: 0x07211c, hemiSky: 0x8fffd9, edge: 0x4affc2 },
+  { bg: 0x120609, fog: 0x220b12, hemiSky: 0xff9fb0, edge: 0xff6b8a },
 ];
 
 export const rowPatterns = [
