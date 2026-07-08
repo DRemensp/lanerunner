@@ -3958,6 +3958,28 @@ const getObstacleAssets = () => {
   // ALLE Baustellen-Lampen der Szene blinken damit synchron und kostenlos.
   hazardBlinkMat = track(new THREE.MeshBasicMaterial({ color: 0xffb023 }));
   obstacleAssets.hazardBlink = hazardBlinkMat;
+  // Kartonschild des Obdachlosen: Canvas-Textur mit krakeligem "1$ PLS".
+  const signCanvas = document.createElement('canvas');
+  signCanvas.width = 256;
+  signCanvas.height = 96;
+  const signCtx = signCanvas.getContext('2d');
+  signCtx.fillStyle = '#a8834c';
+  signCtx.fillRect(0, 0, 256, 96);
+  signCtx.strokeStyle = '#6e5430';
+  signCtx.lineWidth = 8;
+  signCtx.strokeRect(0, 0, 256, 96);
+  signCtx.fillStyle = '#38290f';
+  signCtx.font = 'bold 52px "Comic Sans MS", "Segoe Print", cursive, sans-serif';
+  signCtx.textAlign = 'center';
+  signCtx.textBaseline = 'middle';
+  signCtx.save();
+  signCtx.translate(128, 52);
+  signCtx.rotate(-0.05);
+  signCtx.fillText('1$ PLS', 0, 0);
+  signCtx.restore();
+  obstacleAssets.signFace = track(
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(signCanvas) }),
+  );
   return obstacleAssets;
 };
 
@@ -4020,47 +4042,45 @@ const obstacleBuilders = {
   // Obdachloser am Gehwegrand, der ein Kartonschild seitlich in die äußere
   // Lane hält. Hitbox = NUR das Schild (drüber springen oder drunter
   // rutschen); die Figur steht auf lokal +x (Gehweg) — für die linke
-  // Straßenseite dreht spawnRow das Ganze um 180°.
+  // Straßenseite dreht spawnRow das Ganze um 180°, deshalb trägt das Schild
+  // den Text auf BEIDEN Seiten.
   'over-homeless': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
     const groundY = -1.55; // spawnRow setzt Über-Kopf-Hindernisse auf y=1.55
-    const sign = new THREE.Mesh(track(new THREE.BoxGeometry(1.6, 0.5, 0.09)), a.cardboard);
-    sign.rotation.z = 0.06;
+    const sign = new THREE.Mesh(track(new THREE.BoxGeometry(2.0, 0.78, 0.08)), a.cardboardDark);
+    sign.rotation.z = 0.05;
     g.add(sign);
-    const backing = new THREE.Mesh(track(new THREE.BoxGeometry(1.68, 0.58, 0.05)), a.cardboardDark);
-    backing.position.z = -0.05;
-    backing.rotation.z = 0.06;
-    g.add(backing);
-    // "Schrift": zwei dunkle Kritzel-Balken auf dem Karton.
-    const scribbleGeo = track(new THREE.BoxGeometry(1.1, 0.07, 0.02));
-    [0.09, -0.07].forEach((y, i) => {
-      const scribble = new THREE.Mesh(scribbleGeo, a.cardboardDark);
-      scribble.position.set(i ? 0.1 : -0.05, y, 0.05);
-      scribble.rotation.z = 0.06;
-      g.add(scribble);
+    const faceGeo = track(new THREE.PlaneGeometry(1.92, 0.7));
+    [0.045, -0.045].forEach((z, i) => {
+      const face = new THREE.Mesh(faceGeo, a.signFace);
+      face.position.z = z;
+      face.rotation.z = 0.05;
+      if (i) face.rotation.y = Math.PI;
+      g.add(face);
     });
-    // Haltearm von der Figur zum Schild.
-    const arm = new THREE.Mesh(track(new THREE.BoxGeometry(1.25, 0.09, 0.1)), a.shabby);
-    arm.position.set(1.42, -0.28, 0);
-    arm.rotation.z = -0.35;
+    // Haltearm: kurz, von der Hand an der Schildkante zur Schulter.
+    const arm = new THREE.Mesh(track(new THREE.BoxGeometry(0.62, 0.09, 0.1)), a.shabby);
+    arm.position.set(1.28, -0.14, 0);
+    arm.rotation.z = -0.3;
     g.add(arm);
+    const figX = 1.72;
     const legGeo = track(new THREE.BoxGeometry(0.12, 0.5, 0.14));
     [-0.11, 0.11].forEach((x) => {
       const leg = new THREE.Mesh(legGeo, a.black);
-      leg.position.set(2.1 + x, groundY + 0.25, 0);
+      leg.position.set(figX + x, groundY + 0.25, 0);
       g.add(leg);
     });
     const torso = new THREE.Mesh(track(new THREE.BoxGeometry(0.42, 0.62, 0.28)), a.shabby);
-    torso.position.set(2.1, groundY + 0.8, 0);
+    torso.position.set(figX, groundY + 0.8, 0);
     g.add(torso);
     const head = new THREE.Mesh(track(new THREE.BoxGeometry(0.24, 0.26, 0.24)), a.skin);
-    head.position.set(2.1, groundY + 1.24, 0);
+    head.position.set(figX, groundY + 1.24, 0);
     g.add(head);
     const beanie = new THREE.Mesh(track(new THREE.BoxGeometry(0.26, 0.1, 0.26)), a.barrel);
-    beanie.position.set(2.1, groundY + 1.4, 0);
+    beanie.position.set(figX, groundY + 1.4, 0);
     g.add(beanie);
-    return { mesh: g, size: { w: 1.7, h: 0.6, d: 0.4 } };
+    return { mesh: g, size: { w: 2.0, h: 0.65, d: 0.4 } };
   },
   'low-car': () => {
     const a = getObstacleAssets();
@@ -4814,7 +4834,8 @@ const spawnRow = () => {
     // Über-Kopf-Slot auf einer Außen-Lane: manchmal hält dort ein Obdachloser
     // vom Gehweg aus sein Kartonschild in die Lane (Figur steht außerhalb der
     // Map, nur das Schild kollidiert). Auf der linken Seite gespiegelt.
-    const homeless = type === 'over' && laneIndex !== 1 && Math.random() < 0.35;
+    // 0.12: als seltener Hingucker — bei 0.35 stand gefühlt an jeder Ecke einer.
+    const homeless = type === 'over' && laneIndex !== 1 && Math.random() < 0.12;
     const obstacle = getObstacle(type, homeless ? 'over-homeless' : null);
     const size = obstacle.userData.size;
     const y = type === 'over' ? 1.55 : size.h / 2 + 0.02;
