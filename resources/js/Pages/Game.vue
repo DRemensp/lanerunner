@@ -886,6 +886,12 @@ let laneOrigin = 1;
 // moments (traffic-jam walls, wrong-way drivers, coin runs, lane drifters).
 const eventToast = ref(null);
 let eventToastTimer;
+
+// Seitenstraßen-Kreuzung: alle paar hundert Meter zweigt eine Querstraße ab,
+// über die eigener Verkehr fährt (bewegliche Hindernisse in X-Richtung).
+let crossing = null; // { group, carTimer }
+let crossingGroup = null; // gecachte Geometrie, wird nur umpositioniert
+let crossingDistIn = 320;
 let trafficWave = null;
 let nextMilestone = 2500;
 // Speed only steps up once the checkpoint breather has cleared the road —
@@ -1346,6 +1352,7 @@ const startGallery = () => {
   clearObstacles();
   clearCoins();
   clearCivilians();
+  clearCrossing();
   clearPowerups();
   buildGallery();
   floorSegments.forEach((segment) => {
@@ -1754,6 +1761,8 @@ const resetRun = () => {
   clearObstacles();
   clearCoins();
   clearCivilians();
+  clearCrossing();
+  crossingDistIn = 320 + Math.random() * 200;
   clearPowerups();
   resetFloor();
 };
@@ -3605,6 +3614,13 @@ const initScene = () => {
     blending: THREE.AdditiveBlending,
   });
 
+  const signPoleGeometry = new THREE.BoxGeometry(0.07, 2.2, 0.07);
+  const signDiscGeometry = new THREE.CircleGeometry(0.34, 14);
+  const signBoardGeometry = new THREE.PlaneGeometry(0.78, 0.5);
+  const signHeadMaterials = [0x2e6ea8, 0x2f8f6a, 0xa83a4a, 0x8a7a2e].map(
+    (color) => new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }),
+  );
+
   for (let i = 0; i < 9; i += 1) {
     const segment = new THREE.Group();
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, segmentLength), floorMaterial);
@@ -3645,6 +3661,7 @@ const initScene = () => {
     segment.userData.zone1Marks = zone1Marks;
     segment.userData.zone2Marks = zone2Marks;
 
+    segment.userData.houses = [];
     for (let side = -1; side <= 1; side += 2) {
       for (let b = 0; b < 2; b += 1) {
         const house = buildHouse(side);
@@ -3654,6 +3671,31 @@ const initScene = () => {
           -segmentLength / 2 + (b - 0.5) * 10 + (Math.random() - 0.5) * 4,
         );
         segment.add(house);
+        segment.userData.houses.push(house);
+      }
+    }
+
+    // Straßenschilder auf dem Gehweg: kleine Silhouetten zwischen den Lampen
+    // (rundes Schild oder Wegweiser-Tafel), pro Seite ~60% Chance.
+    for (let side = -1; side <= 1; side += 2) {
+      if (Math.random() < 0.6) {
+        const streetSign = new THREE.Group();
+        const signPole = new THREE.Mesh(signPoleGeometry, lampPoleMaterial);
+        signPole.position.y = 1.1;
+        streetSign.add(signPole);
+        const round = Math.random() < 0.5;
+        const head = new THREE.Mesh(
+          round ? signDiscGeometry : signBoardGeometry,
+          signHeadMaterials[Math.floor(Math.random() * signHeadMaterials.length)],
+        );
+        head.position.y = round ? 2.3 : 2.15;
+        streetSign.add(head);
+        streetSign.position.set(
+          side * (5.65 + Math.random() * 0.35),
+          0.26,
+          -segmentLength / 2 + Math.random() * segmentLength,
+        );
+        segment.add(streetSign);
       }
     }
 
@@ -3975,7 +4017,8 @@ const glbVehicleDefs = [
   { key: 'resource-planks', kind: 'set-piece', fitHeight: 0.6, dir: 'obstacles/survival' },
   { key: 'construction-light', kind: 'set-piece', fitHeight: 2.7, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
   { key: 'structure-metal', kind: 'set-piece', fitHeight: 2.8, scaleX: 0.6, dir: 'obstacles/survival' },
-  { key: 'sign-highway', kind: 'decor', fitWidth: 9, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
+  // scaleY 1.1: Breite/Tiefe passen perfekt, nur die Durchfahrt soll ~10% höher.
+  { key: 'sign-highway', kind: 'decor', fitWidth: 9, rotateY: Math.PI / 2, scaleY: 1.1, dir: 'obstacles/roads' },
 ];
 
 const glbTemplates = {};
@@ -4051,22 +4094,6 @@ const addConstructionDressing = (group, size) => {
   });
 };
 
-// Neon-Kanten für die Schilderbrücke: Cyan-Streifen unter den Panels, Pink
-// an den Pfosten — sonst wirkt das braune Kenney-Schild nachts wie Pappe.
-const addGantryNeon = (group, size) => {
-  const cyan = track(new THREE.MeshBasicMaterial({ color: 0x35e0ff }));
-  const pink = track(new THREE.MeshBasicMaterial({ color: 0xff4fd8 }));
-  const strip = new THREE.Mesh(track(new THREE.BoxGeometry(size.w * 0.86, 0.09, 0.07)), cyan);
-  strip.position.set(0, size.h * 0.05, size.d / 2 + 0.04);
-  group.add(strip);
-  const postGeo = track(new THREE.BoxGeometry(0.07, size.h * 0.48, 0.07));
-  [-1, 1].forEach((side) => {
-    const post = new THREE.Mesh(postGeo, pink);
-    post.position.set(side * (size.w / 2 - 0.12), -size.h * 0.24, size.d / 2 + 0.04);
-    group.add(post);
-  });
-};
-
 const registerVehicleModel = (def, model) => {
   // Neon-Pass: Kenney-Texturen leicht selbstleuchten lassen — in der dunklen
   // Nachtszene saufen die Modelle sonst im Blauschwarz ab.
@@ -4093,6 +4120,10 @@ const registerVehicleModel = (def, model) => {
     // auf die lokale Achse, deshalb vor einer etwaigen rotateY-Drehung denken.
     model.scale.x *= def.scaleX;
   }
+  if (def.scaleY) {
+    // Nur höher machen (Y) — Breite und Tiefe bleiben wie gefittet.
+    model.scale.y *= def.scaleY;
+  }
   const box = new THREE.Box3().setFromObject(model);
   model.position.sub(box.getCenter(new THREE.Vector3()));
   const dims = box.getSize(new THREE.Vector3());
@@ -4115,9 +4146,6 @@ const registerVehicleModel = (def, model) => {
     }
     if (def.key === 'structure-metal') {
       addConstructionDressing(mesh, size);
-    }
-    if (def.key === 'sign-highway') {
-      addGantryNeon(mesh, size);
     }
     return { mesh, size: { ...size } };
   };
@@ -4186,6 +4214,7 @@ const getObstacle = (type, forcedKey = null) => {
     obstacle = mesh;
   }
   obstacle.userData.vz = 0;
+  obstacle.userData.vx = 0;
   obstacle.userData.passed = false;
   obstacle.userData.jam = false;
   obstacle.userData.decor = false;
@@ -4288,6 +4317,127 @@ const spawnSignGantry = (z) => {
   gantry.position.set(0, gantry.userData.size.h / 2, z);
   obstacles.push(gantry);
   scene.add(gantry);
+};
+
+// ---- Seitenstraßen-Kreuzung. Aufbau (einmal gebaut, dann recycelt):
+// Querstraßen-Asphalt in drei Höhen-Streifen (unter der Hauptstraße, ÜBER den
+// Gehwegen, wieder unten durchs Häuserband), Haltelinien, Mittellinien-Dashes.
+// Häuser, die im Weg stünden, werden ausgeblendet — die Lücke in der
+// Häuserzeile IST die sichtbare Straßenmündung.
+const buildCrossingGroup = () => {
+  const group = new THREE.Group();
+  const roadMat = new THREE.MeshLambertMaterial({ color: 0x151d2e });
+  const lineMat = new THREE.MeshBasicMaterial({
+    color: 0xdde5f0,
+    transparent: true,
+    opacity: 0.5,
+  });
+  // Mitte (über der Hauptstraße, unter dem Spieler) + Häuserband links/rechts.
+  [
+    { x: 0, w: 6.8, y: 0.015 },
+    { x: -5.0, w: 3.2, y: 0.275 }, // Gehweg-Plateau links
+    { x: 5.0, w: 3.2, y: 0.275 }, // Gehweg-Plateau rechts
+    { x: -14.9, w: 16.6, y: 0.015 },
+    { x: 14.9, w: 16.6, y: 0.015 },
+  ].forEach((part) => {
+    const piece = new THREE.Mesh(new THREE.PlaneGeometry(part.w, 7.4), roadMat);
+    piece.rotation.x = -Math.PI / 2;
+    piece.position.set(part.x, part.y, 0);
+    group.add(piece);
+  });
+  // Haltelinien auf der Hauptstraße vor und hinter der Querstraße.
+  [4.6, -4.6].forEach((z) => {
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 0.4), lineMat);
+    line.rotation.x = -Math.PI / 2;
+    line.position.set(0, 0.02, z);
+    group.add(line);
+  });
+  // Mittellinie der Querstraße (gestrichelt), nur außerhalb der Plateaus.
+  const dashGeo = new THREE.PlaneGeometry(1.5, 0.16);
+  for (let x = -21; x <= 21; x += 3.5) {
+    if (Math.abs(x) > 2.6 && Math.abs(x) < 7.4) continue;
+    const dash = new THREE.Mesh(dashGeo, lineMat);
+    dash.rotation.x = -Math.PI / 2;
+    dash.position.set(x, Math.abs(x) < 3.4 ? 0.025 : 0.02, 0);
+    group.add(dash);
+  }
+  return group;
+};
+
+// Häuser eines Segments gegen die Kreuzungs-Mündung prüfen: beide scrollen
+// gleich schnell, der relative Abstand bleibt also konstant — einmal beim
+// Spawn (und je Segment-Wrap) prüfen reicht.
+const syncCrossingHouses = (segment) => {
+  (segment.userData.houses || []).forEach((house) => {
+    if (!crossing) {
+      house.visible = true;
+      return;
+    }
+    const worldZ = segment.position.z + house.position.z;
+    house.visible = Math.abs(worldZ - crossing.group.position.z) > 8;
+  });
+};
+
+const spawnCrossing = () => {
+  if (!crossingGroup) {
+    crossingGroup = buildCrossingGroup();
+  }
+  crossingGroup.position.z = -(150 + Math.min(45, speed.value));
+  scene.add(crossingGroup);
+  crossing = { group: crossingGroup, carTimer: 0.4, lastDir: 1 };
+  floorSegments.forEach(syncCrossingHouses);
+};
+
+const clearCrossing = () => {
+  if (!crossing) return;
+  scene.remove(crossing.group);
+  crossing = null;
+  floorSegments.forEach(syncCrossingHouses);
+};
+
+// Querverkehr: fährt in X über die Kreuzung, scrollt mit der Welt (vz=0),
+// normale tödliche Hindernisse. Rechtsverkehr: jede Richtung hat ihre Spur.
+const spawnCrossingCar = () => {
+  const dir = crossing.lastDir * -1;
+  crossing.lastDir = dir;
+  const vehicle = getObstacle('low', 'car-any');
+  vehicle.userData.vx = dir * (8 + Math.random() * 5);
+  vehicle.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+  if (vehicle.userData.beams) {
+    vehicle.userData.beams.visible = true;
+  }
+  vehicle.position.set(
+    -dir * (20 + Math.random() * 3),
+    vehicle.userData.size.h / 2 + 0.02,
+    crossing.group.position.z + dir * 1.75,
+  );
+  obstacles.push(vehicle);
+  scene.add(vehicle);
+};
+
+const updateCrossing = (delta) => {
+  if (finalePhase.value === 'none' && !crossing && !trafficWave && !checkpointPending) {
+    crossingDistIn -= speed.value * delta;
+    if (crossingDistIn <= 0) {
+      spawnCrossing();
+      crossingDistIn = 280 + Math.random() * 240;
+    }
+  }
+  if (!crossing) return;
+  crossing.group.position.z += speed.value * delta;
+  const z = crossing.group.position.z;
+  // Nachschub nur, solange die Kreuzung weit genug weg ist — was näher kommt,
+  // ist längst sichtbar und damit fair ausweichbar.
+  if (z > -145 && z < -32) {
+    crossing.carTimer -= delta;
+    if (crossing.carTimer <= 0) {
+      spawnCrossingCar();
+      crossing.carTimer = 0.75 + Math.random() * 0.9;
+    }
+  }
+  if (z > 30) {
+    clearCrossing();
+  }
 };
 
 // Lane reservation (standard endless-runner technique): every moving
@@ -4540,11 +4690,16 @@ const eventSpawnHoldActive = () => {
   // never come down on a freshly spawned row. (0.6: Bounce ist jetzt 1.08x
   // jumpVelocity statt 0.95x, der Bogen fliegt entsprechend weiter.)
   const spawnDepth = -(70 + Math.min(45, speed.value)) + 6 + speed.value * 0.6;
-  return (
+  if (
     trafficWave &&
     (trafficWave.rowsLeft > 0 ||
       (trafficWave.endZ !== null && trafficWave.endZ < spawnDepth))
-  );
+  ) {
+    return true;
+  }
+  // Rund um eine Kreuzung bleibt die Hauptstraße frei von statischen Reihen —
+  // der Querverkehr ist dort die Herausforderung.
+  return crossing !== null && crossing.group.position.z < spawnDepth + 14;
 };
 
 const updateZoneEvents = (delta) => {
@@ -6047,6 +6202,7 @@ const doLaunch = () => {
   clearObstacles();
   clearCoins();
   clearCivilians();
+  clearCrossing();
   clearPowerups();
   clearFlyingCars();
   buildDockingPlane();
@@ -7539,6 +7695,7 @@ const updateRunner = (delta) => {
         clearObstacles();
         clearCoins();
         clearCivilians();
+        clearCrossing();
         clearPowerups();
       }
     }
@@ -7667,12 +7824,16 @@ const updateRunner = (delta) => {
         segment.visible = false;
       } else {
         segment.position.z -= segmentLength * floorSegments.length;
+        // Nach dem Wrap neu gegen die Kreuzung prüfen — der relative Abstand
+        // hat sich um die volle Loop-Länge geändert.
+        syncCrossingHouses(segment);
       }
     }
   });
 
   updateWindStreaks(delta);
   updateCivilians(delta);
+  updateCrossing(delta);
 
   if (plaza) {
     plaza.position.z += speed.value * delta;
@@ -7835,6 +7996,20 @@ const updateRunner = (delta) => {
       );
       if (Math.abs(obstacle.position.x - obstacle.userData.driftTo) < 0.05) {
         delete obstacle.userData.driftTo;
+      }
+    }
+    // Querverkehr der Seitenstraßen: bewegt sich in X, raus aus der Szene
+    // sobald die Gegenseite erreicht ist.
+    if (obstacle.userData.vx) {
+      obstacle.position.x += obstacle.userData.vx * delta;
+      if (Math.abs(obstacle.position.x) > 24) {
+        scene.remove(obstacle);
+        const poolKey = obstacle.userData?.poolKey;
+        if (poolKey) {
+          (obstaclePools[poolKey] ||= []).push(obstacle);
+        }
+        obstacles.splice(i, 1);
+        continue;
       }
     }
     if (vz > 0) {
