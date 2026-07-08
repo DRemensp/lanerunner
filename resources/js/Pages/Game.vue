@@ -5030,11 +5030,19 @@ const showEventToast = (title, sub, duration = 1900) => {
 // way through is jumping onto the roofs and bouncing car to car. The first
 // row is low cars so the entry jump always works from the ground; taller
 // trucks appear deeper in, reachable from a car roof.
+// Rush Hour lässt nur kompakte hohe Fahrzeuge zu: Box-Truck und Ambulanz
+// haben brauchbare Dachlinien — Feuerwehr, Müllwagen, Traktoren & Tieflader
+// sind zu lang/sperrig und zerreißen die Dachlauf-Route.
+const jamTallKeys = ['truck', 'ambulance'];
+
 const spawnWaveRow = () => {
   const baseZ = -(95 + Math.min(45, speed.value));
+  const tallChoices = jamTallKeys.filter((key) => obstacleBuilders[key]);
   for (let laneIndex = 0; laneIndex < 3; laneIndex += 1) {
-    const useTall = !trafficWave.first && Math.random() < 0.35;
-    const vehicle = getObstacle(useTall ? 'tall' : 'low', useTall ? 'tall-any' : 'car-any');
+    const useTall = !trafficWave.first && tallChoices.length > 0 && Math.random() < 0.35;
+    const vehicle = useTall
+      ? getObstacle('tall', pickFrom(tallChoices))
+      : getObstacle('low', 'car-any');
     vehicle.userData.jam = true;
     // Echte Rush Hour statt Parade: leicht schräg, quer in der Spur
     // verschoben und individuell in z versetzt. Die Quer-Verschiebung bleibt
@@ -8556,14 +8564,15 @@ const updateRunner = (delta) => {
     }
     if (obstacle.userData.decor) continue;
     if (checkCollision(obstacle, collisionPlayerHeight)) {
-      // Jam-Fahrzeuge sind IMMER Trampoline: jeder Kontakt schleudert aufs
-      // Dach statt zu töten. Vorher galt ein 1.25er-Höhenfenster im Fallen —
-      // mit den versetzten Rush-Hour-Lücken konnte man aber in eine Fuge
-      // fallen, am Boden aufsetzen (vy=0) und starb an der nächsten Front,
-      // und ein zu später Absprung (steigend in die Front) tötete ebenso.
-      // Neue Regel, simpel und lesbar: Stau-Blech = todesfrei, die
-      // Herausforderung ist die Route obendrüber.
-      if (obstacle.userData.jam) {
+      // Jam-Trampolin NUR beim Landen von oben (Fenster 1.25 unter der
+      // Dachkante): wer vom Boden aus frontal in die Front läuft, stirbt
+      // normal — kein Auto-Katapult mehr aufs Dach.
+      if (
+        obstacle.userData.jam &&
+        playerVelocityY < 0 &&
+        player.position.y - collisionPlayerHeight / 2 >
+          obstacle.position.y + obstacle.userData.size.h / 2 - 1.25
+      ) {
         const roofY = obstacle.position.y + obstacle.userData.size.h / 2;
         player.position.y = roofY + collisionPlayerHeight / 2 + 0.02;
         // 1.08: der Bounce vom Autodach muss auch die höchste Truck-Front
@@ -8586,6 +8595,19 @@ const updateRunner = (delta) => {
       }
       const now = performance.now();
       if (now < invulnUntil || now < bumpProtectUntil) {
+        continue;
+      }
+      // Dachlauf-Step-Up (nur Jam-Blech): Dachhöhen sind nicht genormt
+      // (Sedan ~1.1, SUV ~1.4) — wer oben LÄUFT (vy=0) und gegen eine minimal
+      // höhere Kante stößt, steigt lautlos hoch statt zu sterben. Kein
+      // Katapult: vom Boden aus ist die Kante >0.6 und bleibt tödlich.
+      const stepTop = obstacle.position.y + obstacle.userData.size.h / 2;
+      const stepRise = stepTop - (player.position.y - collisionPlayerHeight / 2);
+      if (!driving && obstacle.userData.jam && stepRise > 0 && stepRise < 0.6) {
+        player.position.y = stepTop + collisionPlayerHeight / 2 + 0.02;
+        currentSurfaceY = stepTop;
+        currentGroundCenter = player.position.y;
+        playerVelocityY = Math.max(0, playerVelocityY);
         continue;
       }
       // Side bump: the player is still travelling sideways into the target
