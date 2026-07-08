@@ -3050,6 +3050,50 @@ const spawnCoinArc = (laneIndex, z) => {
   }
 };
 
+// Slide-Köder: flache Münzlinie UNTER einem Überkopf-Hindernis durch — wer
+// rechtzeitig rutscht, kassiert. y=0.55 liegt in der Pickup-Höhe der
+// Rutsch-Hitbox und klar unter der Barren-Unterkante.
+const spawnCoinSlide = (laneIndex, z) => {
+  for (let k = 0; k < 4; k += 1) {
+    placeCoin(lanes[laneIndex], 0.55, z + 3.0 - k * 2.0);
+  }
+};
+
+// Die ECHTE Trampolin-Flugbahn als Münzspur, statt einer festen 5-Münzen-Form
+// über Sets beliebiger Länge: Anlauf-Bogen (Bodensprung, der absteigend auf
+// dem ersten Dach landet), dann die Bounce-Parabel (jumpVelocity·1.08 ab
+// Dachhöhe) bis zur Landung HINTER dem Set. Abstände und Länge skalieren mit
+// dem Tempo — die Spur endet am Boden statt in der Luft und schneidet nie
+// zwischen zwei Fahrzeuge.
+const spawnRoofBounceTrail = (laneIndex, contactZ, roofY) => {
+  const laneX = lanes[laneIndex];
+  const rest = playerSize.h / 2;
+  const g = -gravity;
+  // Anlauf: volle Flugzeit eines Bodensprungs bis runter auf Dachhöhe.
+  const tEntry =
+    (jumpVelocity + Math.sqrt(Math.max(0, jumpVelocity * jumpVelocity - 2 * g * roofY))) / g;
+  [0.35, 0.6, 0.85].forEach((f) => {
+    const t = tEntry * f;
+    placeCoin(
+      laneX,
+      rest + jumpVelocity * t - 0.5 * g * t * t + 0.35,
+      contactZ + (tEntry - t) * speed.value,
+    );
+  });
+  // Bounce-Parabel vom ersten Dach bis zurück auf Bodenhöhe.
+  const v = jumpVelocity * 1.08;
+  const tFlight = (v + Math.sqrt(v * v + 2 * g * roofY)) / g;
+  const count = Math.max(5, Math.round((tFlight * speed.value) / 2.6));
+  for (let i = 1; i <= count; i += 1) {
+    const t = (tFlight * i) / count;
+    placeCoin(
+      laneX,
+      rest + roofY + v * t - 0.5 * g * t * t + 0.35,
+      contactZ - t * speed.value,
+    );
+  }
+};
+
 const clearCoins = () => {
   coins.forEach((coin) => {
     scene.remove(coin);
@@ -4031,27 +4075,22 @@ const spawnTruckConvoy = (laneIndex, baseZ) => {
     { key: 'truck', z: -2.9 },
     { key: 'truck', z: -6.2 },
   ];
-  let roofY = 0;
+  let entryRoofY = 0;
   pieces.forEach((piece) => {
     const vehicle = getObstacle(piece.key === 'truck' ? 'tall' : 'low', piece.key);
     const size = vehicle.userData.size;
     vehicle.userData.jam = true;
     vehicle.rotation.y = Math.PI;
     vehicle.position.set(lanes[laneIndex], size.h / 2 + 0.02, baseZ + piece.z);
-    roofY = Math.max(roofY, size.h + 0.02);
+    // Der Bounce startet auf dem VORDEREN Autodach — nur dessen Höhe zählt
+    // für die Flugbahn, nicht die der Trucks dahinter.
+    if (piece.z === 0) {
+      entryRoofY = size.h + 0.02;
+    }
     obstacles.push(vehicle);
     scene.add(vehicle);
   });
-  // Coins: Bogen aufs Autodach, dann entlang der Truck-Dachlinie.
-  [
-    { y: 1.2, z: 3.6 },
-    { y: 2.3, z: 1.4 },
-    { y: roofY + 1.3, z: -1.4 },
-    { y: roofY + 1.4, z: -3.8 },
-    { y: roofY + 1.3, z: -6.2 },
-  ].forEach((spot) => {
-    placeCoin(lanes[laneIndex], spot.y, baseZ + spot.z);
-  });
+  spawnRoofBounceTrail(laneIndex, baseZ, entryRoofY);
 };
 
 // Mini-Stau: drei Autos Stoßstange an Stoßstange mit Trampolin-Dächern (wie
@@ -4065,15 +4104,14 @@ const spawnJamSet = (laneIndex, baseZ) => {
     vehicle.userData.jam = true;
     vehicle.rotation.y = Math.PI;
     vehicle.position.set(lanes[laneIndex], size.h / 2 + 0.02, baseZ - i * 2.8);
-    roofY = Math.max(roofY, size.h + 0.02);
+    // Nur das erste Dach zählt: dort startet der Bounce, der Rest wird überflogen.
+    if (i === 0) {
+      roofY = size.h + 0.02;
+    }
     obstacles.push(vehicle);
     scene.add(vehicle);
   }
-  // Anlauf-Bogen aufs erste Dach, dann Coins über der Dachlinie.
-  const trailY = [1.1, 2.0, roofY + 1.5, roofY + 1.6, roofY + 1.5];
-  trailY.forEach((y, i) => {
-    placeCoin(lanes[laneIndex], y, baseZ + 3.6 - i * 2.4);
-  });
+  spawnRoofBounceTrail(laneIndex, baseZ, roofY);
 };
 
 // Schilderbrücke: spannt mittig über die ganze Straße, keine Kollision —
@@ -4179,6 +4217,7 @@ const spawnRow = () => {
   let setSpawned = false;
   let jamSpawned = false;
   const arcLanes = [];
+  const overLanes = [];
   pattern.forEach((type, laneIndex) => {
     if (type === 'none') return;
     // Themen-Sets statt einzelner Hindernisse: hohe Slots werden gelegentlich
@@ -4214,20 +4253,36 @@ const spawnRow = () => {
     if (type === 'low') {
       arcLanes.push(laneIndex);
     }
+    if (type === 'over') {
+      overLanes.push(laneIndex);
+    }
   });
 
   const freeLanes = pattern
     .map((type, laneIndex) => (type === 'none' ? laneIndex : -1))
     .filter((laneIndex) => laneIndex >= 0);
-  // Höchstens EIN Coin-Feature pro Reihe: Jam-Set-Coins ODER Trail ODER
-  // Sprungbogen — nie gestapelt, sonst wird es eine Münzflut.
+  // Höchstens EIN Coin-Feature pro Reihe (sonst Münzflut), aber alle drei
+  // Pfad-Arten GLEICHBERECHTIGT: gerade Linie/Schwenk, Sprungbogen und
+  // Slide-Linie würfeln je mit 1/3 — in zufälliger Reihenfolge, der erste
+  // Treffer gewinnt.
   let coinLane = -1;
   if (!jamSpawned) {
-    if (freeLanes.length && Math.random() < 0.7) {
-      coinLane = freeLanes[Math.floor(Math.random() * freeLanes.length)];
-      spawnCoinTrail(coinLane, baseZ);
-    } else if (arcLanes.length && Math.random() < 0.5) {
-      spawnCoinArc(pickFrom(arcLanes), baseZ);
+    const options = [];
+    if (freeLanes.length) options.push('trail');
+    if (arcLanes.length) options.push('arc');
+    if (overLanes.length) options.push('slide');
+    options.sort(() => Math.random() - 0.5);
+    for (const option of options) {
+      if (Math.random() >= 1 / 3) continue;
+      if (option === 'trail') {
+        coinLane = pickFrom(freeLanes);
+        spawnCoinTrail(coinLane, baseZ);
+      } else if (option === 'arc') {
+        spawnCoinArc(pickFrom(arcLanes), baseZ);
+      } else {
+        spawnCoinSlide(pickFrom(overLanes), baseZ);
+      }
+      break;
     }
   }
   const powerupLanes = freeLanes.filter((laneIndex) => laneIndex !== coinLane);
