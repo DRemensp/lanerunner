@@ -21,6 +21,9 @@ export const slideScale = 0.55;
 export const slideDuration = 0.6;
 export const dropBoost = 1.6;
 export const swipeThreshold = 40;
+// Seitliches Swipen (Lane-Wechsel) ist die häufigste Aktion und löst früher
+// aus als vertikales — sonst fühlt es sich träger an als Jump/Slide.
+export const swipeThresholdX = 26;
 export const swipeTimeLimit = 650;
 export const segmentLength = 20;
 export const playerSize = { w: 0.9, h: 1.4, d: 0.8 };

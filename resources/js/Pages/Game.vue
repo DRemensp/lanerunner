@@ -216,18 +216,27 @@
       Skip &raquo;
     </button>
 
+    <!-- Floating-Joystick: der erste Touch irgendwo auf dem Screen wird zur
+         Joystick-Mitte, der Ring erscheint dort und folgt dem Finger. -->
     <div
       v-if="state === 'running' && (finalePhase === 'plane' || finalePhase === 'void')"
-      class="joystick"
+      class="joy-capture"
       @pointerdown="joyStart"
       @pointermove="joyMove"
       @pointerup="joyEnd"
       @pointercancel="joyEnd"
     >
       <div
-        class="joystick-knob"
-        :style="{ transform: `translate(${joyKnob.x}px, ${joyKnob.y}px)` }"
-      ></div>
+        v-if="joyBase"
+        class="joystick joystick--float"
+        :style="{ left: `${joyBase.x}px`, top: `${joyBase.y}px` }"
+      >
+        <div
+          class="joystick-knob"
+          :style="{ transform: `translate(${joyKnob.x}px, ${joyKnob.y}px)` }"
+        ></div>
+      </div>
+      <div v-else-if="isTouchDevice" class="joy-hint">Touch &amp; drag anywhere to steer</div>
     </div>
 
     <div
@@ -799,6 +808,7 @@ import {
   slideDuration,
   dropBoost,
   swipeThreshold,
+  swipeThresholdX,
   swipeTimeLimit,
   segmentLength,
   playerSize,
@@ -1048,6 +1058,8 @@ let planeVelY = 0;
 const planeKeys = { up: false, down: false, left: false, right: false };
 const joyKnob = ref({ x: 0, y: 0 });
 let joyVec = { x: 0, y: 0 };
+// Ankerpunkt des Floating-Joysticks (null = kein Finger unten).
+const joyBase = ref(null);
 let joyPointerId = null;
 // Gallery showroom joystick: only visible while browsing the free-roam
 // showroom. Steers the character the same way WASD/arrows do there — it's a
@@ -2232,7 +2244,7 @@ const handleKeyup = (event) => {
 
 const handleTouchStart = (event) => {
   if (state.value !== 'running') return;
-  if (event.target?.closest?.('.joystick, .pedals, .cheat-skip')) return;
+  if (event.target?.closest?.('.joystick, .joy-capture, .pedals, .cheat-skip')) return;
   // Track exactly one swipe finger by identifier so a thumb resting on the
   // pedals (or joystick) never hijacks or cancels the swipe gesture.
   if (touchStart) return;
@@ -2254,9 +2266,18 @@ const findTrackedTouch = (event) => {
 };
 
 const triggerSwipe = (dx, dy) => {
-  if (Math.abs(dx) < swipeThreshold && Math.abs(dy) < swipeThreshold) return false;
+  // Jede Achse hat ihre EIGENE Schwelle und muss dominieren, um zu feuern.
+  // Vorher löste die Geste aus, sobald irgendeine Achse 40px überschritt —
+  // ein seitlicher Swipe mit natürlichem Bogen wurde dann als Jump/Slide
+  // gelesen, wenn die Vertikale zufällig zuerst über der Schwelle lag.
+  // Horizontal bekommt zusätzlich den Tie-Break (Faktor 0.85), weil ein
+  // Lane-Wechsel die wahrscheinlichere Absicht ist.
+  const horizontal =
+    Math.abs(dx) >= swipeThresholdX && Math.abs(dx) >= Math.abs(dy) * 0.85;
+  const vertical = Math.abs(dy) >= swipeThreshold && Math.abs(dy) > Math.abs(dx);
+  if (!horizontal && !vertical) return false;
 
-  if (Math.abs(dx) > Math.abs(dy)) {
+  if (horizontal) {
     if (dx > 0) {
       moveRight();
     } else {
@@ -2313,7 +2334,7 @@ const handleTouchMove = (event) => {
   if (event.cancelable) {
     event.preventDefault();
   }
-  if (target?.closest?.('.joystick, .pedals, .cheat-skip')) return;
+  if (target?.closest?.('.joystick, .joy-capture, .pedals, .cheat-skip')) return;
 
   if (state.value !== 'running' || !touchStart) return;
   const touch = findTrackedTouch(event);
@@ -4013,7 +4034,9 @@ const glbVehicleDefs = [
   // 'prop' = niedriges statisches Hindernis (überspringbar),
   // 'set-piece' = spawnt nie einzeln, nur im Baustellen-Set (spawnConstructionSet),
   // 'decor' = reine Deko ohne Kollision (Schilderbrücke über der Straße).
-  { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, dir: 'obstacles/roads' },
+  // rotateY 90°: so ist die Barriere RICHTIG ausgerichtet — Streifenfront
+  // quer zur Fahrbahn, zum Spieler zeigend (das Kenney-Modell liegt längs).
+  { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
   { key: 'resource-planks', kind: 'set-piece', fitHeight: 0.6, dir: 'obstacles/survival' },
   { key: 'construction-light', kind: 'set-piece', fitHeight: 2.7, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
   { key: 'structure-metal', kind: 'set-piece', fitHeight: 2.8, scaleX: 0.6, dir: 'obstacles/survival' },
@@ -6546,6 +6569,7 @@ const triggerMotherCollapse = (position) => {
   planeKeys.right = false;
   joyVec = { x: 0, y: 0 };
   joyKnob.value = { x: 0, y: 0 };
+  joyBase.value = null;
   driveHint.value = false;
   // The blast itself: white-out, shockwaves, wreck debris. updateCollapse
   // plays the first beat in slow motion.
@@ -6701,6 +6725,10 @@ const updateCollapse = (delta) => {
 const enterVoid = () => {
   clearVoidObjects();
   finalePhase.value = 'void';
+  // Im Void gibt es keinen Himmel mehr — Wolkendecke raus.
+  if (cloudCeiling) {
+    scene.remove(cloudCeiling);
+  }
   // The sunrise world stays behind the wormhole.
   if (oceanGroup) oceanGroup.visible = false;
   terrainChunks.forEach((chunk) => {
@@ -6946,6 +6974,56 @@ const updateVoid = (delta) => {
   camera.lookAt(lookAtTarget);
 };
 
+// Wolkendecke am Höhenlimit der Flug-Stage: macht die unsichtbare Obergrenze
+// (Clamp bei y=20) als greifbare Schicht sichtbar. Wird dichter, je näher man
+// ihr kommt, und zieht langsam nach hinten durch, damit sie lebt.
+let cloudCeiling = null;
+const ensureCloudCeiling = () => {
+  if (cloudCeiling) {
+    if (!cloudCeiling.parent) scene.add(cloudCeiling);
+    return;
+  }
+  const mat = new THREE.MeshLambertMaterial({
+    color: 0xe8f0fa,
+    transparent: true,
+    opacity: 0.3,
+    depthWrite: false,
+  });
+  const geo = new THREE.SphereGeometry(1, 10, 7);
+  cloudCeiling = new THREE.Group();
+  for (let i = 0; i < 18; i += 1) {
+    const puff = new THREE.Mesh(geo, mat);
+    puff.scale.set(8 + Math.random() * 9, 1.3 + Math.random() * 0.9, 6 + Math.random() * 6);
+    puff.position.set(
+      (Math.random() - 0.5) * 150,
+      (Math.random() - 0.5) * 1.4,
+      -(i / 18) * 150 + 25,
+    );
+    cloudCeiling.add(puff);
+  }
+  cloudCeiling.userData.mat = mat;
+  cloudCeiling.position.y = 23.2;
+  scene.add(cloudCeiling);
+};
+
+const updateCloudCeiling = (delta) => {
+  ensureCloudCeiling();
+  cloudCeiling.position.x = THREE.MathUtils.damp(
+    cloudCeiling.position.x,
+    player.position.x * 0.8,
+    1.5,
+    delta,
+  );
+  cloudCeiling.children.forEach((puff) => {
+    puff.position.z += speed.value * delta * 0.25;
+    if (puff.position.z > 30) {
+      puff.position.z -= 150;
+    }
+  });
+  const near = THREE.MathUtils.clamp((player.position.y - 12) / 8, 0, 1);
+  cloudCeiling.userData.mat.opacity = 0.18 + near * 0.42;
+};
+
 const updatePlane = (delta) => {
   const inputX = THREE.MathUtils.clamp(
     (planeKeys.right ? 1 : 0) - (planeKeys.left ? 1 : 0) + joyVec.x,
@@ -6968,6 +7046,7 @@ const updatePlane = (delta) => {
   player.position.x = THREE.MathUtils.clamp(player.position.x + planeVelX * delta, -13, 13);
   player.position.y = THREE.MathUtils.clamp(player.position.y + planeVelY * delta, 4, 20);
   player.position.z = THREE.MathUtils.damp(player.position.z, 2, 0.8, delta);
+  updateCloudCeiling(delta);
 
   if (planeVisual) {
     planeVisual.rotation.z = THREE.MathUtils.damp(
@@ -7364,18 +7443,20 @@ const updatePlane = (delta) => {
   camera.lookAt(lookAtTarget);
 };
 
+// Floating-Joystick: die Mitte ist der Punkt des ersten Touches, nicht eine
+// feste Position — man greift nie daneben.
 const joyStart = (event) => {
   joyPointerId = event.pointerId;
+  joyBase.value = { x: event.clientX, y: event.clientY };
   event.currentTarget.setPointerCapture(event.pointerId);
   joyMove(event);
 };
 
 const joyMove = (event) => {
-  if (joyPointerId !== event.pointerId) return;
-  const rect = event.currentTarget.getBoundingClientRect();
-  let dx = event.clientX - (rect.left + rect.width / 2);
-  let dy = event.clientY - (rect.top + rect.height / 2);
-  const max = rect.width / 2 - 18;
+  if (joyPointerId !== event.pointerId || !joyBase.value) return;
+  let dx = event.clientX - joyBase.value.x;
+  let dy = event.clientY - joyBase.value.y;
+  const max = 46;
   const len = Math.hypot(dx, dy);
   if (len > max) {
     dx *= max / len;
@@ -7388,6 +7469,7 @@ const joyMove = (event) => {
 const joyEnd = (event) => {
   if (joyPointerId !== event.pointerId) return;
   joyPointerId = null;
+  joyBase.value = null;
   joyKnob.value = { x: 0, y: 0 };
   joyVec = { x: 0, y: 0 };
 };
@@ -7467,6 +7549,9 @@ const exitFinale = () => {
   finaleTimer = 0;
   finaleToast.value = false;
   driveHint.value = false;
+  if (cloudCeiling) {
+    scene.remove(cloudCeiling);
+  }
   if (carVisual) {
     player.remove(carVisual);
     carVisual = null;
@@ -7550,6 +7635,7 @@ const exitFinale = () => {
   planeKeys.right = false;
   joyVec = { x: 0, y: 0 };
   joyKnob.value = { x: 0, y: 0 };
+  joyBase.value = null;
   joyPointerId = null;
   floorSegments.forEach((segment) => {
     segment.visible = true;
@@ -9350,6 +9436,45 @@ onBeforeUnmount(() => {
   left: auto;
   right: calc(24px + env(safe-area-inset-right));
   transform: none;
+}
+
+/* Floating-Joystick (Flug-Stage): unsichtbare Fangfläche über dem ganzen
+   Screen; der Ring erscheint am Touch-Punkt. */
+.joy-capture {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  touch-action: none;
+}
+
+.joystick--float {
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  width: 118px;
+  height: 118px;
+  pointer-events: none;
+}
+
+.joy-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(46px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 180, 255, 0.35);
+  background: rgba(8, 12, 22, 0.5);
+  color: #9fc3ef;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  pointer-events: none;
+  animation: joyHintPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes joyHintPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.95; }
 }
 
 .jump-btn {
