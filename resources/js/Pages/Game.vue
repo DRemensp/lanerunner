@@ -797,6 +797,7 @@ import '@fontsource/chakra-petch/600.css';
 import '@fontsource/chakra-petch/700.css';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
   cameraBase,
   levelOptions,
@@ -1237,6 +1238,8 @@ let skylineMesh;
 const obstaclePools = {};
 const obstacleResources = [];
 let obstacleAssets = null;
+// Geteiltes Material für blinkende Baustellen-Lampen (Takt in animate()).
+let hazardBlinkMat = null;
 
 const lookAtTarget = new THREE.Vector3();
 
@@ -2493,9 +2496,48 @@ const getCivAssets = () => {
   return civAssets;
 };
 
+// Nur die menschlichen Charaktere als Civis — Alien/Astro/Robot/Ninja bleiben
+// Spieler-Skins und würden als Passanten die Immersion brechen.
+const civHumanKeys = [
+  'character-a',
+  'character-b',
+  'character-c',
+  'character-d',
+  'character-e',
+  'character-f',
+];
+
 const buildCivilian = () => {
   const a = getCivAssets();
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  // Bevorzugt echte Character-Modelle (geklont samt Skelett + eigener
+  // Walk-Animation); die Box-Figur bleibt als Fallback und für Vielfalt.
+  const humans = civHumanKeys.filter((key) => characterTemplates[key]);
+  if (humans.length && Math.random() < 0.7) {
+    const template = characterTemplates[pick(humans)];
+    const civ = new THREE.Group();
+    const root = cloneSkeleton(template.scene);
+    const height = 1.15 + Math.random() * 0.2;
+    const scale = height / template.rawHeight;
+    root.scale.setScalar(scale);
+    root.rotation.set(0, 0, 0);
+    root.position.set(0, -template.rawMinY * scale, 0);
+    civ.add(root);
+    const mixer = new THREE.AnimationMixer(root);
+    const strip = (name) => name.split('|').pop().toLowerCase();
+    const clip =
+      template.clips.find((c) => strip(c.name) === 'walk') ||
+      template.clips.find((c) => strip(c.name).includes('walk')) ||
+      template.clips.find((c) => strip(c.name).includes('run'));
+    if (clip) {
+      const action = mixer.clipAction(clip);
+      // Eine Run-Animation im Schlendertempo abspielen, falls es kein Walk gibt.
+      action.timeScale = strip(clip.name).includes('run') ? 0.55 : 1;
+      action.play();
+    }
+    civ.userData = { mixer, glb: true };
+    return civ;
+  }
   const civ = new THREE.Group();
   const cloth = pick(a.clothMats);
   const pants = pick(a.pantsMats);
@@ -2578,13 +2620,17 @@ const updateCivilians = (delta) => {
   for (let i = civilians.length - 1; i >= 0; i -= 1) {
     const civ = civilians[i];
     civ.position.z += (speed.value + civ.userData.vz) * delta;
-    civ.userData.phase += delta * civ.userData.stride;
-    const swing = Math.sin(civ.userData.phase) * 0.5;
-    civ.userData.legL.rotation.x = swing;
-    civ.userData.legR.rotation.x = -swing;
-    civ.userData.armL.rotation.x = -swing * 0.7;
-    if (!civ.userData.phoneUser) {
-      civ.userData.armR.rotation.x = swing * 0.7;
+    if (civ.userData.glb) {
+      civ.userData.mixer.update(delta);
+    } else {
+      civ.userData.phase += delta * civ.userData.stride;
+      const swing = Math.sin(civ.userData.phase) * 0.5;
+      civ.userData.legL.rotation.x = swing;
+      civ.userData.legR.rotation.x = -swing;
+      civ.userData.armL.rotation.x = -swing * 0.7;
+      if (!civ.userData.phoneUser) {
+        civ.userData.armR.rotation.x = swing * 0.7;
+      }
     }
     if (civ.position.z > 20) {
       scene.remove(civ);
@@ -3889,24 +3935,132 @@ const getObstacleAssets = () => {
     busBody: lambert(0xc22b3d, 0.25),
     busRoof: lambert(0xe8e2d0),
     frame: lambert(0x2a3350),
+    // Detail-Pass: Baustellen-Blinker, Fässer, Container, Gerüst, Kiosk, Schild.
+    black: lambert(0x14161c),
+    stripeYellow: lambert(0xf5c518, 0.4),
+    discDark: track(new THREE.MeshLambertMaterial({ color: 0x1c2230, side: THREE.DoubleSide })),
+    barrelPaints: [0xd23a4f, 0x3f7fd6, 0x8a6a3a, 0x3f8f6f].map((color) => lambert(color, 0.25)),
+    containerPaints: [0x2f6fd0, 0xc2542b, 0x2f9e63, 0x6a4a9e].map((color) => lambert(color, 0.2)),
+    scaffoldNet: track(new THREE.MeshBasicMaterial({
+      color: 0xff7a2e,
+      transparent: true,
+      opacity: 0.45,
+      side: THREE.DoubleSide,
+    })),
+    kioskGlow: track(new THREE.MeshBasicMaterial({ color: 0xffd98c })),
+    kioskNeon: track(new THREE.MeshBasicMaterial({ color: 0x2ee5ff })),
+    cardboard: lambert(0x9a7743),
+    cardboardDark: lambert(0x6e5430),
+    shabby: lambert(0x4a4436),
+    skin: lambert(0xc9a184),
   };
+  // Geteiltes Blink-Material: animate() schaltet die Farbe im Takt um —
+  // ALLE Baustellen-Lampen der Szene blinken damit synchron und kostenlos.
+  hazardBlinkMat = track(new THREE.MeshBasicMaterial({ color: 0xffb023 }));
+  obstacleAssets.hazardBlink = hazardBlinkMat;
   return obstacleAssets;
 };
 
 // Every variant is centered on its origin so the existing collision math
 // (position = center, userData.size = box extents) keeps working.
 const obstacleBuilders = {
+  // Ölfass: leicht konischer Korpus mit Farbvarianten, Sickenringe, Deckel
+  // mit Spundloch und Schmutzrand unten — statt des nackten Zylinders.
   'low-barrel': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
-    g.add(new THREE.Mesh(track(new THREE.CylinderGeometry(0.55, 0.55, 1.35, 14)), a.barrel));
-    const ringGeo = track(new THREE.CylinderGeometry(0.58, 0.58, 0.09, 14));
-    [-0.42, 0.42].forEach((y) => {
-      const ring = new THREE.Mesh(ringGeo, a.ring);
-      ring.position.y = y;
-      g.add(ring);
+    const paint = a.barrelPaints[Math.floor(Math.random() * a.barrelPaints.length)];
+    const body = new THREE.Mesh(track(new THREE.CylinderGeometry(0.52, 0.56, 1.28, 16)), paint);
+    body.position.y = -0.01;
+    g.add(body);
+    const ribGeo = track(new THREE.CylinderGeometry(0.585, 0.585, 0.07, 16));
+    [-0.38, 0.02, 0.38].forEach((y) => {
+      const rib = new THREE.Mesh(ribGeo, a.ring);
+      rib.position.y = y;
+      g.add(rib);
     });
+    const cap = new THREE.Mesh(track(new THREE.CylinderGeometry(0.53, 0.53, 0.07, 16)), a.ring);
+    cap.position.y = 0.64;
+    g.add(cap);
+    const bung = new THREE.Mesh(track(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 8)), a.frame);
+    bung.position.set(0.24, 0.69, 0.1);
+    g.add(bung);
+    const dirt = new THREE.Mesh(track(new THREE.CylinderGeometry(0.575, 0.6, 0.12, 16)), a.frame);
+    dirt.position.y = -0.615;
+    g.add(dirt);
     return { mesh: g, size: { w: 1.1, h: 1.35, d: 1.1 } };
+  },
+  // Blinkende Baustellen-Bake: schwarz-gelb gestreifter Fuß, Mast, kompakte
+  // Scheibe mit synchron blinkender Lampe (hazardBlink wird in animate()
+  // getaktet) — ersetzt das farblose Kenney-GLB.
+  'construction-light': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    const half = 1.3;
+    const foot = new THREE.Mesh(track(new THREE.BoxGeometry(0.72, 0.12, 0.5)), a.frame);
+    foot.position.y = -half + 0.06;
+    g.add(foot);
+    const stripeGeo = track(new THREE.BoxGeometry(0.46, 0.26, 0.3));
+    for (let i = 0; i < 5; i += 1) {
+      const stripe = new THREE.Mesh(stripeGeo, i % 2 ? a.black : a.stripeYellow);
+      stripe.position.y = -half + 0.25 + i * 0.26;
+      g.add(stripe);
+    }
+    const pole = new THREE.Mesh(track(new THREE.BoxGeometry(0.09, 0.75, 0.09)), a.frame);
+    pole.position.y = -half + 1.9;
+    g.add(pole);
+    const housing = new THREE.Mesh(track(new THREE.CircleGeometry(0.38, 18)), a.discDark);
+    housing.position.y = -half + 2.38;
+    g.add(housing);
+    const lamp = new THREE.Mesh(track(new THREE.CircleGeometry(0.26, 18)), a.hazardBlink);
+    lamp.position.set(0, -half + 2.38, 0.012);
+    g.add(lamp);
+    return { mesh: g, size: { w: 0.8, h: 2.6, d: 0.55 } };
+  },
+  // Obdachloser am Gehwegrand, der ein Kartonschild seitlich in die äußere
+  // Lane hält. Hitbox = NUR das Schild (drüber springen oder drunter
+  // rutschen); die Figur steht auf lokal +x (Gehweg) — für die linke
+  // Straßenseite dreht spawnRow das Ganze um 180°.
+  'over-homeless': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    const groundY = -1.55; // spawnRow setzt Über-Kopf-Hindernisse auf y=1.55
+    const sign = new THREE.Mesh(track(new THREE.BoxGeometry(1.6, 0.5, 0.09)), a.cardboard);
+    sign.rotation.z = 0.06;
+    g.add(sign);
+    const backing = new THREE.Mesh(track(new THREE.BoxGeometry(1.68, 0.58, 0.05)), a.cardboardDark);
+    backing.position.z = -0.05;
+    backing.rotation.z = 0.06;
+    g.add(backing);
+    // "Schrift": zwei dunkle Kritzel-Balken auf dem Karton.
+    const scribbleGeo = track(new THREE.BoxGeometry(1.1, 0.07, 0.02));
+    [0.09, -0.07].forEach((y, i) => {
+      const scribble = new THREE.Mesh(scribbleGeo, a.cardboardDark);
+      scribble.position.set(i ? 0.1 : -0.05, y, 0.05);
+      scribble.rotation.z = 0.06;
+      g.add(scribble);
+    });
+    // Haltearm von der Figur zum Schild.
+    const arm = new THREE.Mesh(track(new THREE.BoxGeometry(1.25, 0.09, 0.1)), a.shabby);
+    arm.position.set(1.42, -0.28, 0);
+    arm.rotation.z = -0.35;
+    g.add(arm);
+    const legGeo = track(new THREE.BoxGeometry(0.12, 0.5, 0.14));
+    [-0.11, 0.11].forEach((x) => {
+      const leg = new THREE.Mesh(legGeo, a.black);
+      leg.position.set(2.1 + x, groundY + 0.25, 0);
+      g.add(leg);
+    });
+    const torso = new THREE.Mesh(track(new THREE.BoxGeometry(0.42, 0.62, 0.28)), a.shabby);
+    torso.position.set(2.1, groundY + 0.8, 0);
+    g.add(torso);
+    const head = new THREE.Mesh(track(new THREE.BoxGeometry(0.24, 0.26, 0.24)), a.skin);
+    head.position.set(2.1, groundY + 1.24, 0);
+    g.add(head);
+    const beanie = new THREE.Mesh(track(new THREE.BoxGeometry(0.26, 0.1, 0.26)), a.barrel);
+    beanie.position.set(2.1, groundY + 1.4, 0);
+    g.add(beanie);
+    return { mesh: g, size: { w: 1.7, h: 0.6, d: 0.4 } };
   },
   'low-car': () => {
     const a = getObstacleAssets();
@@ -3951,17 +4105,97 @@ const obstacleBuilders = {
     g.userData.beams = beams;
     return { mesh: g, size: { w: 1.5, h: 1.1, d: 2.6 } };
   },
+  // Container-Stapel statt der drei nackten Kisten: zwei bunte Stahl-
+  // container mit Sicken, Eckpfosten und Warnstreifen — passt an den
+  // Straßenrand einer Stadt (E-Kästen/Baustellencontainer).
   'tall-stack': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
-    const boxGeo = track(new THREE.BoxGeometry(1.2, 0.92, 1.2));
-    [-0.93, 0, 0.93].forEach((y, i) => {
-      const box = new THREE.Mesh(boxGeo, a.tall);
-      box.position.y = y;
-      box.rotation.y = (i - 1) * 0.18;
-      g.add(box);
+    const pick = () => a.containerPaints[Math.floor(Math.random() * a.containerPaints.length)];
+    const lower = new THREE.Mesh(track(new THREE.BoxGeometry(1.35, 1.6, 1.25)), pick());
+    lower.position.y = -0.6;
+    g.add(lower);
+    const upper = new THREE.Mesh(track(new THREE.BoxGeometry(1.22, 1.15, 1.12)), pick());
+    upper.position.y = 0.78;
+    upper.rotation.y = 0.1;
+    g.add(upper);
+    const ribGeo = track(new THREE.BoxGeometry(0.06, 1.45, 0.05));
+    [-0.4, 0, 0.4].forEach((x) => {
+      const rib = new THREE.Mesh(ribGeo, a.frame);
+      rib.position.set(x, -0.6, 0.64);
+      g.add(rib);
     });
-    return { mesh: g, size: { w: 1.2, h: 2.8, d: 1.2 } };
+    const upperRibGeo = track(new THREE.BoxGeometry(0.05, 1.0, 0.04));
+    [-0.32, 0.32].forEach((x) => {
+      const rib = new THREE.Mesh(upperRibGeo, a.frame);
+      rib.position.set(x, 0.78, 0.58);
+      rib.rotation.y = 0.1;
+      g.add(rib);
+    });
+    const postGeo = track(new THREE.BoxGeometry(0.09, 1.64, 0.09));
+    [[-0.66, -0.61], [0.66, -0.61], [-0.66, 0.61], [0.66, 0.61]].forEach(([x, z]) => {
+      const post = new THREE.Mesh(postGeo, a.frame);
+      post.position.set(x, -0.6, z);
+      g.add(post);
+    });
+    const stripe = new THREE.Mesh(track(new THREE.BoxGeometry(1.38, 0.16, 1.28)), a.stripeYellow);
+    stripe.position.y = -1.28;
+    g.add(stripe);
+    return { mesh: g, size: { w: 1.4, h: 2.8, d: 1.3 } };
+  },
+  // Gerüstturm: vier Stangen, zwei Bohlenlagen, orangenes Schutznetz zur
+  // Straße plus Warnbalken — hohes Hindernis Nr. 3.
+  'tall-scaffold': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    const poleGeo = track(new THREE.BoxGeometry(0.07, 2.8, 0.07));
+    [[-0.6, -0.42], [0.6, -0.42], [-0.6, 0.42], [0.6, 0.42]].forEach(([x, z]) => {
+      const pole = new THREE.Mesh(poleGeo, a.frame);
+      pole.position.set(x, 0, z);
+      g.add(pole);
+    });
+    const plankGeo = track(new THREE.BoxGeometry(1.35, 0.08, 0.95));
+    [-0.35, 0.72].forEach((y) => {
+      const plank = new THREE.Mesh(plankGeo, a.busRoof);
+      plank.position.y = y;
+      g.add(plank);
+    });
+    const net = new THREE.Mesh(track(new THREE.PlaneGeometry(1.25, 2.5)), a.scaffoldNet);
+    net.position.set(0, 0.05, 0.47);
+    g.add(net);
+    const warnGeo = track(new THREE.BoxGeometry(1.32, 0.14, 0.06));
+    [0, 1].forEach((i) => {
+      const warn = new THREE.Mesh(warnGeo, i ? a.black : a.stripeYellow);
+      warn.position.set(0, -1.22 + i * 0.14, 0.48);
+      g.add(warn);
+    });
+    return { mesh: g, size: { w: 1.35, h: 2.85, d: 1.0 } };
+  },
+  // Nacht-Kiosk: Bude mit leuchtendem Verkaufsfenster, Markise und
+  // Neon-Schild — hohes Hindernis Nr. 4, passt in die Neon-Stadt.
+  'tall-kiosk': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(track(new THREE.BoxGeometry(1.5, 2.0, 1.1)), a.frame);
+    body.position.y = -0.38;
+    g.add(body);
+    const roof = new THREE.Mesh(track(new THREE.BoxGeometry(1.62, 0.1, 1.22)), a.black);
+    roof.position.y = 0.67;
+    g.add(roof);
+    const window = new THREE.Mesh(track(new THREE.PlaneGeometry(1.05, 0.65)), a.kioskGlow);
+    window.position.set(0, -0.18, 0.56);
+    g.add(window);
+    const counter = new THREE.Mesh(track(new THREE.BoxGeometry(1.2, 0.09, 0.22)), a.busRoof);
+    counter.position.set(0, -0.55, 0.62);
+    g.add(counter);
+    const awning = new THREE.Mesh(track(new THREE.BoxGeometry(1.6, 0.06, 0.62)), a.barrel);
+    awning.position.set(0, 0.5, 0.85);
+    awning.rotation.x = 0.3;
+    g.add(awning);
+    const neon = new THREE.Mesh(track(new THREE.PlaneGeometry(1.25, 0.36)), a.kioskNeon);
+    neon.position.set(0, 1.05, 0.57);
+    g.add(neon);
+    return { mesh: g, size: { w: 1.55, h: 2.75, d: 1.2 } };
   },
   // Roadwork barrier: striped beam on two legs, open underneath — slide
   // under it or jump over it. Collision box covers only the beam.
@@ -3996,11 +4230,12 @@ const obstacleBuilders = {
   },
 };
 
-// Kisten/Kartons bewusst NICHT im Pool: passen optisch nicht auf die Straße.
-// 'tall-stack' existiert nur noch als Fallback, solange die GLBs laden.
+// Statische hohe Hindernisse (Container, Gerüst, Kiosk) mischen sich mit den
+// hohen Fahrzeugen ('tall-any' doppelt = 50% Fahrzeuge). 'over-homeless'
+// spawnt nur gezielt auf Außen-Lanes (spawnRow), nie aus dem Pool.
 const obstacleVariants = {
   low: ['low-barrel', 'car-any'],
-  tall: ['tall-any'],
+  tall: ['tall-any', 'tall-any', 'tall-stack', 'tall-scaffold', 'tall-kiosk'],
   over: ['over-barrier'],
 };
 
@@ -4038,7 +4273,6 @@ const glbVehicleDefs = [
   // quer zur Fahrbahn, zum Spieler zeigend (das Kenney-Modell liegt längs).
   { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
   { key: 'resource-planks', kind: 'set-piece', fitHeight: 0.6, dir: 'obstacles/survival' },
-  { key: 'construction-light', kind: 'set-piece', fitHeight: 2.7, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
   { key: 'structure-metal', kind: 'set-piece', fitHeight: 2.8, scaleX: 0.6, dir: 'obstacles/survival' },
   // scaleY 1.1: Breite/Tiefe passen perfekt, nur die Durchfahrt soll ~10% höher.
   { key: 'sign-highway', kind: 'decor', fitWidth: 9, rotateY: Math.PI / 2, scaleY: 1.1, dir: 'obstacles/roads' },
@@ -4577,10 +4811,14 @@ const spawnRow = () => {
       setSpawned = true;
       return;
     }
-    const obstacle = getObstacle(type);
+    // Über-Kopf-Slot auf einer Außen-Lane: manchmal hält dort ein Obdachloser
+    // vom Gehweg aus sein Kartonschild in die Lane (Figur steht außerhalb der
+    // Map, nur das Schild kollidiert). Auf der linken Seite gespiegelt.
+    const homeless = type === 'over' && laneIndex !== 1 && Math.random() < 0.35;
+    const obstacle = getObstacle(type, homeless ? 'over-homeless' : null);
     const size = obstacle.userData.size;
     const y = type === 'over' ? 1.55 : size.h / 2 + 0.02;
-    obstacle.rotation.y = 0;
+    obstacle.rotation.y = homeless && laneIndex === 0 ? Math.PI : 0;
     obstacle.position.set(lanes[laneIndex], y, baseZ);
     obstacles.push(obstacle);
     scene.add(obstacle);
@@ -8325,6 +8563,11 @@ const animate = (time) => {
   // extrapolieren (u.a. Musik-Duck unter 0 → volume-Exception).
   const delta = Math.min(0.05, Math.max(0, (time - lastTime) / 1000 || 0));
   lastTime = time;
+
+  // Baustellen-Blinker: ein geteiltes Material, alle Lampen takten synchron.
+  if (hazardBlinkMat) {
+    hazardBlinkMat.color.setHex(time % 900 < 450 ? 0xffb023 : 0x4d3410);
+  }
 
   if (state.value === 'running') {
     updateRunner(delta);
