@@ -3983,6 +3983,60 @@ const getObstacleAssets = () => {
   return obstacleAssets;
 };
 
+// Blaues "Vorbeifahrt links/rechts"-Schild (↔, wie VZ 222 im deutschen
+// Straßenverkehr) als Aufsatz für die hohen statischen Hindernisse: macht auf
+// einen Blick klar, dass man NICHT drüber springt, sondern vorbei fährt.
+let passSignMat = null;
+const getPassSignMat = () => {
+  if (passSignMat) return passSignMat;
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#1e5bc6';
+  ctx.beginPath();
+  ctx.arc(64, 64, 60, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#f2f6ff';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.arc(64, 64, 54, 0, Math.PI * 2);
+  ctx.stroke();
+  // Doppelpfeil ↔
+  ctx.fillStyle = '#f2f6ff';
+  ctx.fillRect(36, 58, 56, 12);
+  ctx.beginPath();
+  ctx.moveTo(14, 64);
+  ctx.lineTo(40, 46);
+  ctx.lineTo(40, 82);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(114, 64);
+  ctx.lineTo(88, 46);
+  ctx.lineTo(88, 82);
+  ctx.closePath();
+  ctx.fill();
+  passSignMat = track(
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }),
+  );
+  return passSignMat;
+};
+
+const addPassSign = (g, topY) => {
+  const a = getObstacleAssets();
+  const pole = new THREE.Mesh(track(new THREE.BoxGeometry(0.07, 0.5, 0.07)), a.frame);
+  pole.position.y = topY + 0.25;
+  g.add(pole);
+  const faceGeo = track(new THREE.CircleGeometry(0.4, 20));
+  [0.012, -0.012].forEach((z, i) => {
+    const face = new THREE.Mesh(faceGeo, getPassSignMat());
+    face.position.set(0, topY + 0.82, z);
+    if (i) face.rotation.y = Math.PI;
+    g.add(face);
+  });
+};
+
 // Every variant is centered on its origin so the existing collision math
 // (position = center, userData.size = box extents) keeps working.
 const obstacleBuilders = {
@@ -4161,6 +4215,7 @@ const obstacleBuilders = {
     const stripe = new THREE.Mesh(track(new THREE.BoxGeometry(1.38, 0.16, 1.28)), a.stripeYellow);
     stripe.position.y = -1.28;
     g.add(stripe);
+    addPassSign(g, 1.36);
     return { mesh: g, size: { w: 1.4, h: 2.8, d: 1.3 } };
   },
   // Gerüstturm: vier Stangen, zwei Bohlenlagen, orangenes Schutznetz zur
@@ -4189,6 +4244,7 @@ const obstacleBuilders = {
       warn.position.set(0, -1.22 + i * 0.14, 0.48);
       g.add(warn);
     });
+    addPassSign(g, 1.42);
     return { mesh: g, size: { w: 1.35, h: 2.85, d: 1.0 } };
   },
   // Nacht-Kiosk: Bude mit leuchtendem Verkaufsfenster, Markise und
@@ -4215,6 +4271,7 @@ const obstacleBuilders = {
     const neon = new THREE.Mesh(track(new THREE.PlaneGeometry(1.25, 0.36)), a.kioskNeon);
     neon.position.set(0, 1.05, 0.57);
     g.add(neon);
+    addPassSign(g, 1.26);
     return { mesh: g, size: { w: 1.55, h: 2.75, d: 1.2 } };
   },
   // Roadwork barrier: striped beam on two legs, open underneath — slide
