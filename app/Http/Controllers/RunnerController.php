@@ -25,8 +25,8 @@ class RunnerController extends Controller
         ],
         'night' => [
             'base_speed' => 14,
-            // 14 statt 20: Night-Topspeed von 74 auf 56 gesenkt (08.07.2026),
-            // synchron mit levelOptions in resources/js/game/constants.js.
+            // 14 instead of 20: Night top speed lowered from 74 to 56 (2026-07-08),
+            // in sync with levelOptions in resources/js/game/constants.js.
             'speed_step' => 14,
         ],
     ];

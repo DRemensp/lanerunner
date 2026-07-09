@@ -9,9 +9,9 @@ export const cameraBase = {
 // Speed jumps once per 2,500-point checkpoint (5x the old per-500 step), so
 // every checkpoint is a distinct tempo change.
 export const levelOptions = [
-  // Topspeed = base + 3·step (Tier-Cap 3): Rush 42, Night 56. Night stand
-  // seit jeher auf 74 (Step 20) — auf Daniels Wunsch auf ~55 gesenkt.
-  // MUSS synchron bleiben mit LEVELS in RunnerController (Anti-Cheat)!
+  // Top speed = base + 3·step (tier cap 3): Rush 42, Night 56. Night had
+  // always been 74 (step 20) — lowered to ~55 at Daniel's request.
+  // MUST stay in sync with LEVELS in RunnerController (anti-cheat)!
   { id: 'rush', label: 'City Rush', baseSpeed: 12, stepDistance: 2500, speedStep: 10 },
   { id: 'night', label: 'Night Run', baseSpeed: 14, stepDistance: 2500, speedStep: 14 },
 ];
@@ -19,16 +19,16 @@ export const levelOptions = [
 export const lanes = [-2, 0, 2];
 export const groundY = 0.7;
 export const gravity = -28;
-// 11.4 statt 12: Apex ~2.32 m — komfortabel über Barrieren (1.9) und auf
-// Autodächer (1.5), aber zusammen mit dem Dachlauf-Step-Up nicht mehr hoch
-// genug, um hohe Hindernisse (2.75+) zu erklimmen.
+// 11.4 instead of 12: apex ~2.32 m — comfortably over barriers (1.9) and
+// onto car roofs (1.5), but together with the roof-run step-up no longer
+// high enough to climb tall obstacles (2.75+).
 export const jumpVelocity = 11.4;
 export const slideScale = 0.55;
 export const slideDuration = 0.6;
 export const dropBoost = 1.6;
 export const swipeThreshold = 40;
-// Seitliches Swipen (Lane-Wechsel) ist die häufigste Aktion und löst früher
-// aus als vertikales — sonst fühlt es sich träger an als Jump/Slide.
+// Sideways swiping (lane change) is the most common action and fires earlier
+// than vertical — otherwise it feels more sluggish than jump/slide.
 export const swipeThresholdX = 26;
 export const swipeTimeLimit = 650;
 export const segmentLength = 20;
@@ -64,7 +64,7 @@ export const RAMP_SCORE = 20000;
 
 // Environment palettes per phase. envSettings.night is mutated at runtime by
 // applyDistrict() as the run travels through city districts.
-// edge = Farbe der leuchtenden Straßenkanten (Neon-Linien links/rechts).
+// edge = color of the glowing road edges (neon lines left/right).
 export const envSettings = {
   night: {
     bg: 0x05070f, fog: 0x05070f, fogNear: 40, fogFar: 165,

@@ -216,8 +216,8 @@
       Skip &raquo;
     </button>
 
-    <!-- Floating-Joystick: der erste Touch irgendwo auf dem Screen wird zur
-         Joystick-Mitte, der Ring erscheint dort und folgt dem Finger. -->
+    <!-- Floating joystick: the first touch anywhere on the screen becomes the
+         joystick center, the ring appears there and follows the finger. -->
     <div
       v-if="state === 'running' && (finalePhase === 'plane' || finalePhase === 'void')"
       class="joy-capture"
@@ -754,9 +754,9 @@
         <div class="death-actions">
           <button class="primary-btn" @click="startRun" type="button">Run Again</button>
           <button class="ghost-btn" @click="shareScore" type="button">{{ shareLabel }}</button>
-          <!-- quitRun statt backToMenu: räumt die Welt auf (Hindernisse, Zone,
-               Spielerposition) — sonst steht die Skin-Vorschau danach mitten
-               in einer liegengebliebenen Barrikade. -->
+          <!-- quitRun instead of backToMenu: cleans up the world (obstacles,
+               zone, player position) — otherwise the skin preview ends up
+               standing inside a leftover barricade. -->
           <button class="ghost-btn" @click="quitRun" type="button">Return to Menu</button>
         </div>
       </div>
@@ -890,9 +890,9 @@ let bumpToastTimer;
 let lastBumpAt = -Infinity;
 let bumpProtectUntil = 0;
 let bumpShakeTimer = 0;
-// Sanfter Kamera-Hub für Trampolin-Bounces: bleibt 0 bei normalen Sprüngen,
-// hebt die Chase-Cam nur an, wenn der Spieler höher als ein normaler Sprung
-// steigt (sonst fliegt er beim Dach-Bounce oben aus dem Bild).
+// Gentle camera lift for trampoline bounces: stays 0 during normal jumps and
+// only raises the chase cam when the player climbs higher than a regular
+// jump (otherwise the roof bounce flies out of frame at the top).
 let chaseCamLift = 0;
 let laneOrigin = 1;
 
@@ -901,10 +901,10 @@ let laneOrigin = 1;
 const eventToast = ref(null);
 let eventToastTimer;
 
-// Seitenstraßen-Kreuzung: alle paar hundert Meter zweigt eine Querstraße ab,
-// über die eigener Verkehr fährt (bewegliche Hindernisse in X-Richtung).
+// Side-street crossing: every few hundred meters a cross street branches off,
+// carrying its own traffic (moving obstacles along the X axis).
 let crossing = null; // { group, carTimer }
-let crossingGroup = null; // gecachte Geometrie, wird nur umpositioniert
+let crossingGroup = null; // cached geometry, only ever repositioned
 let crossingDistIn = 320;
 let trafficWave = null;
 let nextMilestone = 2500;
@@ -1062,7 +1062,7 @@ let planeVelY = 0;
 const planeKeys = { up: false, down: false, left: false, right: false };
 const joyKnob = ref({ x: 0, y: 0 });
 let joyVec = { x: 0, y: 0 };
-// Ankerpunkt des Floating-Joysticks (null = kein Finger unten).
+// Anchor point of the floating joystick (null = no finger down).
 const joyBase = ref(null);
 let joyPointerId = null;
 // Gallery showroom joystick: only visible while browsing the free-roam
@@ -1241,10 +1241,10 @@ let skylineMesh;
 const obstaclePools = {};
 const obstacleResources = [];
 let obstacleAssets = null;
-// Geteiltes Material für blinkende Baustellen-Lampen (Takt in animate()).
+// Shared material for blinking construction lamps (pulsed in animate()).
 let hazardBlinkMat = null;
-// Blaulicht-Paar für Einsatzfahrzeuge: zwei Materialien, die in animate()
-// gegenphasig takten — alle sichtbaren Beacons wechselblinken synchron.
+// Emergency-light pair for response vehicles: two materials pulsed in
+// animate() in counter-phase — all visible beacons alternate in sync.
 let beaconMatA = null;
 let beaconMatB = null;
 
@@ -2276,12 +2276,12 @@ const findTrackedTouch = (event) => {
 };
 
 const triggerSwipe = (dx, dy) => {
-  // Jede Achse hat ihre EIGENE Schwelle und muss dominieren, um zu feuern.
-  // Vorher löste die Geste aus, sobald irgendeine Achse 40px überschritt —
-  // ein seitlicher Swipe mit natürlichem Bogen wurde dann als Jump/Slide
-  // gelesen, wenn die Vertikale zufällig zuerst über der Schwelle lag.
-  // Horizontal bekommt zusätzlich den Tie-Break (Faktor 0.85), weil ein
-  // Lane-Wechsel die wahrscheinlichere Absicht ist.
+  // Each axis has its OWN threshold and must dominate before firing.
+  // Previously the gesture fired as soon as any axis passed 40px — a
+  // sideways swipe with a natural arc was read as jump/slide whenever the
+  // vertical axis happened to cross its threshold first. Horizontal also
+  // gets the tie-break (factor 0.85) because a lane change is the more
+  // likely intent.
   const horizontal =
     Math.abs(dx) >= swipeThresholdX && Math.abs(dx) >= Math.abs(dy) * 0.85;
   const vertical = Math.abs(dy) >= swipeThreshold && Math.abs(dy) > Math.abs(dx);
@@ -2417,12 +2417,12 @@ const handleResize = () => {
 
 let houseAssets = null;
 
-// Wind-Streaks: dünne additive Lichtstriche neben der Strecke, die schneller
-// als die Welt scrollen — machen das Tempo sichtbar. Deckkraft wächst mit dem
-// Speed (unter ~15 unsichtbar), ein geteiltes Material für alle Striche.
+// Wind streaks: thin additive light strokes beside the track that scroll
+// faster than the world — they make the speed visible. Opacity grows with
+// speed (invisible below ~15), one shared material for all streaks.
 let windStreaks = null;
 let windStreakMat = null;
-// Geteiltes Material der Neon-Straßenkanten — Farbe wandert pro District mit.
+// Shared material of the neon road edges — color shifts per district.
 let edgeLineMaterial = null;
 
 const resetWindStreak = (streak, anywhere = false) => {
@@ -2469,9 +2469,9 @@ const updateWindStreaks = (delta) => {
   });
 };
 
-// ---- Civis: rein dekorative Fußgänger auf den Gehwegen (keine Kollision).
-// Prozedurale Low-Poly-Figuren im Stil der Stadt, gepoolt wie alles andere;
-// sie scrollen mit der Welt und laufen dabei vor oder zurück.
+// ---- Civis: purely decorative pedestrians on the sidewalks (no collision).
+// Procedural low-poly figures in the city's style, pooled like everything
+// else; they scroll with the world while walking forwards or backwards.
 let civilians = [];
 let civilianPool = [];
 let civTimer = 0;
@@ -2480,9 +2480,9 @@ let civAssets = null;
 const getCivAssets = () => {
   if (civAssets) return civAssets;
   const legGeo = new THREE.BoxGeometry(0.11, 0.42, 0.13);
-  legGeo.translate(0, -0.21, 0); // Drehpunkt an der Hüfte
+  legGeo.translate(0, -0.21, 0); // pivot at the hip
   const armGeo = new THREE.BoxGeometry(0.09, 0.38, 0.1);
-  armGeo.translate(0, -0.17, 0); // Drehpunkt an der Schulter
+  armGeo.translate(0, -0.17, 0); // pivot at the shoulder
   civAssets = {
     legGeo,
     armGeo,
@@ -2503,8 +2503,8 @@ const getCivAssets = () => {
   return civAssets;
 };
 
-// Nur die menschlichen Charaktere als Civis — Alien/Astro/Robot/Ninja bleiben
-// Spieler-Skins und würden als Passanten die Immersion brechen.
+// Only the human characters serve as civis — Alien/Astro/Robot/Ninja stay
+// player skins and would break immersion as passers-by.
 const civHumanKeys = [
   'character-a',
   'character-b',
@@ -2517,8 +2517,8 @@ const civHumanKeys = [
 const buildCivilian = () => {
   const a = getCivAssets();
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
-  // Bevorzugt echte Character-Modelle (geklont samt Skelett + eigener
-  // Walk-Animation); die Box-Figur bleibt als Fallback und für Vielfalt.
+  // Prefer real character models (cloned with skeleton + their own walk
+  // animation); the box figure stays as fallback and for variety.
   const humans = civHumanKeys.filter((key) => characterTemplates[key]);
   if (humans.length && Math.random() < 0.7) {
     const template = characterTemplates[pick(humans)];
@@ -2538,7 +2538,7 @@ const buildCivilian = () => {
       template.clips.find((c) => strip(c.name).includes('run'));
     if (clip) {
       const action = mixer.clipAction(clip);
-      // Eine Run-Animation im Schlendertempo abspielen, falls es kein Walk gibt.
+      // Play a run animation at strolling pace if there is no walk clip.
       action.timeScale = strip(clip.name).includes('run') ? 0.55 : 1;
       action.play();
     }
@@ -2566,7 +2566,7 @@ const buildCivilian = () => {
   const armR = new THREE.Mesh(a.armGeo, cloth);
   armR.position.set(0.23, 0.95, 0);
   civ.add(armR);
-  // Ein Teil der Leute läuft aufs leuchtende Handy starrend — Nachtstadt.
+  // Some of the people walk staring at a glowing phone — night city.
   const phoneUser = Math.random() < 0.3;
   if (phoneUser) {
     armR.rotation.x = -1.15;
@@ -2583,13 +2583,13 @@ const buildCivilian = () => {
 const spawnCivilian = () => {
   const civ = civilianPool.pop() || buildCivilian();
   const side = Math.random() < 0.5 ? -1 : 1;
-  // Gehweg: Mitte ±4.92, 2.6 breit — mit Abstand zu Bordstein und Häusern.
+  // Sidewalk: center ±4.92, 2.6 wide — clear of curb and buildings.
   civ.position.set(
     side * (4.2 + Math.random() * 1.3),
     0.26,
     -(110 + Math.random() * 60),
   );
-  const toward = Math.random() < 0.5; // auf den Spieler zu oder von ihm weg
+  const toward = Math.random() < 0.5; // towards the player or away
   const walk = 1.1 + Math.random() * 0.9;
   civ.userData.vz = toward ? walk : -walk;
   civ.userData.phase = Math.random() * Math.PI * 2;
@@ -2608,7 +2608,7 @@ const updateCivilians = (delta) => {
     civTimer -= delta;
     if (civTimer <= 0 && civilians.length < 10) {
       spawnCivilian();
-      // Gelegentlich ein Pärchen nebeneinander.
+      // Occasionally a couple walking side by side.
       if (Math.random() < 0.25 && civilians.length < 10) {
         const first = civilians[civilians.length - 1];
         spawnCivilian();
@@ -2686,8 +2686,8 @@ const buildHouse = (side) => {
       (Math.random() - 0.5) * d * 0.4,
     );
     group.add(antenna);
-    // Rotes Flugwarnlicht an der Spitze — winziges Detail, große Wirkung
-    // in der Skyline-Silhouette.
+    // Red aviation warning light at the tip — tiny detail, big impact on
+    // the skyline silhouette.
     const blink = new THREE.Mesh(houseAssets.blinkGeo, houseAssets.blinkMat);
     blink.position.set(antenna.position.x, h + 2.45, antenna.position.z);
     group.add(blink);
@@ -2701,8 +2701,8 @@ const buildHouse = (side) => {
   const faceX = -side * (w / 2 + 0.03);
   const faceRotation = side < 0 ? Math.PI / 2 : -Math.PI / 2;
 
-  // Silhouetten-Vielfalt: gestufte Türme oder leuchtende Dach-Billboards,
-  // damit die Skyline nicht wie eine Reihe gleicher Klötze wirkt.
+  // Silhouette variety: stepped towers or glowing roof billboards, so the
+  // skyline doesn't read as a row of identical blocks.
   if (h >= 8 && Math.random() < 0.25) {
     const upper = new THREE.Mesh(
       buildingGeometry,
@@ -2736,8 +2736,8 @@ const buildHouse = (side) => {
     billboard.rotation.y = faceRotation;
     group.add(billboard);
   }
-  // Fassaden-Stil: hohe Häuser werden manchmal zum Glasturm (durchgehende
-  // Lichtbänder statt Fensterraster) — bricht die immer gleiche Lochfassade.
+  // Facade style: tall buildings sometimes become a glass tower (continuous
+  // light bands instead of a window grid) — breaks the repetitive facade.
   const glassTower = h >= 9 && Math.random() < 0.22;
   if (glassTower) {
     const stripCount = d > 5.5 ? 3 : 2;
@@ -2753,8 +2753,8 @@ const buildHouse = (side) => {
     }
   } else {
     const rows = Math.max(1, Math.min(6, Math.floor((h - 2.4) / 1.9)));
-    // Spaltenzahl folgt der Haus-Tiefe statt fix 3 — breite Blocks wirken
-    // sonst leer, schmale überfüllt.
+    // Column count follows the building depth instead of a fixed 3 — wide
+    // blocks look empty otherwise, narrow ones overcrowded.
     const cols = Math.max(2, Math.min(4, Math.round(d / 1.8)));
     const colSpread = (d * 0.72) / cols;
     const wantsBalconies = Math.random() < 0.4;
@@ -2775,7 +2775,7 @@ const buildHouse = (side) => {
         win.position.set(faceX, winY, winZ);
         win.rotation.y = faceRotation;
         group.add(win);
-        // Balkone unter einzelnen Fenstern (nie im Erdgeschossbereich).
+        // Balconies under individual windows (never on the ground floor).
         if (wantsBalconies && balconies < 2 && row > 0 && Math.random() < 0.14) {
           balconies += 1;
           const plate = new THREE.Mesh(houseAssets.balconyFloorGeo, houseAssets.trimMat);
@@ -2787,8 +2787,8 @@ const buildHouse = (side) => {
         }
       }
     }
-    // Penthouse: oberste Etage hoher Häuser bekommt ein breites Panorama-
-    // Fenster — die Skyline liest sich oben nicht mehr als schwarze Wand.
+    // Penthouse: the top floor of tall buildings gets a wide panorama
+    // window — the skyline no longer reads as a black wall at the top.
     if (h >= 9 && Math.random() < 0.5) {
       const pent = new THREE.Mesh(houseAssets.penthouseGeo, houseAssets.windowLit);
       pent.position.set(faceX, h - 1.1, 0);
@@ -2797,7 +2797,7 @@ const buildHouse = (side) => {
     }
   }
 
-  // Neon-Dachkante entlang der Straßenfront — DAS Nachtstadt-Signal.
+  // Neon roof edge along the street front — THE night-city signal.
   if (Math.random() < 0.45) {
     const edge = new THREE.Mesh(
       houseAssets.roofEdgeGeo,
@@ -2808,7 +2808,7 @@ const buildHouse = (side) => {
     group.add(edge);
   }
 
-  // Regenrohr an einer Fassadenkante.
+  // Drainpipe at a facade edge.
   if (Math.random() < 0.4) {
     const pipe = new THREE.Mesh(houseAssets.pipeGeo, houseAssets.grayMat);
     pipe.scale.y = h * 0.92;
@@ -2827,9 +2827,9 @@ const buildHouse = (side) => {
     group.add(sign);
   }
 
-  // Erdgeschoss: gut die Hälfte der Häuser wird zum Laden — leuchtende
-  // Schaufensterfront, Markise, teils Schild über der Tür. Das Straßenlevel
-  // ist die Zone, die man beim Spielen wirklich SIEHT.
+  // Ground floor: a good half of the buildings become shops — glowing
+  // storefront, awning, sometimes a sign above the door. Street level is
+  // the zone you actually SEE while playing.
   if (Math.random() < 0.55) {
     const glow = new THREE.Mesh(
       houseAssets.shopGlowGeo,
@@ -3091,8 +3091,8 @@ const driveCharacter = (delta, running) => {
     // Freeze the stride mid-air and in the slide; lean sells the pose.
     character.actions.run.paused = isSliding || !grounded;
   }
-  // Halbiert (war 0.7 + speed/16): die Schrittfrequenz sah viel zu hektisch
-  // aus, besonders im Endgame-Tempo.
+  // Halved (was 0.7 + speed/16): the stride frequency looked way too
+  // frantic, especially at endgame speed.
   character.mixer.timeScale = 0.35 + speed.value / 32;
   let lean = 0.12;
   if (isSliding) {
@@ -3751,8 +3751,8 @@ const initScene = () => {
       }
     }
 
-    // Straßenschilder auf dem Gehweg: kleine Silhouetten zwischen den Lampen
-    // (rundes Schild oder Wegweiser-Tafel), pro Seite ~60% Chance.
+    // Street signs on the sidewalk: small silhouettes between the lamps
+    // (round sign or direction board), ~60% chance per side.
     for (let side = -1; side <= 1; side += 2) {
       if (Math.random() < 0.6) {
         const streetSign = new THREE.Group();
@@ -3944,7 +3944,7 @@ const getObstacleAssets = () => {
     busBody: lambert(0xc22b3d, 0.25),
     busRoof: lambert(0xe8e2d0),
     frame: lambert(0x2a3350),
-    // Detail-Pass: Baustellen-Blinker, Fässer, Container, Gerüst, Kiosk, Schild.
+    // Detail pass: construction blinkers, barrels, containers, scaffold, kiosk, sign.
     black: lambert(0x14161c),
     stripeYellow: lambert(0xf5c518, 0.4),
     discDark: track(new THREE.MeshLambertMaterial({ color: 0x1c2230, side: THREE.DoubleSide })),
@@ -3963,13 +3963,13 @@ const getObstacleAssets = () => {
     shabby: lambert(0x4a4436),
     skin: lambert(0xc9a184),
   };
-  // Geteiltes Blink-Material: animate() schaltet die Farbe im Takt um —
-  // ALLE Baustellen-Lampen der Szene blinken damit synchron und kostenlos.
+  // Shared blink material: animate() toggles the color on the beat — ALL
+  // construction lamps in the scene blink in sync, for free.
   hazardBlinkMat = track(new THREE.MeshBasicMaterial({ color: 0xffb023 }));
   obstacleAssets.hazardBlink = hazardBlinkMat;
   beaconMatA = track(new THREE.MeshBasicMaterial({ color: 0x55baff }));
   beaconMatB = track(new THREE.MeshBasicMaterial({ color: 0x0c2a4a }));
-  // Kartonschild des Obdachlosen: Canvas-Textur mit krakeligem "1$ PLS".
+  // The homeless man's cardboard sign: canvas texture with scrawled "1$ PLS".
   const signCanvas = document.createElement('canvas');
   signCanvas.width = 256;
   signCanvas.height = 96;
@@ -3994,9 +3994,9 @@ const getObstacleAssets = () => {
   return obstacleAssets;
 };
 
-// Blaues "Vorbeifahrt links/rechts"-Schild (↔, wie VZ 222 im deutschen
-// Straßenverkehr) als Aufsatz für die hohen statischen Hindernisse: macht auf
-// einen Blick klar, dass man NICHT drüber springt, sondern vorbei fährt.
+// Blue "pass either side" sign (↔, like the German VZ 222 road sign) as a
+// topper for the tall static obstacles: makes it clear at a glance that you
+// do NOT jump over these — you go around.
 let passSignMat = null;
 const getPassSignMat = () => {
   if (passSignMat) return passSignMat;
@@ -4051,8 +4051,8 @@ const addPassSign = (g, topY) => {
 // Every variant is centered on its origin so the existing collision math
 // (position = center, userData.size = box extents) keeps working.
 const obstacleBuilders = {
-  // Ölfass: leicht konischer Korpus mit Farbvarianten, Sickenringe, Deckel
-  // mit Spundloch und Schmutzrand unten — statt des nackten Zylinders.
+  // Oil drum: slightly conical body with color variants, bead rings, lid
+  // with bung hole and grime rim at the bottom — instead of a bare cylinder.
   'low-barrel': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -4077,9 +4077,9 @@ const obstacleBuilders = {
     g.add(dirt);
     return { mesh: g, size: { w: 1.1, h: 1.35, d: 1.1 } };
   },
-  // Blinkende Baustellen-Bake: schwarz-gelb gestreifter Fuß, Mast, kompakte
-  // Scheibe mit synchron blinkender Lampe (hazardBlink wird in animate()
-  // getaktet) — ersetzt das farblose Kenney-GLB.
+  // Blinking construction beacon: black-and-yellow striped base, mast,
+  // compact disc with a lamp blinking in sync (hazardBlink is pulsed in
+  // animate()) — replaces the colorless Kenney GLB.
   'construction-light': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -4104,15 +4104,15 @@ const obstacleBuilders = {
     g.add(lamp);
     return { mesh: g, size: { w: 0.8, h: 2.6, d: 0.55 } };
   },
-  // Obdachloser am Gehwegrand, der ein Kartonschild seitlich in die äußere
-  // Lane hält. Hitbox = NUR das Schild (drüber springen oder drunter
-  // rutschen); die Figur steht auf lokal +x (Gehweg) — für die linke
-  // Straßenseite dreht spawnRow das Ganze um 180°, deshalb trägt das Schild
-  // den Text auf BEIDEN Seiten.
+  // Homeless man at the sidewalk edge holding a cardboard sign sideways
+  // into the outer lane. Hitbox = ONLY the sign (jump over it or slide
+  // under); the figure stands at local +x (sidewalk) — for the left side of
+  // the street spawnRow rotates the whole thing 180°, which is why the sign
+  // carries its text on BOTH sides.
   'over-homeless': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
-    const groundY = -1.55; // spawnRow setzt Über-Kopf-Hindernisse auf y=1.55
+    const groundY = -1.55; // spawnRow puts overhead obstacles at y=1.55
     const sign = new THREE.Mesh(track(new THREE.BoxGeometry(2.0, 0.78, 0.08)), a.cardboardDark);
     sign.rotation.z = 0.05;
     g.add(sign);
@@ -4124,7 +4124,7 @@ const obstacleBuilders = {
       if (i) face.rotation.y = Math.PI;
       g.add(face);
     });
-    // Haltearm: kurz, von der Hand an der Schildkante zur Schulter.
+    // Holding arm: short, from the hand at the sign's edge to the shoulder.
     const arm = new THREE.Mesh(track(new THREE.BoxGeometry(0.62, 0.09, 0.1)), a.shabby);
     arm.position.set(1.28, -0.14, 0);
     arm.rotation.z = -0.3;
@@ -4190,9 +4190,9 @@ const obstacleBuilders = {
     g.userData.beams = beams;
     return { mesh: g, size: { w: 1.5, h: 1.1, d: 2.6 } };
   },
-  // Container-Stapel statt der drei nackten Kisten: zwei bunte Stahl-
-  // container mit Sicken, Eckpfosten und Warnstreifen — passt an den
-  // Straßenrand einer Stadt (E-Kästen/Baustellencontainer).
+  // Container stack instead of the three bare crates: two colorful steel
+  // containers with corrugation, corner posts and warning stripes — fits a
+  // city roadside (utility boxes / construction containers).
   'tall-stack': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -4229,8 +4229,8 @@ const obstacleBuilders = {
     addPassSign(g, 1.36);
     return { mesh: g, size: { w: 1.4, h: 2.8, d: 1.3 } };
   },
-  // Gerüstturm: vier Stangen, zwei Bohlenlagen, orangenes Schutznetz zur
-  // Straße plus Warnbalken — hohes Hindernis Nr. 3.
+  // Scaffold tower: four poles, two plank levels, orange safety net facing
+  // the road plus a warning bar — tall obstacle no. 3.
   'tall-scaffold': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -4258,8 +4258,8 @@ const obstacleBuilders = {
     addPassSign(g, 1.42);
     return { mesh: g, size: { w: 1.35, h: 2.85, d: 1.0 } };
   },
-  // Nacht-Kiosk: Bude mit leuchtendem Verkaufsfenster, Markise und
-  // Neon-Schild — hohes Hindernis Nr. 4, passt in die Neon-Stadt.
+  // Night kiosk: booth with a glowing service window, awning and neon
+  // sign — tall obstacle no. 4, fits the neon city.
   'tall-kiosk': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -4318,9 +4318,9 @@ const obstacleBuilders = {
   },
 };
 
-// Statische hohe Hindernisse (Container, Gerüst, Kiosk) mischen sich mit den
-// hohen Fahrzeugen ('tall-any' doppelt = 50% Fahrzeuge). 'over-homeless'
-// spawnt nur gezielt auf Außen-Lanes (spawnRow), nie aus dem Pool.
+// Static tall obstacles (container, scaffold, kiosk) mix with the tall
+// vehicles ('tall-any' twice = 50% vehicles). 'over-homeless' only spawns
+// deliberately on outer lanes (spawnRow), never from the pool.
 const obstacleVariants = {
   low: ['low-barrel', 'car-any'],
   tall: ['tall-any', 'tall-any', 'tall-stack', 'tall-scaffold', 'tall-kiosk'],
@@ -4333,10 +4333,10 @@ const glbVehicleDefs = [
   { key: 'sedan', kind: 'car', fitLength: 2.7 },
   { key: 'sedan-sports', kind: 'car', fitLength: 2.9 },
   { key: 'hatchback-sports', kind: 'car', fitLength: 2.65 },
-  // 'drive-car': nur Zone-2-Verkehr. Das Formel-Dach ist so flach (~0.7),
-  // dass der Step-Up (0.6) den Übergang zum nächsten normalen Dach nicht
-  // schafft — in Zone 1 (Dachlauf) wäre es eine Todesfalle. Als Spieler-Skin
-  // (car-race) läuft es weiter über glbTemplates.
+  // 'drive-car': zone-2 traffic only. The formula car's roof is so flat
+  // (~0.7) that the step-up (0.6) can't bridge onto the next normal roof —
+  // in zone 1 (roof run) it would be a death trap. As a player skin
+  // (car-race) it still works via glbTemplates.
   { key: 'race', kind: 'drive-car', fitLength: 2.75 },
   { key: 'taxi', kind: 'car', fitLength: 2.7 },
   { key: 'police', kind: 'car', fitLength: 3.2 },
@@ -4353,25 +4353,25 @@ const glbVehicleDefs = [
   { key: 'tractor', kind: 'tall', fitLength: 3.1 },
   { key: 'tractor-shovel', kind: 'tall', fitLength: 3.5 },
   { key: 'truck-flat', kind: 'tall', fitLength: 3.6 },
-  // Baustelle & Schrott (Kenney City Kit Roads + Survival Kit, CC0).
-  // 'prop' = niedriges statisches Hindernis (überspringbar),
-  // 'set-piece' = spawnt nie einzeln, nur im Baustellen-Set (spawnConstructionSet),
-  // 'decor' = reine Deko ohne Kollision (Schilderbrücke über der Straße).
-  // rotateY 90°: so ist die Barriere RICHTIG ausgerichtet — Streifenfront
-  // quer zur Fahrbahn, zum Spieler zeigend (das Kenney-Modell liegt längs).
+  // Construction & scrap (Kenney City Kit Roads + Survival Kit, CC0).
+  // 'prop' = low static obstacle (jumpable),
+  // 'set-piece' = never spawns alone, only in the construction set (spawnConstructionSet),
+  // 'decor' = pure decoration without collision (sign gantry over the road).
+  // rotateY 90°: orients the barrier CORRECTLY — striped front across the
+  // road, facing the player (the Kenney model lies lengthwise).
   { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
   { key: 'resource-planks', kind: 'set-piece', fitHeight: 0.6, dir: 'obstacles/survival' },
   { key: 'structure-metal', kind: 'set-piece', fitHeight: 2.8, scaleX: 0.6, dir: 'obstacles/survival' },
-  // scaleY 1.1: Breite/Tiefe passen perfekt, nur die Durchfahrt soll ~10% höher.
+  // scaleY 1.1: width/depth fit perfectly, only the clearance should be ~10% taller.
   { key: 'sign-highway', kind: 'decor', fitWidth: 9, rotateY: Math.PI / 2, scaleY: 1.1, dir: 'obstacles/roads' },
 ];
 
 const glbTemplates = {};
 const glbTraffic = { car: [], tall: [], drive: [] };
 
-// Blaulichtbalken für Polizei/Rettung/Feuerwehr: zwei Leuchtkörper auf dem
-// Dach, die gegenphasig blinken (Materialien taktet animate()). Standard
-// unsichtbar — nur Einsatz-Konvois an Kreuzungen schalten ihn an.
+// Light bar for police/ambulance/fire: two lamps on the roof blinking in
+// counter-phase (materials pulsed by animate()). Invisible by default —
+// only emergency convoys at crossings switch it on.
 const addEmergencyBeacon = (group, size) => {
   getObstacleAssets();
   const beacon = new THREE.Group();
@@ -4410,9 +4410,9 @@ const addVehicleLights = (group, size) => {
   });
 };
 
-// Baustellen-Zone-Optik fürs Gerüst: kleine rot-weiße Absperrbaken links und
-// rechts plus ein Stop-Schild vorne. Rein dekorativ — die Hitbox bleibt die
-// Bounding-Box des Gerüsts selbst.
+// Construction-zone dressing for the scaffold: small red-white barrier
+// beacons left and right plus a stop sign at the front. Purely decorative —
+// the hitbox stays the scaffold's own bounding box.
 const addConstructionDressing = (group, size) => {
   const a = getObstacleAssets();
   const groundY = -size.h / 2;
@@ -4452,7 +4452,7 @@ const addConstructionDressing = (group, size) => {
   sign.add(text);
   sign.position.set(0, groundY, size.d / 2 + 0.4);
   group.add(sign);
-  // Blinklampen auf den Baken (geteiltes hazard-Material pulsiert im Loop).
+  // Blinking lamps on the beacons (shared hazard material pulses in the loop).
   const lampGeo = track(new THREE.BoxGeometry(0.11, 0.09, 0.11));
   [-1, 1].forEach((side) => {
     const lamp = new THREE.Mesh(lampGeo, a.hazard);
@@ -4462,8 +4462,8 @@ const addConstructionDressing = (group, size) => {
 };
 
 const registerVehicleModel = (def, model) => {
-  // Neon-Pass: Kenney-Texturen leicht selbstleuchten lassen — in der dunklen
-  // Nachtszene saufen die Modelle sonst im Blauschwarz ab.
+  // Neon pass: let Kenney textures glow slightly — in the dark night scene
+  // the models drown in blue-black otherwise.
   model.traverse((node) => {
     if (node.isMesh && node.material && 'emissive' in node.material) {
       node.material.emissive = new THREE.Color(0xffffff);
@@ -4483,12 +4483,12 @@ const registerVehicleModel = (def, model) => {
         : def.fitHeight / rawSize.y) * (def.scaleMultiplier || 1);
   model.scale.setScalar(scale);
   if (def.scaleX) {
-    // Nur schmaler machen (X), Höhe und Tiefe unverändert lassen. scaleX wirkt
-    // auf die lokale Achse, deshalb vor einer etwaigen rotateY-Drehung denken.
+    // Narrow only (X); leave height and depth untouched. scaleX acts on the
+    // local axis, so think of it as applied before any rotateY.
     model.scale.x *= def.scaleX;
   }
   if (def.scaleY) {
-    // Nur höher machen (Y) — Breite und Tiefe bleiben wie gefittet.
+    // Taller only (Y) — width and depth stay as fitted.
     model.scale.y *= def.scaleY;
   }
   const box = new THREE.Box3().setFromObject(model);
@@ -4527,14 +4527,14 @@ const registerVehicleModel = (def, model) => {
   } else if (def.kind === 'drive-car') {
     glbTraffic.drive.push(def.key);
   } else if (def.kind === 'set-piece' || def.kind === 'decor') {
-    // Nicht in die normalen Spawn-Pools: Set-Teile kommen nur über
-    // spawnConstructionSet, Deko nur über spawnSignGantry.
+    // Not in the normal spawn pools: set pieces only spawn via
+    // spawnConstructionSet, decor only via spawnSignGantry.
   } else {
     obstacleVariants.low.push(def.key);
   }
 
-  // Showroom offen während ein Modell fertig lädt? Direkt neu aufbauen,
-  // damit wirklich ALLE Hindernisse ausgestellt sind.
+  // Showroom open while a model finishes loading? Rebuild right away so
+  // that truly ALL obstacles are on display.
   if (state.value === 'gallery') {
     buildGallery();
   }
@@ -4559,7 +4559,7 @@ const resolveVariantKey = (key) => {
     return glbTraffic.car.length ? pickFrom(glbTraffic.car) : 'low-car';
   }
   if (key === 'drive-car-any') {
-    // Zone-2-Verkehr: normale Autos plus die Drive-only-Modelle (race).
+    // Zone-2 traffic: normal cars plus the drive-only models (race).
     const pool = [...glbTraffic.car, ...glbTraffic.drive];
     return pool.length ? pickFrom(pool) : 'low-car';
   }
@@ -4607,9 +4607,9 @@ const getObstacle = (type, forcedKey = null) => {
   return obstacle;
 };
 
-// Handgebaute Hindernis-Sets: kleine Mini-Szenen in EINER Lane, Reihenfolge
-// aus Spielersicht (z 0 = am nächsten). rotY kippt ein Teil dekorativ an —
-// die Hitbox bleibt die achsenparallele Box des Templates.
+// Hand-built obstacle sets: small mini-scenes in ONE lane, ordered from the
+// player's view (z 0 = nearest). rotY tilts a piece decoratively — the
+// hitbox stays the axis-aligned box of the template.
 const obstacleSetDefs = [
   {
     id: 'construction',
@@ -4621,7 +4621,7 @@ const obstacleSetDefs = [
   },
   {
     id: 'accident',
-    // Unfallstelle: Pylone, quer geschleudertes Auto, Polizei dahinter.
+    // Accident site: cones, a car flung sideways, police behind it.
     pieces: [
       { key: 'cone', z: 0 },
       { key: 'car-any', z: -2.8, rotY: 0.55 },
@@ -4648,9 +4648,9 @@ const spawnObstacleSet = (laneIndex, baseZ) => {
   return true;
 };
 
-// Truck-Konvoi: ein Auto als "Treppe", dahinter zwei Box-Trucks — die hohe
-// Dachlauf-Route. Vom Boden ist kein Truckdach erreichbar (Sprunghöhe ~1.9,
-// Dach ~2.4+), deshalb führt der Einstieg IMMER über das Autodach.
+// Truck convoy: one car as the "staircase", two box trucks behind it — the
+// high roof-run route. No truck roof is reachable from the ground (jump
+// height ~1.9, roof ~2.4+), so the entry ALWAYS goes via the car roof.
 const spawnTruckConvoy = (laneIndex, baseZ) => {
   const pieces = [
     { key: 'car-any', z: 0 },
@@ -4668,8 +4668,8 @@ const spawnTruckConvoy = (laneIndex, baseZ) => {
   });
 };
 
-// Mini-Stau: drei Autos Stoßstange an Stoßstange mit Trampolin-Dächern (wie
-// Rush Hour) — macht Dach-Hüpfen zur normalen Route statt zum Sonderevent.
+// Mini traffic jam: three cars bumper to bumper with trampoline roofs (like
+// rush hour) — makes roof hopping a normal route instead of a special event.
 const spawnJamSet = (laneIndex, baseZ) => {
   for (let i = 0; i < 3; i += 1) {
     const vehicle = getObstacle('low', 'car-any');
@@ -4682,8 +4682,8 @@ const spawnJamSet = (laneIndex, baseZ) => {
   }
 };
 
-// Schilderbrücke: spannt mittig über die ganze Straße, keine Kollision —
-// der Scroll-Loop bewegt und recycelt sie wie jedes andere Hindernis.
+// Sign gantry: spans the whole road at the center, no collision — the
+// scroll loop moves and recycles it like any other obstacle.
 const spawnSignGantry = (z) => {
   const gantry = getObstacle('tall', 'sign-highway');
   gantry.userData.decor = true;
@@ -4692,11 +4692,11 @@ const spawnSignGantry = (z) => {
   scene.add(gantry);
 };
 
-// ---- Seitenstraßen-Kreuzung. Aufbau (einmal gebaut, dann recycelt):
-// Querstraßen-Asphalt in drei Höhen-Streifen (unter der Hauptstraße, ÜBER den
-// Gehwegen, wieder unten durchs Häuserband), Haltelinien, Mittellinien-Dashes.
-// Häuser, die im Weg stünden, werden ausgeblendet — die Lücke in der
-// Häuserzeile IST die sichtbare Straßenmündung.
+// ---- Side-street crossing. Built once, then recycled:
+// cross-street asphalt in three height strips (below the main road, ABOVE
+// the sidewalks, low again through the building strip), stop lines, dashed
+// center lines. Buildings that would be in the way get hidden — the gap in
+// the building row IS the visible street mouth.
 const buildCrossingGroup = () => {
   const group = new THREE.Group();
   const roadMat = new THREE.MeshLambertMaterial({ color: 0x151d2e });
@@ -4705,7 +4705,7 @@ const buildCrossingGroup = () => {
     transparent: true,
     opacity: 0.5,
   });
-  // Mitte (über der Hauptstraße, unter dem Spieler) + Häuserband links/rechts.
+  // Center (above the main road, below the player) + building strips left/right.
   [
     { x: 0, w: 6.8, y: 0.015 },
     { x: -5.0, w: 3.2, y: 0.275 }, // Gehweg-Plateau links
@@ -4718,14 +4718,14 @@ const buildCrossingGroup = () => {
     piece.position.set(part.x, part.y, 0);
     group.add(piece);
   });
-  // Haltelinien auf der Hauptstraße vor und hinter der Querstraße.
+  // Stop lines on the main road before and after the cross street.
   [4.6, -4.6].forEach((z) => {
     const line = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 0.4), lineMat);
     line.rotation.x = -Math.PI / 2;
     line.position.set(0, 0.02, z);
     group.add(line);
   });
-  // Mittellinie der Querstraße (gestrichelt), nur außerhalb der Plateaus.
+  // Center line of the cross street (dashed), only outside the plateaus.
   const dashGeo = new THREE.PlaneGeometry(1.5, 0.16);
   for (let x = -21; x <= 21; x += 3.5) {
     if (Math.abs(x) > 2.6 && Math.abs(x) < 7.4) continue;
@@ -4737,9 +4737,9 @@ const buildCrossingGroup = () => {
   return group;
 };
 
-// Häuser eines Segments gegen die Kreuzungs-Mündung prüfen: beide scrollen
-// gleich schnell, der relative Abstand bleibt also konstant — einmal beim
-// Spawn (und je Segment-Wrap) prüfen reicht.
+// Check a segment's buildings against the crossing mouth: both scroll at
+// the same speed, so the relative distance stays constant — checking once
+// at spawn (and per segment wrap) is enough.
 const syncCrossingHouses = (segment) => {
   (segment.userData.houses || []).forEach((house) => {
     if (!crossing) {
@@ -4757,10 +4757,10 @@ const spawnCrossing = () => {
   }
   crossingGroup.position.z = -(150 + Math.min(45, speed.value));
   scene.add(crossingGroup);
-  // 1/4 der Kreuzungen: Einsatz-Konvoi. Der normale Querverkehr pausiert
-  // kurz, dann jagen Polizeiwagen mit Blaulicht einem Flüchtigen hinterher —
-  // oder ein 112-Konvoi (Rettungswagen + Feuerwehr) zieht durch. Nur wenn
-  // die nötigen Modelle schon geladen sind.
+  // 1/4 of the crossings: emergency convoy. Normal cross traffic pauses
+  // briefly, then police cars with flashing lights chase a fugitive — or a
+  // 112 convoy (ambulance + fire engine) rolls through. Only if the
+  // required models are already loaded.
   let convoy = null;
   if (Math.random() < 0.25) {
     const policeReady = !!obstacleBuilders.police;
@@ -4774,9 +4774,9 @@ const spawnCrossing = () => {
   floorSegments.forEach(syncCrossingHouses);
 };
 
-// Einsatz-Konvoi über die Kreuzung: eine Kette gleicher Richtung mit engem
-// Abstand. Polizei jagt einen zivilen Flüchtigen (der minimal schneller ist
-// und davonzieht), der 112-Konvoi fährt geschlossen. Blaulicht an.
+// Emergency convoy across the crossing: a chain in one direction with tight
+// spacing. Police chase a civilian fugitive (slightly faster, pulling
+// away), the 112 convoy drives as a block. Lights on.
 const spawnCrossingConvoy = () => {
   const dir = crossing.lastDir * -1;
   crossing.lastDir = dir;
@@ -4824,8 +4824,9 @@ const clearCrossing = () => {
   floorSegments.forEach(syncCrossingHouses);
 };
 
-// Querverkehr: fährt in X über die Kreuzung, scrollt mit der Welt (vz=0),
-// normale tödliche Hindernisse. Rechtsverkehr: jede Richtung hat ihre Spur.
+// Cross traffic: drives in X across the crossing, scrolls with the world
+// (vz=0), normal deadly obstacles. Right-hand traffic: each direction has
+// its own lane.
 const spawnCrossingCar = () => {
   const dir = crossing.lastDir * -1;
   crossing.lastDir = dir;
@@ -4855,20 +4856,20 @@ const updateCrossing = (delta) => {
   if (!crossing) return;
   crossing.group.position.z += speed.value * delta;
   const z = crossing.group.position.z;
-  // Einsatz-Konvoi: feuert einmal, wenn die Kreuzung gut sichtbar ist, und
-  // reißt eine kurze Lücke in den normalen Querverkehr ("Rettungsgasse").
+  // Emergency convoy: fires once when the crossing is clearly visible and
+  // tears a short gap into the normal cross traffic ("rescue lane").
   if (crossing.convoy && !crossing.convoy.fired && z > -110) {
     crossing.convoy.fired = true;
     spawnCrossingConvoy();
     crossing.carTimer = 4.5;
   }
-  // Nachschub nur, solange die Kreuzung weit genug weg ist — was näher kommt,
-  // ist längst sichtbar und damit fair ausweichbar.
+  // Resupply only while the crossing is far enough away — anything closer
+  // is long since visible and can be dodged fairly.
   if (z > -145 && z < -32) {
     crossing.carTimer -= delta;
     if (crossing.carTimer <= 0) {
       spawnCrossingCar();
-      // 0.45–1.0 statt 0.75–1.65: spürbar dichterer Querverkehr.
+      // 0.45–1.0 instead of 0.75–1.65: noticeably denser cross traffic.
       crossing.carTimer = 0.45 + Math.random() * 0.55;
     }
   }
@@ -4961,8 +4962,8 @@ const spawnRow = () => {
   // Spawn farther out the faster we go, so there is always time to react.
   const baseZ = -(70 + Math.min(45, speed.value));
 
-  // Gelegentlich eine große Schilderbrücke als reine Deko über der Straße —
-  // spannt alle Lanes, blockiert nichts.
+  // Occasionally a big sign gantry as pure decoration over the road —
+  // spans all lanes, blocks nothing.
   if (obstacleBuilders['sign-highway'] && Math.random() < 0.06) {
     spawnSignGantry(baseZ - 16);
   }
@@ -4970,12 +4971,12 @@ const spawnRow = () => {
   let setSpawned = false;
   pattern.forEach((type, laneIndex) => {
     if (type === 'none') return;
-    // Themen-Sets statt einzelner Hindernisse: hohe Slots werden gelegentlich
-    // zu Baustelle/Unfallstelle, niedrige zu einem Mini-Stau mit Trampolin-
-    // Dächern. Max. ein Set pro Reihe.
+    // Themed sets instead of single obstacles: tall slots occasionally
+    // become a construction/accident site, low ones a mini jam with
+    // trampoline roofs. Max one set per row.
     if (type === 'tall' && !setSpawned && Math.random() < 0.3) {
-      // Ein Drittel der Sets ist der Truck-Konvoi (Dachlauf-Route), der Rest
-      // die statischen Themen-Sets.
+      // A third of the sets is the truck convoy (roof-run route), the rest
+      // are the static themed sets.
       if (glbTemplates.truck && glbTraffic.car.length && Math.random() < 0.35) {
         spawnTruckConvoy(laneIndex, baseZ);
         setSpawned = true;
@@ -4991,10 +4992,10 @@ const spawnRow = () => {
       setSpawned = true;
       return;
     }
-    // Über-Kopf-Slot auf einer Außen-Lane: manchmal hält dort ein Obdachloser
-    // vom Gehweg aus sein Kartonschild in die Lane (Figur steht außerhalb der
-    // Map, nur das Schild kollidiert). Auf der linken Seite gespiegelt.
-    // 0.12: als seltener Hingucker — bei 0.35 stand gefühlt an jeder Ecke einer.
+    // Overhead slot on an outer lane: sometimes a homeless man holds his
+    // cardboard sign into the lane from the sidewalk (figure stands outside
+    // the map, only the sign collides). Mirrored on the left side.
+    // 0.12: a rare sight — at 0.35 one seemed to stand at every corner.
     const homeless = type === 'over' && laneIndex !== 1 && Math.random() < 0.12;
     const obstacle = getObstacle(type, homeless ? 'over-homeless' : null);
     const size = obstacle.userData.size;
@@ -5008,9 +5009,9 @@ const spawnRow = () => {
   const freeLanes = pattern
     .map((type, laneIndex) => (type === 'none' ? laneIndex : -1))
     .filter((laneIndex) => laneIndex >= 0);
-  // Coin-Platzierung komplett entfernt (führte in den Tod) — kommt erst
-  // wieder rein, wenn ein System ihre Sicherheit GARANTIERT statt sie beim
-  // Spawn zu raten.
+  // Coin placement removed entirely (it led players to their death) — only
+  // comes back once a system GUARANTEES its safety instead of guessing at
+  // spawn time.
   const powerupLanes = freeLanes;
   if (powerupLanes.length && Math.random() < 0.08) {
     spawnPowerup(powerupLanes[Math.floor(Math.random() * powerupLanes.length)], baseZ);
@@ -5032,9 +5033,9 @@ const showEventToast = (title, sub, duration = 1900) => {
 // way through is jumping onto the roofs and bouncing car to car. The first
 // row is low cars so the entry jump always works from the ground; taller
 // trucks appear deeper in, reachable from a car roof.
-// Rush Hour lässt nur kompakte hohe Fahrzeuge zu: Box-Truck und Ambulanz
-// haben brauchbare Dachlinien — Feuerwehr, Müllwagen, Traktoren & Tieflader
-// sind zu lang/sperrig und zerreißen die Dachlauf-Route.
+// Rush hour only allows compact tall vehicles: box truck and ambulance have
+// usable roof lines — fire engines, garbage trucks, tractors & flatbeds are
+// too long/bulky and tear the roof-run route apart.
 const jamTallKeys = ['truck', 'ambulance'];
 
 const spawnWaveRow = () => {
@@ -5046,9 +5047,9 @@ const spawnWaveRow = () => {
       ? getObstacle('tall', pickFrom(tallChoices))
       : getObstacle('low', 'car-any');
     vehicle.userData.jam = true;
-    // Echte Rush Hour statt Parade: leicht schräg, quer in der Spur
-    // verschoben und individuell in z versetzt. Die Quer-Verschiebung bleibt
-    // klein genug, dass jedes Auto seine Lane für die Kollision voll abdeckt.
+    // A real rush hour instead of a parade: slightly angled, shifted across
+    // the lane and individually offset in z. The lateral shift stays small
+    // enough that every car still fully covers its lane for collision.
     vehicle.rotation.y = Math.PI + (Math.random() - 0.5) * 0.16;
     vehicle.position.set(
       lanes[laneIndex] + (Math.random() - 0.5) * 0.7,
@@ -5063,16 +5064,16 @@ const spawnWaveRow = () => {
   if (trafficWave.rowsLeft <= 0) {
     trafficWave.endZ = baseZ;
   } else {
-    // 3.2–3.8 statt 2.8: kleine Stoßstangen-Lücken, die nach Stau aussehen
-    // statt nach Blechteppich. Töten können sie nicht — Jam-Fahrzeuge
-    // schleudern bei JEDEM Frontkontakt hoch (siehe Kollisions-Loop).
+    // 3.2–3.8 instead of 2.8: small bumper gaps that read as a jam instead
+    // of a sheet-metal carpet. They can't kill — jam vehicles fling the
+    // player up on any near-roof contact (see collision loop).
     trafficWave.rowTimer = (3.2 + Math.random() * 0.6) / speed.value;
   }
 };
 
 const startTrafficWave = () => {
   trafficWave = {
-    // 12–18 Reihen: mit dem neuen 3.2–3.8er Abstand ein 40–65 m langer Stau.
+    // 12–18 rows: with the new 3.2–3.8 spacing a 40–65 m long jam.
     rowsLeft: 12 + Math.min(6, Math.floor(score.value / 2500)),
     rowTimer: 0,
     endZ: null,
@@ -5142,8 +5143,8 @@ const eventSpawnHoldActive = () => {
   // speed step has been applied.
   if (checkpointPending) return true;
   // Speed-scaled margin: the landing arc after the final roof bounce must
-  // never come down on a freshly spawned row. (0.6: Bounce ist jetzt 1.08x
-  // jumpVelocity statt 0.95x, der Bogen fliegt entsprechend weiter.)
+  // never come down on a freshly spawned row. (0.6: the bounce is now 1.08x
+  // jumpVelocity instead of 0.95x, so the arc flies correspondingly further.)
   const spawnDepth = -(70 + Math.min(45, speed.value)) + 6 + speed.value * 0.6;
   if (
     trafficWave &&
@@ -5152,8 +5153,8 @@ const eventSpawnHoldActive = () => {
   ) {
     return true;
   }
-  // Rund um eine Kreuzung bleibt die Hauptstraße frei von statischen Reihen —
-  // der Querverkehr ist dort die Herausforderung.
+  // Around a crossing the main road stays free of static rows — the cross
+  // traffic is the challenge there.
   return crossing !== null && crossing.group.position.z < spawnDepth + 14;
 };
 
@@ -5493,9 +5494,9 @@ const updateFinaleWalk = (delta) => {
 };
 
 const buildParkedCar = () => {
-  // NUR echte Autos sind klaubar — glbTemplates enthält auch Pylonen,
-  // Barrikaden und Schilder, und genau die standen sonst gelegentlich als
-  // "Fluchtwagen" am Bordstein. Der Drive-Pool (race) darf mit rein.
+  // ONLY real cars can be stolen — glbTemplates also contains cones,
+  // barriers and signs, and exactly those occasionally stood at the curb as
+  // the "getaway car". The drive pool (race) is allowed in.
   const keys = [...glbTraffic.car, ...glbTraffic.drive];
   const template = keys.length
     ? glbTemplates[keys[Math.floor(Math.random() * keys.length)]]
@@ -5555,8 +5556,8 @@ const ejectFromCar = () => {
   carjackFrom.copy(player.position);
   carjackLand.set(carLanes[0] - 1.6, currentGroundCenter, player.position.z + 1.2);
 
-  // The getaway ride: AUF der Straße am linken Fahrbahnrand geparkt —
-  // x -7.2 stand vorher mitten im Häuserband.
+  // The getaway ride: parked ON the road at the left road edge — x -7.2
+  // used to sit in the middle of the building strip.
   carjackCar = buildParkedCar();
   carjackCar.position.set(-3.6, carjackCar.userData.restY, player.position.z - 9);
   carjackCar.rotation.y = Math.PI;
@@ -7160,7 +7161,7 @@ const updateCollapse = (delta) => {
 const enterVoid = () => {
   clearVoidObjects();
   finalePhase.value = 'void';
-  // Im Void gibt es keinen Himmel mehr — Wolkendecke raus.
+  // There is no sky left in the void — cloud deck goes away.
   if (cloudCeiling) {
     scene.remove(cloudCeiling);
   }
@@ -7409,9 +7410,9 @@ const updateVoid = (delta) => {
   camera.lookAt(lookAtTarget);
 };
 
-// Wolkendecke am Höhenlimit der Flug-Stage: macht die unsichtbare Obergrenze
-// (Clamp bei y=20) als greifbare Schicht sichtbar. Wird dichter, je näher man
-// ihr kommt, und zieht langsam nach hinten durch, damit sie lebt.
+// Cloud deck at the flight stage's altitude limit: makes the invisible
+// ceiling (clamp at y=20) visible as a tangible layer. Gets denser the
+// closer you come, and slowly drifts backwards so it feels alive.
 let cloudCeiling = null;
 const ensureCloudCeiling = () => {
   if (cloudCeiling) {
@@ -7878,8 +7879,8 @@ const updatePlane = (delta) => {
   camera.lookAt(lookAtTarget);
 };
 
-// Floating-Joystick: die Mitte ist der Punkt des ersten Touches, nicht eine
-// feste Position — man greift nie daneben.
+// Floating joystick: the center is the point of first touch, not a fixed
+// position — you can never miss it.
 const joyStart = (event) => {
   joyPointerId = event.pointerId;
   joyBase.value = { x: event.clientX, y: event.clientY };
@@ -8222,10 +8223,10 @@ const updateRunner = (delta) => {
     }
   } else {
     score.value += speed.value * delta * 2.4 * scoreMult;
-    // Stufenlose Beschleunigung statt Treppenstufen alle 2500: exakt die
-    // Kurve, die das Anti-Cheat serverseitig modelliert (minPlausibleDuration
-    // löst d'(t) = 2.4·(base + d/2500·step); expectedSpeed spiegelt min(3, …)).
-    // Checkpoints/Districts alle 2500 bleiben als Events bestehen.
+    // Continuous acceleration instead of steps every 2500: exactly the
+    // curve the anti-cheat models server-side (minPlausibleDuration solves
+    // d'(t) = 2.4·(base + d/2500·step); expectedSpeed mirrors min(3, …)).
+    // Checkpoints/districts every 2500 remain as events.
     const targetSpeed =
       level.baseSpeed + Math.min(3, score.value / level.stepDistance) * level.speedStep;
     speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, 4, delta);
@@ -8345,8 +8346,8 @@ const updateRunner = (delta) => {
         segment.visible = false;
       } else {
         segment.position.z -= segmentLength * floorSegments.length;
-        // Nach dem Wrap neu gegen die Kreuzung prüfen — der relative Abstand
-        // hat sich um die volle Loop-Länge geändert.
+        // After the wrap, re-check against the crossing — the relative
+        // distance changed by the full loop length.
         syncCrossingHouses(segment);
       }
     }
@@ -8379,8 +8380,8 @@ const updateRunner = (delta) => {
     });
   }
 
-  // Warnlampen-Blinken: ein geteiltes Material, alle Baustellen-Lampen
-  // pulsieren synchron — ein Farbwert pro Frame, praktisch gratis.
+  // Warning-lamp blink: one shared material, all construction lamps pulse
+  // in sync — one color value per frame, practically free.
   if (obstacleAssets) {
     const blink = 0.55 + 0.45 * Math.sin(performance.now() * 0.008);
     obstacleAssets.hazard.color.setRGB(blink, 0.63 * blink, 0.18 * blink);
@@ -8453,8 +8454,8 @@ const updateRunner = (delta) => {
     driveSpawnTimer -= delta;
     if (driveSpawnTimer <= 0) {
       spawnDriveTraffic();
-      // 22 statt 26: bei niedrigem Drive-Tempo war die vierspurige Straße
-      // fast leer (1 Fahrzeug auf 160 m).
+      // 22 instead of 26: at low drive speed the four-lane road was almost
+      // empty (1 vehicle per 160 m).
       driveSpawnTimer = Math.max(
         0.28,
         THREE.MathUtils.randFloat(0.7, 1.5) * (22 / Math.max(14, speed.value)),
@@ -8484,8 +8485,8 @@ const updateRunner = (delta) => {
         // IS the real time between obstacles reaching the player.
         // Cadence follows the applied tier, in lockstep with the speed.
         // Floor stays above a full jump chain (0.86s airtime + reaction):
-        // tier 0 never dips below 1.05s between arrivals. (Vorher 1.1-1.45 —
-        // leicht dichter für weniger leeren Asphalt, Floor bleibt drüber.)
+        // tier 0 never dips below 1.05s between arrivals. (Was 1.1-1.45 —
+        // slightly denser for less empty asphalt, floor stays above.)
         const baseGap = [1.0, 0.85, 0.75, 0.65][speedTier];
         spawnTimer = THREE.MathUtils.randFloat(1.05, 1.35) * baseGap;
       }
@@ -8519,9 +8520,9 @@ const updateRunner = (delta) => {
         delete obstacle.userData.driftTo;
       }
     }
-    // Querverkehr der Seitenstraßen: bewegt sich in X, raus aus der Szene
-    // sobald die GEGENseite erreicht ist. Nur in Fahrtrichtung cullen —
-    // Konvoi-Ketten spawnen weit hinter der Startkante (|x| bis ~50).
+    // Side-street cross traffic: moves in X, leaves the scene once it
+    // reaches the OPPOSITE side. Cull only in the driving direction —
+    // convoy chains spawn far behind the starting edge (|x| up to ~50).
     if (obstacle.userData.vx) {
       obstacle.position.x += obstacle.userData.vx * delta;
       if (obstacle.position.x * Math.sign(obstacle.userData.vx) > 24) {
@@ -8566,9 +8567,9 @@ const updateRunner = (delta) => {
     }
     if (obstacle.userData.decor) continue;
     if (checkCollision(obstacle, collisionPlayerHeight)) {
-      // Jam-Trampolin NUR beim Landen von oben (Fenster 1.25 unter der
-      // Dachkante): wer vom Boden aus frontal in die Front läuft, stirbt
-      // normal — kein Auto-Katapult mehr aufs Dach.
+      // Jam trampoline ONLY when landing from above (window 1.25 below the
+      // roof edge): running frontally into the nose from the ground kills
+      // normally — no more auto-catapult onto the roof.
       if (
         obstacle.userData.jam &&
         playerVelocityY < 0 &&
@@ -8577,8 +8578,8 @@ const updateRunner = (delta) => {
       ) {
         const roofY = obstacle.position.y + obstacle.userData.size.h / 2;
         player.position.y = roofY + collisionPlayerHeight / 2 + 0.02;
-        // 1.08: der Bounce vom Autodach muss auch die höchste Truck-Front
-        // (~2.9) sicher übersteigen, sonst stirbt man am Car→Truck-Übergang.
+        // 1.08: the bounce from a car roof must also clear the tallest
+        // truck front (~2.9), otherwise the car→truck transition kills.
         playerVelocityY = jumpVelocity * 1.08;
         score.value += 20;
         sfx.land();
@@ -8599,10 +8600,10 @@ const updateRunner = (delta) => {
       if (now < invulnUntil || now < bumpProtectUntil) {
         continue;
       }
-      // Dachlauf-Step-Up (nur Jam-Blech): Dachhöhen sind nicht genormt
-      // (Sedan ~1.1, SUV ~1.4) — wer oben LÄUFT (vy=0) und gegen eine minimal
-      // höhere Kante stößt, steigt lautlos hoch statt zu sterben. Kein
-      // Katapult: vom Boden aus ist die Kante >0.6 und bleibt tödlich.
+      // Roof-run step-up (jam sheet metal only): roof heights aren't
+      // uniform (sedan ~1.1, SUV ~1.4) — if you RUN on top (vy=0) and hit a
+      // slightly taller edge, you silently step up instead of dying. No
+      // catapult: from the ground the edge is >0.6 and stays lethal.
       const stepTop = obstacle.position.y + obstacle.userData.size.h / 2;
       const stepRise = stepTop - (player.position.y - collisionPlayerHeight / 2);
       if (!driving && obstacle.userData.jam && stepRise > 0 && stepRise < 0.6) {
@@ -8705,10 +8706,10 @@ const updateRunner = (delta) => {
     const restY = playerSize.h / 2;
     const chaseY = restY + 0.9 + Math.sin(0.35) * chaseDist;
     const chaseZ = player.position.z + Math.cos(0.35) * chaseDist;
-    // Normale Sprünge (Apex ~2.6 m bei v=12/g=-28) lassen die Kamera in Ruhe;
-    // nur was darüber hinausgeht (Trampolin-Bounce vom Autodach) zieht sie
-    // langsam mit hoch. Cam UND lookAt heben gleich viel — die Ansicht gleitet
-    // nach oben, ohne zu kippen, und sinkt nach der Landung wieder zurück.
+    // Normal jumps (apex ~2.6 m at v=12/g=-28) leave the camera alone; only
+    // anything beyond that (trampoline bounce off a car roof) slowly pulls
+    // it up. Cam AND lookAt rise by the same amount — the view glides up
+    // without tilting and sinks back after landing.
     const excessY = Math.max(0, player.position.y - restY - 2.6);
     chaseCamLift = THREE.MathUtils.damp(chaseCamLift, excessY, 4, delta);
     camera.position.x = THREE.MathUtils.damp(
@@ -8752,17 +8753,17 @@ const startCrash = () => {
 
 const animate = (time) => {
   animationId = requestAnimationFrame(animate);
-  // Clamp in BEIDE Richtungen: der erste rAF-Timestamp kann hinter lastTime
-  // liegen (anderer Zeitursprung) — negatives delta lässt damp() rückwärts
-  // extrapolieren (u.a. Musik-Duck unter 0 → volume-Exception).
+  // Clamp in BOTH directions: the first rAF timestamp can lie behind
+  // lastTime (different time origin) — a negative delta makes damp()
+  // extrapolate backwards (e.g. music duck below 0 → volume exception).
   const delta = Math.min(0.05, Math.max(0, (time - lastTime) / 1000 || 0));
   lastTime = time;
 
-  // Baustellen-Blinker: ein geteiltes Material, alle Lampen takten synchron.
+  // Construction blinkers: one shared material, all lamps pulse in sync.
   if (hazardBlinkMat) {
     hazardBlinkMat.color.setHex(time % 900 < 450 ? 0xffb023 : 0x4d3410);
   }
-  // Blaulicht: schnelles Wechselblinken der beiden Beacon-Lampen.
+  // Emergency lights: fast alternating blink of the two beacon lamps.
   if (beaconMatA) {
     const phase = time % 340 < 170;
     beaconMatA.color.setHex(phase ? 0x66c8ff : 0x0c2a4a);
@@ -8866,8 +8867,8 @@ const animate = (time) => {
     updateShootingStars(delta);
   }
 
-  // Wind-Streaks leben nur im Lauf: nach Tod/Quit bei hohem Tempo würden sie
-  // sonst eingefroren über Death-Screen oder Menü hängen bleiben.
+  // Wind streaks only live during the run: after death/quit at high speed
+  // they would otherwise hang frozen over the death screen or menu.
   if (windStreakMat && state.value !== 'running' && windStreakMat.opacity > 0) {
     windStreakMat.opacity = Math.max(0, windStreakMat.opacity - delta * 2);
   }
@@ -8944,8 +8945,8 @@ const handleVisibility = () => {
   }
 };
 
-// Alt-Tab pausiert auch: ein unfokussiertes Fenster bleibt "visible", aber
-// rAF läuft weiter — ohne Auto-Pause rennt der Läufer in den Tod.
+// Alt-tab pauses too: an unfocused window stays "visible", but rAF keeps
+// running — without auto-pause the runner sprints to his death.
 const handleWindowBlur = () => {
   pauseRun();
 };
@@ -9881,8 +9882,8 @@ onBeforeUnmount(() => {
   transform: none;
 }
 
-/* Floating-Joystick (Flug-Stage): unsichtbare Fangfläche über dem ganzen
-   Screen; der Ring erscheint am Touch-Punkt. */
+/* Floating joystick (flight stage): invisible catch surface over the whole
+   screen; the ring appears at the touch point. */
 .joy-capture {
   position: absolute;
   inset: 0;
