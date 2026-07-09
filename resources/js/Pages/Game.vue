@@ -5037,6 +5037,16 @@ const spawnRow = () => {
   if (blocked.size) {
     pattern = pattern.map((type, laneIndex) => (blocked.has(laneIndex) ? 'none' : type));
   }
+  // While a Rettungsgasse siren car can still be racing up the middle from
+  // behind, never let a row force the player INTO the middle: clear the
+  // middle lane and keep at least one outer lane open as a safe escape. Only
+  // matters in the brief overlap after the jam tail — normally a no-op.
+  if (rescueLaneActive()) {
+    pattern[1] = 'none';
+    if (pattern[0] !== 'none' && pattern[2] !== 'none') {
+      pattern[Math.random() < 0.5 ? 0 : 2] = 'none';
+    }
+  }
   lastRowFull = !pattern.includes('none');
 
   // Occasionally a big sign gantry as pure decoration over the road —
@@ -5176,6 +5186,18 @@ const canStartRescueLane = () =>
   !!obstacleBuilders.police &&
   !!obstacleBuilders.ambulance &&
   !!obstacleBuilders.firetruck;
+
+// True while an emergency vehicle could still be in or approaching the
+// middle lane from behind: convoy queued, or a spawned siren car not yet
+// safely past the player. Used to keep normal rows from forcing the player
+// into the middle, and to gate the event's end.
+const rescueLaneActive = () =>
+  !!rescueLane &&
+  (rescueLane.queue.length > 0 ||
+    obstacles.some(
+      (obstacle) =>
+        obstacle.userData.rescue && obstacle.position.z > player.position.z - 2,
+    ));
 
 // Neon warning triangle with "!": floats over the middle lane ahead of the
 // jam, pulsing; pure visual, never collides.
@@ -5402,12 +5424,16 @@ const eventSpawnHoldActive = () => {
   ) {
     return true;
   }
-  // Rettungsgasse holds ALL normal rows for its whole lifetime — the convoy
-  // races up the middle from BEHIND the player, so a barrier row that opened
-  // only the middle lane would trap the player right into an oncoming siren.
-  // The event only clears itself once every rescue vehicle is past (see the
-  // end guard in updateZoneEvents), so this hold can never dead-end.
-  if (rescueLane) {
+  // Rettungsgasse holds rows just like rush hour — only while the jam tail
+  // is still deeper than the spawn plane. Rows resume tight behind the tail
+  // (no long empty stretch). The trap of a barrier forcing the player into
+  // the siren middle is prevented in spawnRow instead (rescueLaneActive),
+  // not by holding the whole road empty.
+  if (
+    rescueLane &&
+    (rescueLane.rowsLeft > 0 ||
+      (rescueLane.endZ !== null && rescueLane.endZ < spawnDepth))
+  ) {
     return true;
   }
   // A crossing only blocks rows that would land ON the junction itself:
@@ -5528,18 +5554,10 @@ const updateZoneEvents = (delta) => {
     }
     if (rescueLane.endZ !== null) {
       rescueLane.endZ += speed.value * delta;
-      // Only clear once the jam tail has passed, the queue is empty AND no
-      // emergency vehicle is still behind (or level with) the player — that
-      // last guard is what stops a siren car from killing after the event.
-      const rescueStillBehind = obstacles.some(
-        (obstacle) =>
-          obstacle.userData.rescue && obstacle.position.z > player.position.z - 2,
-      );
-      if (
-        rescueLane.endZ > player.position.z + 2 &&
-        !rescueLane.queue.length &&
-        !rescueStillBehind
-      ) {
+      // Only clear once the jam tail has passed AND no emergency vehicle is
+      // still queued or behind the player — that guard is what stops a siren
+      // car from killing after the event. rescueLaneActive covers both.
+      if (rescueLane.endZ > player.position.z + 2 && !rescueLaneActive()) {
         const bonus = 200 * (multiTime.value > 0 ? 2 : 1);
         score.value += bonus;
         sfx.nearMiss();
