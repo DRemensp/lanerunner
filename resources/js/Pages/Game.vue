@@ -5216,16 +5216,16 @@ const spawnRescueSign = () => {
   return rescueSignGroup;
 };
 
-// Convoy roster: 2–4 police, 1–2 ambulances, 1–2 fire engines (hard caps
-// 4/2/2), Fisher-Yates shuffled so the order is a fresh mix every time.
+// Convoy roster: max 4 vehicles total (1 ambulance, 1 fire engine, 1–2
+// police), Fisher-Yates shuffled so the order is a fresh mix every time.
+// Small on purpose: every vehicle must be through while the player is
+// still safely up on the roofs — see the tail guard in updateZoneEvents.
 const buildRescueQueue = () => {
-  const queue = [];
-  const add = (key, count) => {
-    for (let i = 0; i < count; i += 1) queue.push(key);
-  };
-  add('police', 2 + Math.floor(Math.random() * 3));
-  add('ambulance', 1 + Math.floor(Math.random() * 2));
-  add('firetruck', 1 + Math.floor(Math.random() * 2));
+  const queue = ['ambulance', 'firetruck'];
+  const police = 1 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < police; i += 1) {
+    queue.push('police');
+  }
   for (let i = queue.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [queue[i], queue[j]] = [queue[j], queue[i]];
@@ -5269,7 +5269,7 @@ const spawnRescueRow = () => {
 const spawnRescueVehicle = (key) => {
   const vehicle = getObstacle(key === 'police' ? 'low' : 'tall', key);
   vehicle.userData.rescue = true;
-  vehicle.userData.vz = -(speed.value + 20 + Math.random() * 8);
+  vehicle.userData.vz = -(speed.value + 26 + Math.random() * 8);
   vehicle.rotation.y = Math.PI;
   if (vehicle.userData.beams) {
     vehicle.userData.beams.visible = true;
@@ -5369,9 +5369,9 @@ const startDriftCar = () => {
 };
 
 const startRandomEvent = () => {
-  // Rettungsgasse rolls first, separately from the classic events — a rare
-  // 6% treat. Rush hour and friends keep their exact odds on the other 94%.
-  if (Math.random() < 0.06 && canStartRescueLane()) {
+  // Rettungsgasse rolls first, separately from the classic events. TEMP: 30%
+  // for testing (target is 6%) — rush hour & friends split the remainder.
+  if (Math.random() < 0.3 && canStartRescueLane()) {
     startRescueLane();
     return;
   }
@@ -5402,11 +5402,12 @@ const eventSpawnHoldActive = () => {
   ) {
     return true;
   }
-  if (
-    rescueLane &&
-    (rescueLane.rowsLeft > 0 ||
-      (rescueLane.endZ !== null && rescueLane.endZ < spawnDepth))
-  ) {
+  // Rettungsgasse holds ALL normal rows for its whole lifetime — the convoy
+  // races up the middle from BEHIND the player, so a barrier row that opened
+  // only the middle lane would trap the player right into an oncoming siren.
+  // The event only clears itself once every rescue vehicle is past (see the
+  // end guard in updateZoneEvents), so this hold can never dead-end.
+  if (rescueLane) {
     return true;
   }
   // A crossing only blocks rows that would land ON the junction itself:
@@ -5519,17 +5520,26 @@ const updateZoneEvents = (delta) => {
       rescueLane.convoyTimer -= delta;
       if (rescueLane.convoyTimer <= 0) {
         spawnRescueVehicle(rescueLane.queue.shift());
-        // Wider stagger: spreads the parade along the (now much longer)
-        // Gasse instead of dumping the whole convoy in the first quarter.
-        rescueLane.convoyTimer = 1.1 + Math.random() * 0.8;
-        if (rescueLane.queue.length % 3 === 0) {
-          sfx.siren();
-        }
+        // Tight stagger: the whole (max-4) convoy must blast through while
+        // the player is still up on the roofs, not trickle out behind them.
+        rescueLane.convoyTimer = 0.6 + Math.random() * 0.4;
+        sfx.siren();
       }
     }
     if (rescueLane.endZ !== null) {
       rescueLane.endZ += speed.value * delta;
-      if (rescueLane.endZ > player.position.z + 2 && !rescueLane.queue.length) {
+      // Only clear once the jam tail has passed, the queue is empty AND no
+      // emergency vehicle is still behind (or level with) the player — that
+      // last guard is what stops a siren car from killing after the event.
+      const rescueStillBehind = obstacles.some(
+        (obstacle) =>
+          obstacle.userData.rescue && obstacle.position.z > player.position.z - 2,
+      );
+      if (
+        rescueLane.endZ > player.position.z + 2 &&
+        !rescueLane.queue.length &&
+        !rescueStillBehind
+      ) {
         const bonus = 200 * (multiTime.value > 0 ? 2 : 1);
         score.value += bonus;
         sfx.nearMiss();
