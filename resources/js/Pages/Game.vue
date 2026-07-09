@@ -907,6 +907,7 @@ let crossing = null; // { group, carTimer }
 let crossingGroup = null; // cached geometry, only ever repositioned
 let crossingDistIn = 320;
 let trafficWave = null;
+let ghostWave = null; // { carsLeft, timer } — staggered wrong-way pack
 let nextMilestone = 2500;
 // Checkpoint events only fire once the breather has cleared the road —
 // never mid-traffic. checkpointPending is the breather state machine.
@@ -1771,6 +1772,7 @@ const resetRun = () => {
   runTopSpeed.value = 0;
   runTopSpeedRaw = 0;
   trafficWave = null;
+  ghostWave = null;
   checkpointPending = null;
   lastRowFull = false;
 
@@ -4319,7 +4321,9 @@ const obstacleBuilders = {
 // vehicles ('tall-any' twice = 50% vehicles). 'over-homeless' only spawns
 // deliberately on outer lanes (spawnRow), never from the pool.
 const obstacleVariants = {
-  low: ['low-barrel', 'car-any'],
+  // 'car-any' twice: the barrel was every second low obstacle — one in
+  // three reads much less monotonous.
+  low: ['low-barrel', 'car-any', 'car-any'],
   tall: ['tall-any', 'tall-any', 'tall-stack', 'tall-scaffold', 'tall-kiosk'],
   over: ['over-barrier'],
 };
@@ -4881,12 +4885,16 @@ const updateCrossing = (delta) => {
 // vehicle owns its lane exclusively for its whole approach. Static rows
 // never spawn into a reserved lane, and moving vehicles never spawn into a
 // lane that has static obstacles ahead — nothing can clip through anything.
-const movingBlockedLanes = () => {
+// behindZ: only movers still DEEPER than this plane block their lane. A
+// mover already past the spawn plane pulls away from any newly spawned row
+// and can never touch it — without the filter a single slow ghost driver
+// used to empty the whole road for its entire lifetime.
+const movingBlockedLanes = (behindZ = Infinity) => {
   const blocked = new Set();
   obstacles.forEach((obstacle) => {
     const moving =
       (obstacle.userData.vz || 0) > 0 || obstacle.userData.driftTo !== undefined;
-    if (!moving) return;
+    if (!moving || obstacle.position.z >= behindZ) return;
     lanes.forEach((laneX, index) => {
       if (Math.abs(obstacle.position.x - laneX) < 0.9) blocked.add(index);
     });
@@ -4950,10 +4958,11 @@ const spawnRow = () => {
   // 6–9 m of road by itself. Single loose obstacles never spawn alone
   // (rowPatterns has no single-slot entries).
   if (Math.random() < 0.12) {
-    const openLanes = [0, 1, 2].filter((lane) => !movingBlockedLanes().has(lane));
+    const setZ = -(70 + Math.min(45, speed.value));
+    const setBlocked = movingBlockedLanes(setZ + 6);
+    const openLanes = [0, 1, 2].filter((lane) => !setBlocked.has(lane));
     if (openLanes.length) {
       const laneIndex = pickFrom(openLanes);
-      const setZ = -(70 + Math.min(45, speed.value));
       const roll = Math.random();
       let spawned = false;
       if (roll < 0.35 && glbTemplates.truck && glbTraffic.car.length) {
@@ -4980,14 +4989,15 @@ const spawnRow = () => {
     const openPatterns = rowPatterns.filter((candidate) => candidate.includes('none'));
     pattern = openPatterns[Math.floor(Math.random() * openPatterns.length)];
   }
-  // Lanes owned by moving vehicles stay empty in static rows.
-  const blocked = movingBlockedLanes();
+  // Spawn farther out the faster we go, so there is always time to react.
+  const baseZ = -(70 + Math.min(45, speed.value));
+  // Lanes owned by moving vehicles stay empty in static rows — but only
+  // while the mover is still behind the spawn plane (see movingBlockedLanes).
+  const blocked = movingBlockedLanes(baseZ + 6);
   if (blocked.size) {
     pattern = pattern.map((type, laneIndex) => (blocked.has(laneIndex) ? 'none' : type));
   }
   lastRowFull = !pattern.includes('none');
-  // Spawn farther out the faster we go, so there is always time to react.
-  const baseZ = -(70 + Math.min(45, speed.value));
 
   // Occasionally a big sign gantry as pure decoration over the road —
   // spans all lanes, blocks nothing.
@@ -5111,23 +5121,49 @@ const startTrafficWave = () => {
   showEventToast('Rush Hour', 'Jump the jam — roof to roof!');
 };
 
+// Ghost-driver wave: not one lonely wrong-way car but a whole pack of 5–8.
+// Half of them crawl, the other half scream past at absurd closing speeds.
+// The wave runs IN PARALLEL to normal rows (no spawn hold — that used to
+// leave the road empty), staggered one car at a time so lanes stay readable.
 const startWrongWayDriver = () => {
+  ghostWave = {
+    carsLeft: 5 + Math.floor(Math.random() * 4),
+    timer: 0,
+  };
+  sfx.horn();
+  showEventToast('Wrong-Way Drivers', 'They come in packs!');
+};
+
+const spawnGhostDriver = () => {
   const levelFactor = currentLevel.value.baseSpeed / 12;
   const vehicle = getObstacle('low', 'car-any');
-  vehicle.userData.vz = (16 + Math.random() * 8) * levelFactor;
+  const crawler = Math.random() < 0.5;
+  vehicle.userData.vz = (crawler ? 5 + Math.random() * 7 : 28 + Math.random() * 17) * levelFactor;
   if (vehicle.userData.beams) {
     vehicle.userData.beams.visible = true;
   }
   vehicle.rotation.y = 0;
+  // Prefer lanes without another mover; if all are taken, any lane goes —
+  // the pack is supposed to feel chaotic.
+  const blocked = movingBlockedLanes();
+  const laneChoices = [0, 1, 2].filter((lane) => !blocked.has(lane));
+  const laneIndex = laneChoices.length
+    ? pickFrom(laneChoices)
+    : Math.floor(Math.random() * 3);
+  // Arrival-normalized depth like spawnOncoming; capped just inside the
+  // -330 cull so the fastest ghosts don't spawn already dead.
+  const rowDepth = 72 + Math.min(45, speed.value);
+  const travelDepth = Math.min(
+    318,
+    rowDepth * ((speed.value + vehicle.userData.vz) / speed.value),
+  );
   vehicle.position.set(
-    lanes[currentLane],
+    lanes[laneIndex],
     vehicle.userData.size.h / 2 + 0.02,
-    -150,
+    -travelDepth - Math.random() * 6,
   );
   obstacles.push(vehicle);
   scene.add(vehicle);
-  sfx.horn();
-  showEventToast('Wrong-Way Driver', 'Get out of your lane!');
 };
 
 // Oncoming car that swerves into a neighbouring lane mid-approach.
@@ -5225,6 +5261,18 @@ const updateZoneEvents = (delta) => {
       checkpointPending = null;
     }
     return;
+  }
+  // Ghost-driver pack ticks alongside normal spawns — never holds them.
+  if (ghostWave) {
+    ghostWave.timer -= delta;
+    if (ghostWave.timer <= 0) {
+      spawnGhostDriver();
+      ghostWave.carsLeft -= 1;
+      ghostWave.timer = 0.6 + Math.random() * 0.7;
+      if (ghostWave.carsLeft <= 0) {
+        ghostWave = null;
+      }
+    }
   }
   if (trafficWave) {
     if (trafficWave.rowsLeft > 0) {
