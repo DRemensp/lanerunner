@@ -5542,9 +5542,12 @@ const updateZoneEvents = (delta) => {
     // the flashing lights blast past while we're hopping the roofs.
     if (rescueLane.headZ !== null) {
       rescueLane.headZ += speed.value * delta;
+      // Hold the convoy until the player has actually reached the FIRST jam
+      // car (its front edge draws level with the player), so the first siren
+      // appears once they're up in the Gasse — not while it's still approaching.
       if (
         !rescueLane.convoyStarted &&
-        rescueLane.headZ > player.position.z - Math.max(35, speed.value * 1.5)
+        rescueLane.headZ > player.position.z - 2
       ) {
         rescueLane.convoyStarted = true;
         sfx.siren();
