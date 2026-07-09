@@ -8932,6 +8932,13 @@ const updateRunner = (delta) => {
       if (now < invulnUntil || now < bumpProtectUntil) {
         continue;
       }
+      // Finale hand-off: from the 10k banner until the player sits in the
+      // car, the world brakes hard and leftover traffic gets shoved into
+      // the runner — that stretch is a victory lap, not a fair death.
+      // Vulnerability returns the moment zone 2 driving starts ('drive').
+      if (finalePhase.value === 'approach' || finalePhase.value === 'walk') {
+        continue;
+      }
       // Step-up: once the feet are well off the ground (roof run or
       // mid-jump), an edge rising less than 1.1 above them is stepped onto
       // silently instead of killing — deterministic for every real pairing
