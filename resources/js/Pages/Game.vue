@@ -4330,20 +4330,22 @@ const obstacleVariants = {
 // Low-poly vehicles from Kenney's CC0 Car Kit (kenney.nl), loaded at runtime.
 // Until a model is ready the procedural fallbacks ('low-car'/'tall-stack') fill in.
 const glbVehicleDefs = [
+  // scaleY on hatchback/delivery squeezes the car pool's roof band to
+  // ~1.17–1.47, so formations that mix random cars (crash set, parked jam,
+  // rush hour) never pair a knee-high car with a chest-high one.
   { key: 'sedan', kind: 'car', fitLength: 2.7 },
   { key: 'sedan-sports', kind: 'car', fitLength: 2.9 },
-  { key: 'hatchback-sports', kind: 'car', fitLength: 2.65 },
-  // 'drive-car': zone-2 traffic only. The formula car's roof is so flat
-  // (~0.7) that the step-up (0.6) can't bridge onto the next normal roof —
-  // in zone 1 (roof run) it would be a death trap. As a player skin
-  // (car-race) it still works via glbTemplates.
+  { key: 'hatchback-sports', kind: 'car', fitLength: 2.65, scaleY: 1.15 },
+  // 'drive-car': zone-2 traffic only. The F1's roof is ankle-high (~0.8) —
+  // useless for the zone-1 roof run, and specials never join formations
+  // anyway. As a player skin (car-race) it still works via glbTemplates.
   { key: 'race', kind: 'drive-car', fitLength: 2.75 },
   { key: 'taxi', kind: 'car', fitLength: 2.7 },
   { key: 'police', kind: 'car', fitLength: 3.2 },
   { key: 'suv', kind: 'car', fitLength: 2.7 },
   { key: 'suv-luxury', kind: 'car', fitLength: 3.0 },
   { key: 'van', kind: 'car', fitLength: 3.0 },
-  { key: 'delivery', kind: 'car', fitLength: 3.2 },
+  { key: 'delivery', kind: 'car', fitLength: 3.2, scaleY: 0.85 },
   { key: 'ambulance', kind: 'tall', fitLength: 3.5 },
   { key: 'truck', kind: 'tall', fitLength: 3.4 },
   { key: 'firetruck', kind: 'tall', fitLength: 4.3 },
@@ -4649,8 +4651,8 @@ const spawnObstacleSet = (laneIndex, baseZ) => {
 };
 
 // Truck convoy: one car as the "staircase", two box trucks behind it — the
-// high roof-run route. No truck roof is reachable from the ground (jump
-// height ~1.9, roof ~2.4+), so the entry ALWAYS goes via the car roof.
+// high roof-run route. The box truck roof (~1.5) is jumpable even straight
+// from the ground (apex ~2.3); the car in front just makes the entry easy.
 const spawnTruckConvoy = (laneIndex, baseZ) => {
   const pieces = [
     { key: 'car-any', z: 0 },
@@ -5028,14 +5030,15 @@ const showEventToast = (title, sub, duration = 1900) => {
   }, duration);
 };
 
-// Rush hour: a solid, tightly packed jam of mixed vehicles (cars, police,
-// trucks, fire engines) filling ALL three lanes. There is no gap — the only
-// way through is jumping onto the roofs and bouncing car to car. The first
-// row is low cars so the entry jump always works from the ground; taller
-// trucks appear deeper in, reachable from a car roof.
-// Rush hour only allows compact tall vehicles: box truck and ambulance have
-// usable roof lines — fire engines, garbage trucks, tractors & flatbeds are
-// too long/bulky and tear the roof-run route apart.
+// Rush hour: a solid, tightly packed jam filling ALL three lanes. There is
+// no gap — the only way through is jumping onto the roofs and bouncing car
+// to car. The first row is low cars so the entry jump always works from the
+// ground; taller trucks appear deeper in.
+// FORMATION RULE: multi-vehicle formations (rush hour, crash set, parked
+// jam, truck convoy) only ever combine normal cars, box truck and
+// ambulance — realistic city traffic. Specials (fire engine, garbage truck,
+// tractors, flatbed, F1) never join a formation; they only appear as single
+// obstacles ('tall-any') or scripted crossing convoys.
 const jamTallKeys = ['truck', 'ambulance'];
 
 const spawnWaveRow = () => {
@@ -8578,8 +8581,8 @@ const updateRunner = (delta) => {
       ) {
         const roofY = obstacle.position.y + obstacle.userData.size.h / 2;
         player.position.y = roofY + collisionPlayerHeight / 2 + 0.02;
-        // 1.08: the bounce from a car roof must also clear the tallest
-        // truck front (~2.9), otherwise the car→truck transition kills.
+        // 1.08: bounce apex ≈ 2.7 above the roof — clears every jam-legal
+        // front (box truck ~1.5, ambulance ~1.94) with plenty of margin.
         playerVelocityY = jumpVelocity * 1.08;
         score.value += 20;
         sfx.land();
@@ -8600,17 +8603,37 @@ const updateRunner = (delta) => {
       if (now < invulnUntil || now < bumpProtectUntil) {
         continue;
       }
-      // Roof-run step-up (jam sheet metal only): roof heights aren't
-      // uniform (sedan ~1.1, SUV ~1.4) — if you RUN on top (vy=0) and hit a
-      // slightly taller edge, you silently step up instead of dying. No
-      // catapult: from the ground the edge is >0.6 and stays lethal.
+      // Step-up: once the feet are well off the ground (roof run or
+      // mid-jump), an edge rising less than 1.1 above them is stepped onto
+      // silently instead of killing — deterministic for every real pairing
+      // (cars 1.17–1.47, box truck ~1.5, ambulance ~1.94 → worst roof-to-
+      // roof rise ~0.77). Applies to any solid obstacle, so the crash set
+      // is walkable too; 'over' hitboxes float in the air and are excluded.
+      // From the ground (feet ≈ 0) nothing steps: frontal hits stay fatal.
       const stepTop = obstacle.position.y + obstacle.userData.size.h / 2;
-      const stepRise = stepTop - (player.position.y - collisionPlayerHeight / 2);
-      if (!driving && obstacle.userData.jam && stepRise > 0 && stepRise < 0.6) {
+      const feetY = player.position.y - collisionPlayerHeight / 2;
+      const stepRise = stepTop - feetY;
+      const feetAirborne = feetY > 0.5;
+      if (
+        !driving &&
+        feetAirborne &&
+        obstacle.userData.type !== 'over' &&
+        stepRise > 0 &&
+        stepRise < 1.1
+      ) {
         player.position.y = stepTop + collisionPlayerHeight / 2 + 0.02;
         currentSurfaceY = stepTop;
         currentGroundCenter = player.position.y;
         playerVelocityY = Math.max(0, playerVelocityY);
+        continue;
+      }
+      // Safety net: jam vehicles never kill airborne feet. A rise too big
+      // to step (can't happen with the normalized pool, but stays true if
+      // heights ever drift) turns into a trampoline bounce instead.
+      if (!driving && feetAirborne && obstacle.userData.jam) {
+        playerVelocityY = jumpVelocity * 1.08;
+        sfx.land();
+        vibrate(12);
         continue;
       }
       // Side bump: the player is still travelling sideways into the target

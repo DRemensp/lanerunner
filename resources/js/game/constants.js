@@ -19,9 +19,11 @@ export const levelOptions = [
 export const lanes = [-2, 0, 2];
 export const groundY = 0.7;
 export const gravity = -28;
-// 11.4 instead of 12: apex ~2.32 m — comfortably over barriers (1.9) and
-// onto car roofs (1.5), but together with the roof-run step-up no longer
-// high enough to climb tall obstacles (2.75+).
+// 11.4 instead of 12: apex ~2.32 m (feet above ground) — comfortably over
+// barriers and onto every vehicle roof (cars 1.17–1.47, box truck ~1.5,
+// ambulance ~1.94), but together with the step-up limit (1.1, collision
+// loop) never enough to climb the tall static obstacles (2.75+) from the
+// ground.
 export const jumpVelocity = 11.4;
 export const slideScale = 0.55;
 export const slideDuration = 0.6;
