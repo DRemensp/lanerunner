@@ -9069,6 +9069,29 @@ const updateRunner = (delta) => {
       if (finalePhase.value === 'approach' || finalePhase.value === 'walk') {
         continue;
       }
+      // Rettungsgasse sirens overtake from BEHIND the camera and outrun the
+      // player, so they can only ever hit from off-screen — killing there is
+      // never fair. Instead of a death they HORN and shove the player out of
+      // the siren lane into the nearest outer lane, with a brief protection
+      // window so the rest of the convoy can't chain-hit during the shove.
+      if (obstacle.userData.rescue) {
+        if (currentLane === 1) {
+          const escape = player.position.x <= lanes[1] ? 0 : 2;
+          currentLane = escape;
+          laneOrigin = escape;
+        }
+        bumpProtectUntil = now + 750;
+        bumpShakeTimer = 0.2;
+        sfx.horn();
+        vibrate(20);
+        spawnBurst(
+          new THREE.Vector3(player.position.x, 1, player.position.z),
+          ['dust'],
+          6,
+          4,
+        );
+        continue;
+      }
       // Step-up: once the feet are well off the ground (roof run or
       // mid-jump), an edge rising less than 1.1 above them is stepped onto
       // silently instead of killing — deterministic for every real pairing
