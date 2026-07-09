@@ -185,6 +185,11 @@ export function createAudioSystem({ state, speed }) {
     },
     shoot: () => playTone({ freq: 880 + Math.random() * 160, to: 320, type: 'square', duration: 0.09, gain: 0.1 }),
     enemyShoot: () => playTone({ freq: 260, to: 110, type: 'sawtooth', duration: 0.18, gain: 0.16 }),
+    enemyDash: () => {
+      // Quick thruster whoosh as an alien jukes sideways.
+      playNoise({ duration: 0.16, from: 320, to: 1600, gain: 0.14 });
+      playTone({ freq: 180, to: 420, type: 'triangle', duration: 0.14, gain: 0.1 });
+    },
     shotgun: () => {
       playNoise({ duration: 0.3, from: 1400, to: 300, gain: 0.3 });
       playTone({ freq: 180, to: 90, type: 'sawtooth', duration: 0.25, gain: 0.2 });

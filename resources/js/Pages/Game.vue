@@ -6572,6 +6572,8 @@ const spawnEnemy = () => {
   enemy.userData.burstLeft = 0;
   enemy.userData.burstTick = 0;
   enemy.userData.dodgeTimer = 1.6;
+  enemy.userData.dodgeToX = enemy.userData.baseX;
+  enemy.userData.dodgeToY = enemy.userData.baseY;
   enemy.userData.agile = 0;
   enemy.position.set(enemy.userData.baseX, enemy.userData.baseY, -220);
   enemies.push(enemy);
@@ -6757,13 +6759,16 @@ const fireEnemyBolt = (enemy, targetPoint = null, opts = {}) => {
   const dir = new THREE.Vector3()
     .subVectors(target, bolt.position)
     .normalize()
-    .multiplyScalar(huge ? 38 : isMother ? 46 : 42);
+    // +15% muzzle speed across every alien projectile type.
+    .multiplyScalar((huge ? 38 : isMother ? 46 : 42) * 1.15);
   bolt.userData.vel = dir;
   bolt.userData.life = 6;
   bolt.userData.mother = isMother;
   bolt.userData.huge = huge;
   bolt.userData.grazed = false;
-  bolt.userData.dmg = huge ? 26 : isMother ? 20 : 18;
+  // Ultra-mode orbs (the mothership's huge balls, only fired at ≤10% HP)
+  // hit for half the player's max health — 50 of 100.
+  bolt.userData.dmg = huge ? 50 : isMother ? 20 : 18;
   bolt.lookAt(target);
   enemyBolts.push(bolt);
   scene.add(bolt);
@@ -7975,7 +7980,7 @@ const updatePlane = (delta) => {
         if (ud.invulnTimer <= 0) {
           ud.shieldMesh.visible = false;
           ud.hugeTimer = 0.24;
-          showEventToast('ECLIPSE BARRAGE', 'Dodge the orbs!', 2200);
+          showEventToast('ECLIPSE BARRAGE', 'One orb = half your health — DODGE!', 2200);
           sfx.motherSpawn();
         }
       } else if (ud.stage === 3) {
@@ -8037,17 +8042,42 @@ const updatePlane = (delta) => {
       }
     } else {
       enemy.position.z = THREE.MathUtils.damp(enemy.position.z, -52, 0.9, delta);
-      // Occasional quick dodge to a new position near the player.
+      // Evasive juke: instead of snapping to a new spot, the alien picks a
+      // side and QUICKLY flies there (thruster puff), still firing all the
+      // while. It reads as a real dash, not a teleport.
       ud.dodgeTimer -= delta;
       if (ud.dodgeTimer <= 0) {
-        ud.baseX = THREE.MathUtils.clamp(player.position.x + (Math.random() - 0.5) * 16, -12, 12);
-        ud.baseY = THREE.MathUtils.clamp(player.position.y + (Math.random() - 0.5) * 10, 5, 18);
-        ud.agile = 0.8;
+        const side = Math.random() < 0.5 ? -1 : 1;
+        ud.dodgeToX = THREE.MathUtils.clamp(
+          player.position.x + side * (5 + Math.random() * 8),
+          -12,
+          12,
+        );
+        ud.dodgeToY = THREE.MathUtils.clamp(
+          player.position.y + (Math.random() - 0.5) * 10,
+          5,
+          18,
+        );
+        ud.agile = 0.5; // seconds of fast lateral flight
         ud.dodgeTimer = 1.4 + Math.random() * 1.6;
+        // Thruster exhaust on the far side of the dash direction.
+        spawnBurst(
+          new THREE.Vector3(enemy.position.x - side * 1.5, enemy.position.y, enemy.position.z),
+          ['flame', 'gold'],
+          7,
+          6,
+        );
+        sfx.enemyDash();
       }
       ud.agile -= delta;
-      const chaseRate = ud.agile > 0 ? 2.4 : 0.35;
-      ud.baseX = THREE.MathUtils.damp(ud.baseX, player.position.x, chaseRate * 0.3, delta);
+      if (ud.agile > 0) {
+        // Snappy slide toward the evade target — fast, but interpolated.
+        ud.baseX = THREE.MathUtils.damp(ud.baseX, ud.dodgeToX, 9, delta);
+        ud.baseY = THREE.MathUtils.damp(ud.baseY, ud.dodgeToY, 9, delta);
+      } else {
+        // Relaxed drift back toward the player's column between jukes.
+        ud.baseX = THREE.MathUtils.damp(ud.baseX, player.position.x, 0.6, delta);
+      }
       enemy.position.x = ud.baseX + Math.sin(ud.phase) * ud.ampX;
       enemy.position.y = THREE.MathUtils.clamp(
         ud.baseY + Math.cos(ud.phase * 1.3) * ud.ampY,
