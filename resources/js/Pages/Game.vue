@@ -908,10 +908,8 @@ let crossingGroup = null; // cached geometry, only ever repositioned
 let crossingDistIn = 320;
 let trafficWave = null;
 let nextMilestone = 2500;
-// Speed only steps up once the checkpoint breather has cleared the road —
-// never mid-traffic. speedTier is the applied tier, checkpointPending the
-// breather state machine.
-let speedTier = 0;
+// Checkpoint events only fire once the breather has cleared the road —
+// never mid-traffic. checkpointPending is the breather state machine.
 let checkpointPending = null;
 let lastRowFull = false;
 let smashStreak = 0;
@@ -1773,7 +1771,6 @@ const resetRun = () => {
   runTopSpeed.value = 0;
   runTopSpeedRaw = 0;
   trafficWave = null;
-  speedTier = 0;
   checkpointPending = null;
   lastRowFull = false;
 
@@ -5156,9 +5153,17 @@ const eventSpawnHoldActive = () => {
   ) {
     return true;
   }
-  // Around a crossing the main road stays free of static rows — the cross
-  // traffic is the challenge there.
-  return crossing !== null && crossing.group.position.z < spawnDepth + 14;
+  // A crossing only blocks rows that would land ON the junction itself:
+  // rows and the crossing scroll at the same speed, so their spacing at
+  // spawn time is frozen forever. Footprint ±9 plus set depth (~9) deeper —
+  // everything outside packs in tight before and after the crossing, like
+  // around any other obstacle element.
+  if (crossing) {
+    const rowZ = -(70 + Math.min(45, speed.value));
+    const d = rowZ - crossing.group.position.z;
+    return d > -10 && d < 20;
+  }
+  return false;
 };
 
 const updateZoneEvents = (delta) => {
@@ -5183,7 +5188,6 @@ const updateZoneEvents = (delta) => {
         obstacle.position.z < player.position.z + 2 && obstacle.position.z > clearDepth,
     );
     if (roadClear || checkpointPending.failsafe <= 0) {
-      speedTier = Math.min(3, speedTier + 1);
       applyDistrict(districtIndex + 1);
       showEventToast('Speed up!', 'New tempo — go!', 1600);
       sfx.godMode();
@@ -8482,15 +8486,14 @@ const updateRunner = (delta) => {
       spawnTimer -= delta;
       if (spawnTimer <= 0) {
         spawnRow();
-        // Arrival gap between hazards, tiered per 2.5k checkpoint block.
-        // The floor always stays above the 0.86s jump airtime in tier 0, and
-        // oncoming cars are arrival-normalized (see spawnOncoming), so this
-        // IS the real time between obstacles reaching the player.
-        // Cadence follows the applied tier, in lockstep with the speed.
-        // Floor stays above a full jump chain (0.86s airtime + reaction):
-        // tier 0 never dips below 1.05s between arrivals. (Was 1.1-1.45 —
-        // slightly denser for less empty asphalt, floor stays above.)
-        const baseGap = [1.0, 0.85, 0.75, 0.65][speedTier];
+        // Arrival gap between hazards — a TIME, so at constant gap higher
+        // speed only looks faster but plays identically. To actually get
+        // harder, the gap shrinks continuously along the same curve the
+        // speed follows (min(3, score/2500), see targetSpeed): 1.0 at the
+        // start down to 0.55 at top speed → 0.58–0.74s between arrivals in
+        // the endgame (start: 1.05–1.35s). Oncoming cars are arrival-
+        // normalized (see spawnOncoming), so this is the real cadence.
+        const baseGap = 1 - 0.15 * Math.min(3, score.value / 2500);
         spawnTimer = THREE.MathUtils.randFloat(1.05, 1.35) * baseGap;
       }
     } else {
