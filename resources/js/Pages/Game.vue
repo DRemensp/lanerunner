@@ -3966,6 +3966,8 @@ const getObstacleAssets = () => {
     busPaints: [0xc22b3d, 0x2f6fd0, 0x2f9e63, 0xd8892b].map((color) => lambert(color, 0.25)),
     tall: lambert(0xffb14a, 0.4),
     over: lambert(0x49a8ff, 0.45),
+    barRed: lambert(0xd23636, 0.3),
+    barWhite: lambert(0xf2f2f2),
     hazard: track(new THREE.MeshBasicMaterial({ color: 0xffa22e })),
     busBody: lambert(0xc22b3d, 0.25),
     busRoof: lambert(0xe8e2d0),
@@ -4060,6 +4062,8 @@ const getPassSignMat = () => {
   return passSignMat;
 };
 
+// Returns the sign's top edge in local y, so the builder can extend the
+// collision box up to cover it (the pole + disc used to be pass-through).
 const addPassSign = (g, topY) => {
   const a = getObstacleAssets();
   const pole = new THREE.Mesh(track(new THREE.BoxGeometry(0.07, 0.5, 0.07)), a.frame);
@@ -4072,7 +4076,12 @@ const addPassSign = (g, topY) => {
     if (i) face.rotation.y = Math.PI;
     g.add(face);
   });
+  return topY + 0.82 + 0.4;
 };
+
+// topExtra: how far the sign reaches above the box top (h/2), so checkCollision
+// can stretch the box upward without lifting the obstacle off the ground.
+const passSignExtra = (signTop, h) => signTop - h / 2;
 
 // Every variant is centered on its origin so the existing collision math
 // (position = center, userData.size = box extents) keeps working.
@@ -4252,8 +4261,8 @@ const obstacleBuilders = {
     const stripe = new THREE.Mesh(track(new THREE.BoxGeometry(1.38, 0.16, 1.28)), a.stripeYellow);
     stripe.position.y = -1.28;
     g.add(stripe);
-    addPassSign(g, 1.36);
-    return { mesh: g, size: { w: 1.4, h: 2.8, d: 1.3 } };
+    const signTop = addPassSign(g, 1.36);
+    return { mesh: g, size: { w: 1.4, h: 2.8, d: 1.3, topExtra: passSignExtra(signTop, 2.8), solidTop: true } };
   },
   // Scaffold tower: four poles, two plank levels, orange safety net facing
   // the road plus a warning bar — tall obstacle no. 3.
@@ -4281,8 +4290,8 @@ const obstacleBuilders = {
       warn.position.set(0, -1.22 + i * 0.14, 0.48);
       g.add(warn);
     });
-    addPassSign(g, 1.42);
-    return { mesh: g, size: { w: 1.35, h: 2.85, d: 1.0 } };
+    const signTop = addPassSign(g, 1.42);
+    return { mesh: g, size: { w: 1.35, h: 2.85, d: 1.0, topExtra: passSignExtra(signTop, 2.85), solidTop: true } };
   },
   // Night kiosk: booth with a glowing service window, awning and neon
   // sign — tall obstacle no. 4, fits the neon city.
@@ -4308,8 +4317,8 @@ const obstacleBuilders = {
     const neon = new THREE.Mesh(track(new THREE.PlaneGeometry(1.25, 0.36)), a.kioskNeon);
     neon.position.set(0, 1.05, 0.57);
     g.add(neon);
-    addPassSign(g, 1.26);
-    return { mesh: g, size: { w: 1.55, h: 2.75, d: 1.2 } };
+    const signTop = addPassSign(g, 1.26);
+    return { mesh: g, size: { w: 1.55, h: 2.75, d: 1.2, topExtra: passSignExtra(signTop, 2.75), solidTop: true } };
   },
   // Roadwork barrier: striped beam on two legs, open underneath — slide
   // under it or jump over it. Collision box covers only the beam.
@@ -4342,6 +4351,49 @@ const obstacleBuilders = {
     });
     return { mesh: g, size: { w: 1.6, h: 0.7, d: 1.2 } };
   },
+  // Tall roadwork barrier: the red/white striped panel is stretched up into
+  // a wall — too high to jump, with the slide gap kept underneath. The only
+  // ways past are UNDER (slide) or AROUND (change lane). Placed like every
+  // 'over' at y=1.55; topExtra pushes the hitbox up to the wall's top while
+  // the box bottom stays at the same slide clearance as the low barrier.
+  'over-barrier-tall': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    // Horizontal red/white bands from the slide gap (local -0.35, world 1.2)
+    // up to the top (local +1.35, world 2.9).
+    const bandGeo = track(new THREE.BoxGeometry(1.7, 0.28, 0.14));
+    for (let i = 0; i < 6; i += 1) {
+      const band = new THREE.Mesh(bandGeo, i % 2 ? a.barWhite : a.barRed);
+      band.position.y = -0.21 + i * 0.28;
+      g.add(band);
+    }
+    // Side rails framing the striped panel.
+    const railGeo = track(new THREE.BoxGeometry(0.1, 1.75, 0.1));
+    [-0.85, 0.85].forEach((x) => {
+      const rail = new THREE.Mesh(railGeo, a.frame);
+      rail.position.set(x, 0.5, 0);
+      g.add(rail);
+    });
+    // Legs down to the ground (origin sits at world 1.55, ground at -1.55).
+    const legGeo = track(new THREE.BoxGeometry(0.1, 1.9, 0.1));
+    const footGeo = track(new THREE.BoxGeometry(0.36, 0.08, 0.36));
+    [-0.82, 0.82].forEach((x) => {
+      const leg = new THREE.Mesh(legGeo, a.frame);
+      leg.position.set(x, -1.3, 0);
+      g.add(leg);
+      const foot = new THREE.Mesh(footGeo, a.frame);
+      foot.position.set(x, -1.51, 0);
+      g.add(foot);
+    });
+    const lampGeo = track(new THREE.BoxGeometry(0.12, 0.1, 0.12));
+    [-0.82, 0, 0.82].forEach((x) => {
+      const hazardLamp = new THREE.Mesh(lampGeo, a.hazard);
+      hazardLamp.position.set(x, 1.5, 0);
+      g.add(hazardLamp);
+    });
+    // Box: h 0.7 centered at 1.55 (world 1.2–1.9) + topExtra up to world 2.9.
+    return { mesh: g, size: { w: 1.6, h: 0.7, d: 1.2, topExtra: 1.0 } };
+  },
 };
 
 // Static tall obstacles (container, scaffold, kiosk) mix with the tall
@@ -4352,7 +4404,7 @@ const obstacleVariants = {
   // three reads much less monotonous.
   low: ['low-barrel', 'car-any', 'car-any'],
   tall: ['tall-any', 'tall-any', 'tall-stack', 'tall-scaffold', 'tall-kiosk'],
-  over: ['over-barrier'],
+  over: ['over-barrier', 'over-barrier-tall'],
 };
 
 // Low-poly vehicles from Kenney's CC0 Car Kit (kenney.nl), loaded at runtime.
@@ -5589,19 +5641,23 @@ const checkCollision = (obstacle, playerHeight) => {
   const oSize = obstacle.userData.size;
   const box = finalePhase.value === 'drive' ? carPlayerSize : playerSize;
   const dx = Math.abs(player.position.x - obstacle.position.x);
-  const dy = Math.abs(player.position.y - obstacle.position.y);
   const dz = Math.abs(player.position.z - obstacle.position.z);
 
-  if (
-    dx >= (box.w + oSize.w) / 2 ||
-    dy >= (playerHeight + oSize.h) / 2 ||
-    dz >= (box.d + oSize.d) / 2
-  ) {
+  if (dx >= (box.w + oSize.w) / 2 || dz >= (box.d + oSize.d) / 2) {
     return false;
   }
 
-  const obstacleTop = obstacle.position.y + oSize.h / 2;
+  // topExtra stretches the box UP only (sign topper / tall barrier wall),
+  // leaving the ground-level bottom where it is — so slide clearance and
+  // placement stay untouched.
+  const obstacleBottom = obstacle.position.y - oSize.h / 2;
+  const obstacleTop = obstacle.position.y + oSize.h / 2 + (oSize.topExtra || 0);
   const playerBottom = player.position.y - playerHeight / 2;
+  const playerTop = player.position.y + playerHeight / 2;
+
+  if (playerTop <= obstacleBottom || playerBottom >= obstacleTop) {
+    return false;
+  }
 
   return playerBottom < obstacleTop - 0.05;
 };
@@ -9028,6 +9084,7 @@ const updateRunner = (delta) => {
         !driving &&
         feetAirborne &&
         obstacle.userData.type !== 'over' &&
+        !obstacle.userData.size.solidTop &&
         stepRise > 0 &&
         stepRise < 1.1
       ) {
