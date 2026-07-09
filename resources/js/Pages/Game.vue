@@ -5596,18 +5596,22 @@ const updateZoneEvents = (delta) => {
       }
     }
     if (rescueLane.convoyStarted) {
-      // Keep the sirens coming for as long as the player is still inside the
-      // jam zone: at low speed the jam is long, so a fixed burst would clear
-      // before the halfway point. The queue refills with a fresh mixed batch
-      // whenever it empties — UNTIL the tail nears the player, then it just
-      // drains so the last cars pass before normal rows resume.
+      // Sirens keep coming for as long as the player is still inside the jam
+      // zone (at low speed the jam is long, so a fixed burst would clear
+      // before the halfway point — the queue refills with a fresh mixed
+      // batch whenever it empties). But the MOMENT the jam tail nears the
+      // player — i.e. the player is about to exit the event zone and go back
+      // to dodging normal barricades — the convoy STOPS DEAD: the pending
+      // queue is dropped so nothing new ever spawns behind them out there.
       const tailNear =
         rescueLane.endZ !== null &&
         rescueLane.endZ > player.position.z - Math.max(45, speed.value * 2);
-      if (!rescueLane.queue.length && !tailNear) {
-        rescueLane.queue = buildRescueQueue();
-      }
-      if (rescueLane.queue.length) {
+      if (tailNear) {
+        rescueLane.queue.length = 0;
+      } else {
+        if (!rescueLane.queue.length) {
+          rescueLane.queue = buildRescueQueue();
+        }
         rescueLane.convoyTimer -= delta;
         if (rescueLane.convoyTimer <= 0) {
           spawnRescueVehicle(rescueLane.queue.shift());
@@ -9067,29 +9071,6 @@ const updateRunner = (delta) => {
       // the runner — that stretch is a victory lap, not a fair death.
       // Vulnerability returns the moment zone 2 driving starts ('drive').
       if (finalePhase.value === 'approach' || finalePhase.value === 'walk') {
-        continue;
-      }
-      // Rettungsgasse sirens overtake from BEHIND the camera and outrun the
-      // player, so they can only ever hit from off-screen — killing there is
-      // never fair. Instead of a death they HORN and shove the player out of
-      // the siren lane into the nearest outer lane, with a brief protection
-      // window so the rest of the convoy can't chain-hit during the shove.
-      if (obstacle.userData.rescue) {
-        if (currentLane === 1) {
-          const escape = player.position.x <= lanes[1] ? 0 : 2;
-          currentLane = escape;
-          laneOrigin = escape;
-        }
-        bumpProtectUntil = now + 750;
-        bumpShakeTimer = 0.2;
-        sfx.horn();
-        vibrate(20);
-        spawnBurst(
-          new THREE.Vector3(player.position.x, 1, player.position.z),
-          ['dust'],
-          6,
-          4,
-        );
         continue;
       }
       // Step-up: once the feet are well off the ground (roof run or
