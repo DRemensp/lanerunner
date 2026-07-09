@@ -5238,10 +5238,11 @@ const spawnRescueSign = () => {
   return rescueSignGroup;
 };
 
-// Convoy roster: max 4 vehicles total (1 ambulance, 1 fire engine, 1–2
-// police), Fisher-Yates shuffled so the order is a fresh mix every time.
-// Small on purpose: every vehicle must be through while the player is
-// still safely up on the roofs — see the tail guard in updateZoneEvents.
+// One convoy batch: 1 ambulance, 1 fire engine, 1–2 police, Fisher-Yates
+// shuffled for a fresh mix. The convoy refills batch after batch for as
+// long as the player is still inside the jam (see updateZoneEvents), so at
+// slow speeds a long Gasse keeps a steady stream of sirens instead of a
+// single burst that clears before the halfway point.
 const buildRescueQueue = () => {
   const queue = ['ambulance', 'firetruck'];
   const police = 1 + Math.floor(Math.random() * 2);
@@ -5542,14 +5543,29 @@ const updateZoneEvents = (delta) => {
         sfx.siren();
       }
     }
-    if (rescueLane.convoyStarted && rescueLane.queue.length) {
-      rescueLane.convoyTimer -= delta;
-      if (rescueLane.convoyTimer <= 0) {
-        spawnRescueVehicle(rescueLane.queue.shift());
-        // Tight stagger: the whole (max-4) convoy must blast through while
-        // the player is still up on the roofs, not trickle out behind them.
-        rescueLane.convoyTimer = 0.6 + Math.random() * 0.4;
-        sfx.siren();
+    if (rescueLane.convoyStarted) {
+      // Keep the sirens coming for as long as the player is still inside the
+      // jam zone: at low speed the jam is long, so a fixed burst would clear
+      // before the halfway point. The queue refills with a fresh mixed batch
+      // whenever it empties — UNTIL the tail nears the player, then it just
+      // drains so the last cars pass before normal rows resume.
+      const tailNear =
+        rescueLane.endZ !== null &&
+        rescueLane.endZ > player.position.z - Math.max(45, speed.value * 2);
+      if (!rescueLane.queue.length && !tailNear) {
+        rescueLane.queue = buildRescueQueue();
+      }
+      if (rescueLane.queue.length) {
+        rescueLane.convoyTimer -= delta;
+        if (rescueLane.convoyTimer <= 0) {
+          spawnRescueVehicle(rescueLane.queue.shift());
+          rescueLane.convoyTimer = 0.6 + Math.random() * 0.4;
+          // Only every other car retriggers the Martinshorn — otherwise the
+          // ~1.7s jingle stacks on itself at this cadence.
+          if (Math.random() < 0.5) {
+            sfx.siren();
+          }
+        }
       }
     }
     if (rescueLane.endZ !== null) {
