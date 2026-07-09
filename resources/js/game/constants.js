@@ -98,13 +98,11 @@ export const nightDistricts = [
   { bg: 0x120609, fog: 0x220b12, hemiSky: 0xff9fb0, edge: 0xff6b8a },
 ];
 
+// No single-obstacle patterns: a lone barrel on a three-lane road is dead
+// air. Every row carries at least two obstacles; the only thing allowed to
+// stand alone is a themed set row (see spawnRow), which fills 6–9 m of road
+// by itself.
 export const rowPatterns = [
-  ['low', 'none', 'none'],
-  ['none', 'low', 'none'],
-  ['none', 'none', 'low'],
-  ['over', 'none', 'none'],
-  ['none', 'over', 'none'],
-  ['none', 'none', 'over'],
   ['low', 'over', 'none'],
   ['over', 'low', 'none'],
   ['low', 'none', 'over'],

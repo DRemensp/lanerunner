@@ -4945,6 +4945,34 @@ const spawnRow = () => {
     return;
   }
 
+  // Standalone set row — the ONLY thing allowed to occupy a row alone:
+  // a themed mini-scene (convoy/jam/construction/accident) that fills
+  // 6–9 m of road by itself. Single loose obstacles never spawn alone
+  // (rowPatterns has no single-slot entries).
+  if (Math.random() < 0.12) {
+    const openLanes = [0, 1, 2].filter((lane) => !movingBlockedLanes().has(lane));
+    if (openLanes.length) {
+      const laneIndex = pickFrom(openLanes);
+      const setZ = -(70 + Math.min(45, speed.value));
+      const roll = Math.random();
+      let spawned = false;
+      if (roll < 0.35 && glbTemplates.truck && glbTraffic.car.length) {
+        spawnTruckConvoy(laneIndex, setZ);
+        spawned = true;
+      } else if (roll < 0.6 && glbTraffic.car.length) {
+        spawnJamSet(laneIndex, setZ);
+        spawned = true;
+      } else {
+        spawned = spawnObstacleSet(laneIndex, setZ);
+      }
+      if (spawned) {
+        lastRowFull = false;
+        return;
+      }
+      // No set assets loaded yet — fall through to a normal row.
+    }
+  }
+
   // Never two fully blocked rows back to back: after a 3-lane wall the next
   // row always keeps a free lane, so steering is always an escape option.
   let pattern = rowPatterns[Math.floor(Math.random() * rowPatterns.length)];
