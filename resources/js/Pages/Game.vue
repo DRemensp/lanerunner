@@ -5392,9 +5392,9 @@ const startDriftCar = () => {
 };
 
 const startRandomEvent = () => {
-  // Rettungsgasse rolls first, separately from the classic events. TEMP: 30%
-  // for testing (target is 6%) — rush hour & friends split the remainder.
-  if (Math.random() < 0.3 && canStartRescueLane()) {
+  // Rettungsgasse rolls first, separately from the classic events — a 10%
+  // treat. Rush hour & friends split the remaining 90%.
+  if (Math.random() < 0.1 && canStartRescueLane()) {
     startRescueLane();
     return;
   }
