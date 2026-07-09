@@ -5118,7 +5118,10 @@ const showEventToast = (title, sub, duration = 1900) => {
 const jamTallKeys = ['truck', 'ambulance'];
 
 const spawnWaveRow = () => {
-  const baseZ = -(95 + Math.min(45, speed.value));
+  // -(78+…) instead of -(95+…): rush hour always fires onto a drained road
+  // (checkpoint breather), so the jam can start just behind the normal row
+  // plane — kills the huge empty stretch that used to sit in front of it.
+  const baseZ = -(78 + Math.min(45, speed.value));
   const tallChoices = jamTallKeys.filter((key) => obstacleBuilders[key]);
   for (let laneIndex = 0; laneIndex < 3; laneIndex += 1) {
     const useTall = !trafficWave.first && tallChoices.length > 0 && Math.random() < 0.35;
@@ -5281,7 +5284,9 @@ const spawnRescueVehicle = (key) => {
 
 const startRescueLane = () => {
   rescueLane = {
-    rowsLeft: 12 + Math.min(4, Math.floor(score.value / 2500)),
+    // 3× the rush-hour length (~125–170 m of parted cars): the Gasse needs
+    // room so players can actually register what is happening.
+    rowsLeft: 36 + Math.min(12, 3 * Math.floor(score.value / 2500)),
     rowTimer: 0,
     headZ: null,
     endZ: null,
@@ -5514,7 +5519,9 @@ const updateZoneEvents = (delta) => {
       rescueLane.convoyTimer -= delta;
       if (rescueLane.convoyTimer <= 0) {
         spawnRescueVehicle(rescueLane.queue.shift());
-        rescueLane.convoyTimer = 0.65 + Math.random() * 0.45;
+        // Wider stagger: spreads the parade along the (now much longer)
+        // Gasse instead of dumping the whole convoy in the first quarter.
+        rescueLane.convoyTimer = 1.1 + Math.random() * 0.8;
         if (rescueLane.queue.length % 3 === 0) {
           sfx.siren();
         }
@@ -8812,7 +8819,11 @@ const updateRunner = (delta) => {
         spawnTimer = THREE.MathUtils.randFloat(1.05, 1.35) * baseGap;
       }
     } else {
-      spawnTimer = Math.max(spawnTimer, 0.7);
+      // 0.25 instead of 0.7: once a hold releases, the next row follows
+      // almost immediately — traffic packs tight behind a jam's tail (the
+      // safety distance itself lives in eventSpawnHoldActive's spawnDepth
+      // margin, not here) instead of leaving a huge empty stretch.
+      spawnTimer = Math.max(spawnTimer, 0.25);
     }
   }
 
