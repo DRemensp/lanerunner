@@ -159,6 +159,12 @@ export function createAudioSystem({ state, speed }) {
       playTone({ freq: base, type: 'square', duration: 0.3, gain: 0.15 });
       playTone({ freq: base * 1.26, type: 'square', duration: 0.3, gain: 0.15 });
     },
+    siren: () => {
+      // German Martinshorn: two alternating fourths (a'/d''), three cycles.
+      for (let i = 0; i < 6; i += 1) {
+        playTone({ freq: i % 2 ? 587 : 440, type: 'square', duration: 0.26, delay: i * 0.28, gain: 0.1 });
+      }
+    },
     godMode: () => {
       [220, 330, 440, 660, 880].forEach((freq, i) =>
         playTone({ freq, type: 'sawtooth', duration: 0.22, delay: i * 0.07, gain: 0.22 }),

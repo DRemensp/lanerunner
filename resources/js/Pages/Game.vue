@@ -908,6 +908,12 @@ let crossingGroup = null; // cached geometry, only ever repositioned
 let crossingDistIn = 320;
 let trafficWave = null;
 let ghostWave = null; // { carsLeft, timer } — staggered wrong-way pack
+// German Rettungsgasse: both outer lanes fill with cars pulled ~30° to the
+// side (jam roofs), the middle stays free for an emergency convoy that
+// overtakes from behind with lights on. { rowsLeft, rowTimer, headZ, endZ,
+// queue, convoyStarted, convoyTimer, sign, signTimer }
+let rescueLane = null;
+let rescueSignGroup = null; // cached warning-sign geometry, only repositioned
 let nextMilestone = 2500;
 // Checkpoint events only fire once the breather has cleared the road —
 // never mid-traffic. checkpointPending is the breather state machine.
@@ -1773,6 +1779,10 @@ const resetRun = () => {
   runTopSpeedRaw = 0;
   trafficWave = null;
   ghostWave = null;
+  rescueLane = null;
+  if (rescueSignGroup) {
+    scene.remove(rescueSignGroup);
+  }
   checkpointPending = null;
   lastRowFull = false;
 
@@ -2082,6 +2092,23 @@ const handleKeydown = (event) => {
 
   if (event.code === 'F9') {
     devSkip();
+    return;
+  }
+
+  if (event.code === 'F8') {
+    // Dev cheat: force the Rettungsgasse event (6% in the wild — untestable
+    // otherwise). Marks the run as dev, so it is never persisted.
+    if (
+      state.value === 'running' &&
+      finalePhase.value === 'none' &&
+      !trafficWave &&
+      !rescueLane &&
+      !checkpointPending &&
+      canStartRescueLane()
+    ) {
+      devRun.value = true;
+      startRescueLane();
+    }
     return;
   }
 
@@ -4591,6 +4618,7 @@ const getObstacle = (type, forcedKey = null) => {
   obstacle.userData.passed = false;
   obstacle.userData.jam = false;
   obstacle.userData.decor = false;
+  obstacle.userData.rescue = false;
   delete obstacle.userData.driftTo;
   obstacle.userData.driftHonked = false;
   if (obstacle.userData.beams) {
@@ -4849,7 +4877,7 @@ const spawnCrossingCar = () => {
 };
 
 const updateCrossing = (delta) => {
-  if (finalePhase.value === 'none' && !crossing && !trafficWave && !checkpointPending) {
+  if (finalePhase.value === 'none' && !crossing && !trafficWave && !rescueLane && !checkpointPending) {
     crossingDistIn -= speed.value * delta;
     if (crossingDistIn <= 0) {
       spawnCrossing();
@@ -4892,6 +4920,18 @@ const updateCrossing = (delta) => {
 const movingBlockedLanes = (behindZ = Infinity) => {
   const blocked = new Set();
   obstacles.forEach((obstacle) => {
+    // Rescue-lane convoy: drives AWAY from the player, so it blocks its lane
+    // while it is still ABOVE the spawn plane (a new row spawned below it
+    // would be crossed later). Once it is deeper than the plane it only ever
+    // pulls away from new rows and stops blocking.
+    if (obstacle.userData.rescue) {
+      if (!Number.isFinite(behindZ) || obstacle.position.z > behindZ - 6) {
+        lanes.forEach((laneX, index) => {
+          if (Math.abs(obstacle.position.x - laneX) < 0.9) blocked.add(index);
+        });
+      }
+      return;
+    }
     const moving =
       (obstacle.userData.vz || 0) > 0 || obstacle.userData.driftTo !== undefined;
     if (!moving || obstacle.position.z >= behindZ) return;
@@ -5073,7 +5113,8 @@ const showEventToast = (title, sub, duration = 1900) => {
 // jam, truck convoy) only ever combine normal cars, box truck and
 // ambulance — realistic city traffic. Specials (fire engine, garbage truck,
 // tractors, flatbed, F1) never join a formation; they only appear as single
-// obstacles ('tall-any') or scripted crossing convoys.
+// obstacles ('tall-any'), scripted crossing convoys or the Rettungsgasse
+// emergency convoy.
 const jamTallKeys = ['truck', 'ambulance'];
 
 const spawnWaveRow = () => {
@@ -5119,6 +5160,139 @@ const startTrafficWave = () => {
   };
   sfx.horn();
   showEventToast('Rush Hour', 'Jump the jam — roof to roof!');
+};
+
+// ---- German Rettungsgasse (separate event, NOT rush hour): both outer
+// lanes fill with cars pulled ~30° toward the roadside — trampoline roofs
+// like any jam — while the middle lane stays completely free. A floating
+// warning sign flashes in the middle lane for ~2s, then an emergency convoy
+// (mixed police/ambulance/fire, lights on) overtakes from behind through
+// the free middle: standing there is fatal, riding the roofs is the route.
+const canStartRescueLane = () =>
+  glbTraffic.car.length > 0 &&
+  !!obstacleBuilders.police &&
+  !!obstacleBuilders.ambulance &&
+  !!obstacleBuilders.firetruck;
+
+// Neon warning triangle with "!": floats over the middle lane ahead of the
+// jam, pulsing; pure visual, never collides.
+const buildRescueSign = () => {
+  const group = new THREE.Group();
+  const tri = (s, color, z) => {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, s);
+    shape.lineTo(-s * 0.95, -s * 0.75);
+    shape.lineTo(s * 0.95, -s * 0.75);
+    shape.closePath();
+    const mesh = new THREE.Mesh(
+      new THREE.ShapeGeometry(shape),
+      new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+    );
+    mesh.position.z = z;
+    return mesh;
+  };
+  group.add(tri(1.15, 0xff3b30, 0));
+  group.add(tri(0.82, 0x140b22, 0.01));
+  const markMat = new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide });
+  const stem = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.62), markMat);
+  stem.position.set(0, 0.24, 0.02);
+  group.add(stem);
+  const dot = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.16), markMat);
+  dot.position.set(0, -0.34, 0.02);
+  group.add(dot);
+  return group;
+};
+
+const spawnRescueSign = () => {
+  if (!rescueSignGroup) {
+    rescueSignGroup = buildRescueSign();
+  }
+  rescueSignGroup.position.set(lanes[1], 1.7, -(58 + Math.min(45, speed.value)));
+  rescueSignGroup.scale.setScalar(1);
+  scene.add(rescueSignGroup);
+  return rescueSignGroup;
+};
+
+// Convoy roster: 2–4 police, 1–2 ambulances, 1–2 fire engines (hard caps
+// 4/2/2), Fisher-Yates shuffled so the order is a fresh mix every time.
+const buildRescueQueue = () => {
+  const queue = [];
+  const add = (key, count) => {
+    for (let i = 0; i < count; i += 1) queue.push(key);
+  };
+  add('police', 2 + Math.floor(Math.random() * 3));
+  add('ambulance', 1 + Math.floor(Math.random() * 2));
+  add('firetruck', 1 + Math.floor(Math.random() * 2));
+  for (let i = queue.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [queue[i], queue[j]] = [queue[j], queue[i]];
+  }
+  return queue;
+};
+
+// One Rettungsgasse row: a car on each outer lane, nose ~30° toward the
+// roadside (left lane steers left, right lane steers right), shifted
+// outward so the middle lane stays visually and physically free. Jam roofs:
+// contact from above bounces, so the formation itself can't kill.
+const spawnRescueRow = () => {
+  const baseZ = -(95 + Math.min(45, speed.value));
+  [0, 2].forEach((laneIndex) => {
+    const side = laneIndex === 0 ? -1 : 1;
+    const vehicle = getObstacle('low', 'car-any');
+    vehicle.userData.jam = true;
+    vehicle.rotation.y = Math.PI - side * (0.5 + (Math.random() - 0.5) * 0.1);
+    vehicle.position.set(
+      lanes[laneIndex] + side * (0.35 + Math.random() * 0.15),
+      vehicle.userData.size.h / 2 + 0.02,
+      baseZ - Math.random() * 0.8,
+    );
+    obstacles.push(vehicle);
+    scene.add(vehicle);
+  });
+  if (rescueLane.headZ === null) {
+    rescueLane.headZ = baseZ;
+  }
+  rescueLane.rowsLeft -= 1;
+  if (rescueLane.rowsLeft <= 0) {
+    rescueLane.endZ = baseZ;
+  } else {
+    rescueLane.rowTimer = (3.4 + Math.random() * 0.5) / speed.value;
+  }
+};
+
+// Emergency vehicle overtaking through the free middle lane: spawns behind
+// the player, own speed beats the scroll so it screams past and pulls away
+// toward the horizon. Deadly — the middle lane is for THEM, not for us.
+const spawnRescueVehicle = (key) => {
+  const vehicle = getObstacle(key === 'police' ? 'low' : 'tall', key);
+  vehicle.userData.rescue = true;
+  vehicle.userData.vz = -(speed.value + 20 + Math.random() * 8);
+  vehicle.rotation.y = Math.PI;
+  if (vehicle.userData.beams) {
+    vehicle.userData.beams.visible = true;
+  }
+  if (vehicle.userData.emergencyBeacon) {
+    vehicle.userData.emergencyBeacon.visible = true;
+  }
+  vehicle.position.set(lanes[1], vehicle.userData.size.h / 2 + 0.02, player.position.z + 14);
+  obstacles.push(vehicle);
+  scene.add(vehicle);
+};
+
+const startRescueLane = () => {
+  rescueLane = {
+    rowsLeft: 12 + Math.min(4, Math.floor(score.value / 2500)),
+    rowTimer: 0,
+    headZ: null,
+    endZ: null,
+    queue: buildRescueQueue(),
+    convoyStarted: false,
+    convoyTimer: 0,
+    sign: spawnRescueSign(),
+    signTimer: 2.1,
+  };
+  sfx.siren();
+  showEventToast('German Rettungsgasse', 'Keep the middle free — ride the roofs!');
 };
 
 // Ghost-driver wave: not one lonely wrong-way car but a whole pack of 5–8.
@@ -5190,6 +5364,12 @@ const startDriftCar = () => {
 };
 
 const startRandomEvent = () => {
+  // Rettungsgasse rolls first, separately from the classic events — a rare
+  // 6% treat. Rush hour and friends keep their exact odds on the other 94%.
+  if (Math.random() < 0.06 && canStartRescueLane()) {
+    startRescueLane();
+    return;
+  }
   const roll = Math.random();
   if (roll < 0.54) {
     startTrafficWave();
@@ -5214,6 +5394,13 @@ const eventSpawnHoldActive = () => {
     trafficWave &&
     (trafficWave.rowsLeft > 0 ||
       (trafficWave.endZ !== null && trafficWave.endZ < spawnDepth))
+  ) {
+    return true;
+  }
+  if (
+    rescueLane &&
+    (rescueLane.rowsLeft > 0 ||
+      (rescueLane.endZ !== null && rescueLane.endZ < spawnDepth))
   ) {
     return true;
   }
@@ -5255,7 +5442,7 @@ const updateZoneEvents = (delta) => {
       applyDistrict(districtIndex + 1);
       showEventToast('Speed up!', 'New tempo — go!', 1600);
       sfx.godMode();
-      if (checkpointPending.fireEvent && !trafficWave && !finaleTriggered) {
+      if (checkpointPending.fireEvent && !trafficWave && !rescueLane && !finaleTriggered) {
         startRandomEvent();
       }
       checkpointPending = null;
@@ -5289,6 +5476,58 @@ const updateZoneEvents = (delta) => {
         sfx.nearMiss();
         showEventToast('Traffic Cleared', `+${bonus} bonus`);
         trafficWave = null;
+      }
+    }
+    return;
+  }
+  if (rescueLane) {
+    // Warning sign: pulses in the free middle lane, gone after ~2s — well
+    // before the player reaches the parted jam.
+    if (rescueLane.sign) {
+      rescueLane.signTimer -= delta;
+      rescueLane.sign.position.z += speed.value * delta;
+      rescueLane.sign.scale.setScalar(1 + 0.1 * Math.sin(rescueLane.signTimer * 14));
+      if (rescueLane.signTimer <= 0 || rescueLane.sign.position.z > player.position.z - 8) {
+        scene.remove(rescueLane.sign);
+        rescueLane.sign = null;
+      }
+    }
+    if (rescueLane.rowsLeft > 0) {
+      rescueLane.rowTimer -= delta;
+      if (rescueLane.rowTimer <= 0) {
+        spawnRescueRow();
+      }
+    }
+    // The convoy launches once the jam's head is ~1.5s from the player, so
+    // the flashing lights blast past while we're hopping the roofs.
+    if (rescueLane.headZ !== null) {
+      rescueLane.headZ += speed.value * delta;
+      if (
+        !rescueLane.convoyStarted &&
+        rescueLane.headZ > player.position.z - Math.max(35, speed.value * 1.5)
+      ) {
+        rescueLane.convoyStarted = true;
+        sfx.siren();
+      }
+    }
+    if (rescueLane.convoyStarted && rescueLane.queue.length) {
+      rescueLane.convoyTimer -= delta;
+      if (rescueLane.convoyTimer <= 0) {
+        spawnRescueVehicle(rescueLane.queue.shift());
+        rescueLane.convoyTimer = 0.65 + Math.random() * 0.45;
+        if (rescueLane.queue.length % 3 === 0) {
+          sfx.siren();
+        }
+      }
+    }
+    if (rescueLane.endZ !== null) {
+      rescueLane.endZ += speed.value * delta;
+      if (rescueLane.endZ > player.position.z + 2 && !rescueLane.queue.length) {
+        const bonus = 200 * (multiTime.value > 0 ? 2 : 1);
+        score.value += bonus;
+        sfx.nearMiss();
+        showEventToast('Rettungsgasse Cleared', `+${bonus} bonus`);
+        rescueLane = null;
       }
     }
     return;
