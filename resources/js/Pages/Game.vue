@@ -752,12 +752,21 @@
           </div>
         </div>
         <div class="death-actions">
-          <button class="primary-btn" @click="startRun" type="button">Run Again</button>
+          <button
+            v-if="reviveAvailable"
+            class="primary-btn revive-btn"
+            :disabled="reviving"
+            @click="watchRevive"
+            type="button"
+          >
+            {{ reviving ? 'Loading ad…' : '▶ Revive — watch ad' }}
+          </button>
+          <button class="primary-btn" @click="nextRun" type="button">Run Again</button>
           <button class="ghost-btn" @click="shareScore" type="button">{{ shareLabel }}</button>
-          <!-- quitRun instead of backToMenu: cleans up the world (obstacles,
-               zone, player position) — otherwise the skin preview ends up
-               standing inside a leftover barricade. -->
-          <button class="ghost-btn" @click="quitRun" type="button">Return to Menu</button>
+          <!-- menuFromCrash finalizes the run first, then quitRun cleans up the
+               world (obstacles, zone, player position) — otherwise the skin
+               preview ends up standing inside a leftover barricade. -->
+          <button class="ghost-btn" @click="menuFromCrash" type="button">Return to Menu</button>
         </div>
       </div>
     </div>
@@ -834,6 +843,13 @@ import {
 } from '../game/constants';
 import { createAudioSystem } from '../game/audio';
 import { createMissions, missionRewards } from '../game/missions';
+import {
+  initAds,
+  adsSupported,
+  showInterstitial,
+  rewardedReady,
+  showRewarded,
+} from '../game/ads';
 
 const canvasWrap = ref(null);
 
@@ -1136,6 +1152,17 @@ const finalePhase = ref('none'); // none | approach | walk | enter | drive
 // Dev cheat (F9 during a run): jump straight to the finale trigger. The run
 // is then never persisted, so it cannot flag the account or touch records.
 const devRun = ref(false);
+
+// --- Rewarded revive + interstitial state (native/Google-Play build only) ---
+const reviveAvailable = ref(false); // show the "watch ad to revive" button?
+const reviveUsed = ref(false); // one revive per run
+const reviving = ref(false); // rewarded ad is currently playing
+// The run is persisted exactly once, at the TRUE end (see finalizeRun) — a
+// revive must defer it, or the longer continued score is rejected as unranked
+// because the server consumes the run token on run/end.
+let runFinalized = false;
+let completedRuns = 0; // interstitial cadence counter
+let interstitialPending = false; // show one on the next "Run Again"
 // Shared by the F9 key and the mobile cheat button.
 const devSkip = () => {
   if (state.value !== 'running') return;
@@ -1292,6 +1319,11 @@ const startRun = () => {
   unlockAudio();
   menuScreen.value = 'main';
   resetRun();
+  // Fresh run: re-arm the one-per-run revive and the persist-once guard.
+  runFinalized = false;
+  reviveUsed.value = false;
+  reviveAvailable.value = false;
+  reviving.value = false;
   state.value = 'running';
   maybeShowTutorial();
   if (authUser.value) {
@@ -1366,6 +1398,13 @@ const resumeRun = () => {
 const quitRun = () => {
   resetRun();
   backToMenu();
+};
+
+// Crash-screen "Return to Menu": the run is over, so finalize (persist) it
+// before leaving — unlike the pause-menu quitRun, which abandons a live run.
+const menuFromCrash = () => {
+  finalizeRun();
+  quitRun();
 };
 
 const startGallery = () => {
@@ -1801,11 +1840,101 @@ const resetRun = () => {
 const endRun = () => {
   state.value = 'crashed';
   runTopSpeed.value = runTopSpeedRaw;
+  // Offer a one-per-run rewarded revive BEFORE finalizing. Only in zones where
+  // a clean resume exists (run + fly); zone 2 already has its own free eject
+  // second chance, so it is skipped here. If a revive is offered the run stays
+  // unfinalized (not yet persisted) until the player revives or gives up.
+  const zone = finalePhase.value;
+  const reviveZoneOk = zone === 'none' || zone === 'plane' || zone === 'void';
+  if (
+    !devRun.value &&
+    !reviveUsed.value &&
+    reviveZoneOk &&
+    adsSupported() &&
+    rewardedReady()
+  ) {
+    reviveAvailable.value = true;
+    return;
+  }
+  finalizeRun();
+};
+
+// Persists the run exactly once and arms the interstitial cadence. Called at
+// the real end of a run — after a revive is declined/unavailable, or when the
+// player leaves the crash screen.
+const finalizeRun = () => {
+  if (runFinalized) return;
+  runFinalized = true;
+  reviveAvailable.value = false;
   if (!devRun.value) {
     recordDailyStats();
   }
   persistRun();
   loadLeaderboard();
+  if (!devRun.value) {
+    completedRuns += 1;
+    if (completedRuns % 3 === 0) {
+      interstitialPending = true;
+    }
+  }
+};
+
+// "Watch ad to revive": on a completed view, resume the same run; otherwise the
+// run counts as over.
+const watchRevive = async () => {
+  if (reviving.value || reviveUsed.value) return;
+  reviving.value = true;
+  const earned = await showRewarded();
+  reviving.value = false;
+  if (earned) {
+    reviveUsed.value = true;
+    reviveRun();
+  } else {
+    finalizeRun();
+  }
+};
+
+// Resume the current run in place: 3s grace, immediate danger cleared, player
+// dropped back to a safe spot for the zone.
+const reviveRun = () => {
+  reviveAvailable.value = false;
+  state.value = 'running';
+  player.visible = true;
+  nearMissCombo.value = 0;
+  nearMissComboAt = -Infinity;
+  const now = performance.now();
+  invulnUntil = now + 3000;
+  bumpProtectUntil = now + 3000;
+  clearObstacles();
+  clearEnemyBolts();
+  const zone = finalePhase.value;
+  if (zone === 'plane' || zone === 'void') {
+    playerHp.value = Math.max(playerHp.value, 60);
+    player.position.set(0, 10, 2);
+    playerVelocityY = 0;
+  } else {
+    currentLane = 1;
+    laneOrigin = 1;
+    isSliding = false;
+    player.scale.y = 1;
+    currentSurfaceY = 0;
+    currentGroundCenter = getGroundCenterForSurface(0, currentPlayerHeight());
+    player.position.set(lanes[1], currentGroundCenter, 2);
+    playerVelocityY = 0;
+  }
+  sfx.godMode();
+  spawnBurst(player.position.clone(), ['gold', 'flame'], 20, 8);
+};
+
+// Crash-screen "Run Again": finalize the old run, show the between-runs
+// interstitial when due, then start fresh.
+const nextRun = async () => {
+  finalizeRun();
+  if (interstitialPending) {
+    interstitialPending = false;
+    await showInterstitial();
+  }
+  startRun();
 };
 
 const runSaveNotice = ref(null);
@@ -9423,6 +9552,8 @@ onMounted(() => {
   loadLeaderboard();
   resetRun();
   animate(0);
+  // AdMob (native Google-Play build only — no-op on web/PWA).
+  initAds();
 });
 
 onBeforeUnmount(() => {
@@ -11519,6 +11650,18 @@ onBeforeUnmount(() => {
 .death-actions {
   display: grid;
   gap: 10px;
+}
+
+/* Rewarded-revive button: green so it reads as the reward action, distinct
+   from the neon "Run Again" primary. */
+.revive-btn {
+  background: linear-gradient(180deg, #27d67a, #12934f);
+  box-shadow: 0 0 18px rgba(39, 214, 122, 0.4);
+}
+
+.revive-btn:disabled {
+  opacity: 0.6;
+  filter: grayscale(0.3);
 }
 
 .gate-title {
