@@ -34,8 +34,7 @@ const TEST_IDS = {
 // The matching App ID for AndroidManifest.xml: ca-app-pub-6027355044047549~5722748890
 const PROD_IDS = {
   interstitial: 'ca-app-pub-6027355044047549/4350947157',
-  // TODO: create the "Mit Prämie" (rewarded) ad unit in AdMob and paste its id.
-  rewarded: '',
+  rewarded: 'ca-app-pub-6027355044047549/3410647416',
 };
 
 // Flip to false once PROD_IDS are filled in and you are ready to earn.
