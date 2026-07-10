@@ -69,7 +69,7 @@ export const RAMP_SCORE = 20000;
 // edge = color of the glowing road edges (neon lines left/right).
 export const envSettings = {
   night: {
-    bg: 0x05070f, fog: 0x05070f, fogNear: 40, fogFar: 165,
+    bg: 0x05070f, fog: 0x05070f, fogNear: 48, fogFar: 190,
     hemi: 1.6, dir: 1.7, hemiSky: 0x9fc1ff, dirColor: 0xffffff, edge: 0x2ee5ff,
   },
   sunrise: {

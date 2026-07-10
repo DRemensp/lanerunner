@@ -396,7 +396,7 @@
         <div class="menu-hero">
           <div class="menu-eyebrow">Neon Night City</div>
           <h1 class="menu-logo">
-            <span class="menu-logo-top">Lane</span>
+            <span class="menu-logo-top">Neon Rail</span>
             <span class="menu-logo-main">Runner</span>
           </h1>
         </div>
@@ -4504,7 +4504,7 @@ const updateShootingStars = (delta) => {
 const initScene = () => {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05070f);
-  scene.fog = new THREE.Fog(0x05070f, 40, 165);
+  scene.fog = new THREE.Fog(0x05070f, 48, 190);
 
   camera = new THREE.PerspectiveCamera(60, 1, 0.1, 700);
   camera.position.set(0, cameraBase.y, cameraBase.z);
@@ -4634,7 +4634,9 @@ const initScene = () => {
     (color) => new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }),
   );
 
-  for (let i = 0; i < 9; i += 1) {
+  // 12 segments = road down to z≈-210, comfortably past the fog wall — the
+  // player can never see the floor end through the fog.
+  for (let i = 0; i < 12; i += 1) {
     const segment = new THREE.Group();
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, segmentLength), floorMaterial);
     floor.rotation.x = -Math.PI / 2;
@@ -5260,6 +5262,53 @@ const obstacleBuilders = {
     });
     return { mesh: g, size: { w: 1.6, h: 0.7, d: 1.2 } };
   },
+  // Open manhole: black hole with a grey rim, the lid leaning against the
+  // barrier square that fences it in — low, one lane wide, jumpable.
+  'low-manhole': () => {
+    const a = getObstacleAssets();
+    const g = new THREE.Group();
+    const half = 0.45;
+    const groundY = -half;
+    const rim = new THREE.Mesh(track(new THREE.CylinderGeometry(0.5, 0.53, 0.06, 20)), a.ring);
+    rim.position.y = groundY + 0.03;
+    g.add(rim);
+    const hole = new THREE.Mesh(track(new THREE.CircleGeometry(0.42, 20)), a.black);
+    hole.rotation.x = -Math.PI / 2;
+    hole.position.y = groundY + 0.065;
+    g.add(hole);
+    // Lid leaning against one of the rails.
+    const lid = new THREE.Mesh(track(new THREE.CylinderGeometry(0.4, 0.4, 0.05, 18)), a.ring);
+    lid.rotation.x = -1.15;
+    lid.position.set(0.32, groundY + 0.34, -0.52);
+    g.add(lid);
+    // Red-white striped rails on all four sides plus corner posts.
+    const postGeo = track(new THREE.BoxGeometry(0.07, 0.55, 0.07));
+    [[-0.62, -0.62], [0.62, -0.62], [-0.62, 0.62], [0.62, 0.62]].forEach(([x, z]) => {
+      const post = new THREE.Mesh(postGeo, a.frame);
+      post.position.set(x, groundY + 0.275, z);
+      g.add(post);
+    });
+    const railGeo = track(new THREE.BoxGeometry(1.16, 0.13, 0.07));
+    const stripeGeo = track(new THREE.BoxGeometry(0.24, 0.15, 0.09));
+    [0, 1, 2, 3].forEach((side) => {
+      const rail = new THREE.Mesh(railGeo, a.barrel);
+      rail.rotation.y = (side * Math.PI) / 2;
+      const off = side % 2 === 0 ? [0, 0.62] : [0.62, 0];
+      rail.position.set(side === 3 ? -off[0] : off[0], groundY + 0.46, side === 2 ? -off[1] : off[1]);
+      g.add(rail);
+      [-0.34, 0.3].forEach((x) => {
+        const stripe = new THREE.Mesh(stripeGeo, a.busRoof);
+        stripe.rotation.y = rail.rotation.y;
+        stripe.position.copy(rail.position);
+        stripe.translateX(x);
+        g.add(stripe);
+      });
+    });
+    const hazardLamp = new THREE.Mesh(track(new THREE.BoxGeometry(0.11, 0.09, 0.11)), a.hazardBlink);
+    hazardLamp.position.set(-0.62, groundY + 0.6, -0.62);
+    g.add(hazardLamp);
+    return { mesh: g, size: { w: 1.35, h: 0.9, d: 1.35 } };
+  },
 };
 
 // Static tall obstacles (container, scaffold, kiosk) mix with the tall
@@ -5268,7 +5317,7 @@ const obstacleBuilders = {
 const obstacleVariants = {
   // 'car-any' twice: the barrel was every second low obstacle — one in
   // three reads much less monotonous.
-  low: ['low-barrel', 'car-any', 'car-any'],
+  low: ['low-barrel', 'low-manhole', 'car-any', 'car-any'],
   tall: ['tall-any', 'tall-any', 'tall-stack', 'tall-scaffold', 'tall-kiosk'],
   over: ['over-barrier'],
 };
@@ -5464,6 +5513,14 @@ const registerVehicleModel = (def, model) => {
     }
     if (def.key === 'structure-metal') {
       addConstructionDressing(mesh, size);
+      // Same "go around" arrow disc the procedural tall obstacles carry,
+      // with the collision box stretched up to cover pole + disc.
+      const signTop = addPassSign(mesh, size.h / 2);
+      size.topExtra = passSignExtra(signTop, size.h);
+      size.solidTop = true;
+    }
+    if (def.key === 'sign-highway') {
+      addGantryBillboards(mesh, size);
     }
     return { mesh, size: { ...size } };
   };
@@ -5631,11 +5688,85 @@ const spawnJamSet = (laneIndex, baseZ) => {
   }
 };
 
+// Billboard art for the gantry boards: the two big yellow panels are baked
+// into one mesh, so separate planes hover just in front of them showing
+// stage art or a neon house ad — re-rolled on every spawn for variety.
+let gantryAdTextures = null;
+const makeAdTexture = (top, bottom, accent) => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 288;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#070b16';
+  ctx.fillRect(0, 0, 512, 288);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 10;
+  ctx.strokeRect(14, 14, 484, 260);
+  ctx.textAlign = 'center';
+  ctx.font = '700 58px "Chakra Petch", sans-serif';
+  ctx.fillStyle = '#f2f6ff';
+  ctx.fillText(top, 256, 126);
+  ctx.fillStyle = accent;
+  ctx.fillText(bottom, 256, 210);
+  const tex = track(new THREE.CanvasTexture(canvas));
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+};
+const getGantryAdTextures = () => {
+  if (gantryAdTextures) return gantryAdTextures;
+  const loader = new THREE.TextureLoader();
+  gantryAdTextures = [
+    '/images/stages/stage-1-wide.jpg',
+    '/images/stages/stage-2-wide.jpg',
+    '/images/stages/stage-3-wide.jpg',
+    '/images/stages/stage-4-wide.jpg',
+  ].map((src) => {
+    const tex = loader.load(src);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return track(tex);
+  });
+  gantryAdTextures.push(
+    makeAdTexture('LANE RUNNER', 'NEON NIGHT CITY', '#4be8ff'),
+    makeAdTexture('ENDLESS MODE', 'PICK YOUR STAGE', '#ffd76b'),
+  );
+  return gantryAdTextures;
+};
+
+const addGantryBillboards = (group, size) => {
+  const mats = [];
+  const geo = track(new THREE.PlaneGeometry(1, 1));
+  const adTextures = getGantryAdTextures();
+  [-size.w * 0.2, size.w * 0.2].forEach((x) => {
+    // Starts with a random image so gallery clones are dressed too;
+    // spawnSignGantry re-rolls it on every road spawn.
+    const mat = track(new THREE.MeshBasicMaterial({ color: 0xffffff, map: pickFrom(adTextures) }));
+    mats.push(mat);
+    // One plane per face so the art reads from both driving directions.
+    [
+      [size.d / 2 + 0.03, 0],
+      [-size.d / 2 - 0.03, Math.PI],
+    ].forEach(([z, ry]) => {
+      const plane = new THREE.Mesh(geo, mat);
+      plane.scale.set(size.w * 0.3, size.h * 0.34, 1);
+      plane.position.set(x, size.h * 0.18, z);
+      plane.rotation.y = ry;
+      group.add(plane);
+    });
+  });
+  group.userData.billboardMats = mats;
+};
+
 // Sign gantry: spans the whole road at the center, no collision — the
 // scroll loop moves and recycles it like any other obstacle.
 const spawnSignGantry = (z) => {
   const gantry = getObstacle('tall', 'sign-highway');
   gantry.userData.decor = true;
+  // Fresh pair of board images each time the gantry rolls around.
+  const adTextures = getGantryAdTextures();
+  (gantry.userData.billboardMats || []).forEach((mat) => {
+    mat.map = pickFrom(adTextures);
+    mat.needsUpdate = true;
+  });
   gantry.position.set(0, gantry.userData.size.h / 2, z);
   obstacles.push(gantry);
   scene.add(gantry);
@@ -5904,6 +6035,10 @@ const spawnOncoming = () => {
   return true;
 };
 
+// Depth at which new rows materialize. Deep enough that with the fog wall
+// at 190 everything fades IN through the fog instead of popping into view.
+const rowSpawnZ = () => -(100 + Math.min(55, speed.value));
+
 const spawnRow = () => {
   // Occasionally oncoming traffic instead of a row — far less often than
   // before, and only when a fully clear lane exists for it.
@@ -5916,7 +6051,7 @@ const spawnRow = () => {
   // 6–9 m of road by itself. Single loose obstacles never spawn alone
   // (rowPatterns has no single-slot entries).
   if (Math.random() < 0.12) {
-    const setZ = -(70 + Math.min(45, speed.value));
+    const setZ = rowSpawnZ();
     const setBlocked = movingBlockedLanes(setZ + 6);
     const openLanes = [0, 1, 2].filter((lane) => !setBlocked.has(lane));
     if (openLanes.length) {
@@ -5948,7 +6083,7 @@ const spawnRow = () => {
     pattern = openPatterns[Math.floor(Math.random() * openPatterns.length)];
   }
   // Spawn farther out the faster we go, so there is always time to react.
-  const baseZ = -(70 + Math.min(45, speed.value));
+  const baseZ = rowSpawnZ();
   // Lanes owned by moving vehicles stay empty in static rows — but only
   // while the mover is still behind the spawn plane (see movingBlockedLanes).
   const blocked = movingBlockedLanes(baseZ + 6);
@@ -6335,7 +6470,7 @@ const eventSpawnHoldActive = () => {
   // Speed-scaled margin: the landing arc after the final roof bounce must
   // never come down on a freshly spawned row. (0.6: the bounce is now 1.08x
   // jumpVelocity instead of 0.95x, so the arc flies correspondingly further.)
-  const spawnDepth = -(70 + Math.min(45, speed.value)) + 6 + speed.value * 0.6;
+  const spawnDepth = rowSpawnZ() + 6 + speed.value * 0.6;
   if (
     trafficWave &&
     (trafficWave.rowsLeft > 0 ||
@@ -6361,7 +6496,7 @@ const eventSpawnHoldActive = () => {
   // everything outside packs in tight before and after the crossing, like
   // around any other obstacle element.
   if (crossing) {
-    const rowZ = -(70 + Math.min(45, speed.value));
+    const rowZ = rowSpawnZ();
     const d = rowZ - crossing.group.position.z;
     return d > -10 && d < 20;
   }
