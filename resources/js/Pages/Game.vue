@@ -139,7 +139,7 @@
     </div>
 
     <div v-if="devRun && state !== 'menu'" class="dev-badge">
-      Dev Run &mdash; not saved
+      {{ skippedRun ? 'Skipped — run not ranked' : 'Dev Run — not saved' }}
     </div>
 
     <div v-if="finaleToast && state === 'running'" class="finale-toast">
@@ -204,14 +204,14 @@
 
     <div v-if="whiteFlash > 0" class="void-flash" :style="{ opacity: whiteFlash }"></div>
 
+    <!-- Player-facing stage skip, zone 1 → 2 only. Earned, not free: unlocks
+         after reaching zone 2 at least once AND 3 failed zone-1 runs in a row
+         (see playerSkip). F9 stays the unrestricted dev cheat. -->
     <button
-      v-if="
-        state === 'running' &&
-        (finalePhase === 'none' || finalePhase === 'drive')
-      "
+      v-if="state === 'running' && finalePhase === 'none' && skipAvailable"
       class="cheat-skip"
       type="button"
-      @pointerdown.prevent.stop="devSkip"
+      @pointerdown.prevent.stop="playerSkip"
     >
       Skip &raquo;
     </button>
@@ -1192,6 +1192,30 @@ const devSkip = () => {
     }
   }
 };
+
+// --- Player-facing stage skip (zone 1 → 2 only) ---
+// Unlock rules: the player must have reached zone 2 at least once (zone2Seen)
+// AND failed 3 zone-1 runs IN A ROW — reaching zone 2 resets the streak, and
+// using the skip consumes it. Skipped runs reuse the dev-run path, so they are
+// never persisted (a 10k jump would trip the server anti-cheat as impossible).
+const zone1Fails = ref(
+  Number.parseInt(localStorage.getItem('runner_zone1_fails') || '0', 10) || 0,
+);
+const setZone1Fails = (count) => {
+  zone1Fails.value = count;
+  localStorage.setItem('runner_zone1_fails', String(count));
+};
+const skippedRun = ref(false); // switches the dev badge to player wording
+const skipAvailable = computed(() => zone2Seen.value && zone1Fails.value >= 3);
+
+const playerSkip = () => {
+  if (!skipAvailable.value) return;
+  if (state.value !== 'running' || finalePhase.value !== 'none' || finaleTriggered) return;
+  setZone1Fails(0);
+  skippedRun.value = true;
+  devSkip();
+};
+
 const driveCamera = ref('chase'); // chase | ego (hood cam, car hidden)
 const finaleToast = ref(false);
 const driveHint = ref(false);
@@ -1336,6 +1360,7 @@ const startRun = () => {
   reviveUsed.value = false;
   reviveAvailable.value = false;
   reviving.value = false;
+  skippedRun.value = false;
   state.value = 'running';
   maybeShowTutorial();
   if (authUser.value) {
@@ -1933,6 +1958,11 @@ const finalizeRun = () => {
   if (runFinalized) return;
   runFinalized = true;
   reviveAvailable.value = false;
+  // Stage-skip unlock: a real run that ends while still in zone 1 extends the
+  // fail streak; reaching zone 2 resets it (see startDriving).
+  if (!devRun.value && finalePhase.value === 'none') {
+    setZone1Fails(zone1Fails.value + 1);
+  }
   if (!devRun.value) {
     recordDailyStats();
   }
@@ -5993,6 +6023,10 @@ const triggerFinale = () => {
 const startDriving = () => {
   finalePhase.value = 'drive';
   markZoneSeen(2);
+  // Legitimately reaching zone 2 clears the stage-skip fail streak.
+  if (!devRun.value) {
+    setZone1Fails(0);
+  }
   driveEventTimer = 10;
   carVisual = plazaCar;
   carWheels = [];
