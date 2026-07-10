@@ -30,9 +30,11 @@ const TEST_IDS = {
   rewarded: 'ca-app-pub-3940256099942544/5224354917',
 };
 
-// TODO before going live: paste your real AdMob ad unit IDs here.
+// Real AdMob ad unit IDs (app: Neon Rail Dash, ca-app-pub-6027355044047549).
+// The matching App ID for AndroidManifest.xml: ca-app-pub-6027355044047549~5722748890
 const PROD_IDS = {
-  interstitial: '',
+  interstitial: 'ca-app-pub-6027355044047549/4350947157',
+  // TODO: create the "Mit Prämie" (rewarded) ad unit in AdMob and paste its id.
   rewarded: '',
 };
 
