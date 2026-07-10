@@ -119,6 +119,12 @@ class RunnerController extends Controller
                     3 => $profile->stage3_reaches,
                     4 => $profile->stage4_reaches,
                 ],
+                'endless_bests' => [
+                    1 => $profile->endless1_best,
+                    2 => $profile->endless2_best,
+                    3 => $profile->endless3_best,
+                    4 => $profile->endless4_best,
+                ],
                 'stage_unlock_runs' => self::STAGE_UNLOCK_RUNS,
             ],
             'skins' => $skins,
@@ -136,6 +142,7 @@ class RunnerController extends Controller
         $validated = $request->validate([
             'level' => ['required', 'string', Rule::in(array_keys(self::LEVELS))],
             'mode' => ['nullable', 'string', Rule::in(['classic', 'endless'])],
+            'stage' => ['nullable', 'integer', 'min:1', 'max:4'],
         ]);
 
         $user = $request->user();
@@ -150,6 +157,9 @@ class RunnerController extends Controller
         $profile->run_started_at = now();
         $profile->run_level = $validated['level'];
         $profile->run_mode = $validated['mode'] ?? 'classic';
+        $profile->run_stage = $profile->run_mode === 'endless'
+            ? max(1, (int) ($validated['stage'] ?? 1))
+            : null;
         $profile->save();
 
         return response([
@@ -189,6 +199,8 @@ class RunnerController extends Controller
         $verified = false;
         $cheatReasons = [];
         $runId = $validated['run_id'] ?? null;
+        $endlessRun = $profile->run_mode === 'endless';
+        $endlessStage = $endlessRun ? min(4, max(1, (int) ($profile->run_stage ?? 1))) : null;
 
         if (! $profile->active_run_id || ! $profile->run_started_at || ! $runId) {
             // No run session (e.g. network hiccup on start): the run does not
@@ -201,26 +213,36 @@ class RunnerController extends Controller
             $durationSeconds = max(1.0, $durationMs / 1000);
             $levelKey = $profile->run_level ?? 'rush';
             $level = self::LEVELS[$levelKey] ?? self::LEVELS['rush'];
-            // Pacing sanity: instead of projecting a max score from the
-            // zone-1 runner curve (which flags legit bonus-heavy zone 3+
-            // runs), require the run to have lasted at least as long as a
-            // perfect player would need for this score.
-            $minDuration = $this->minPlausibleDuration(
-                (float) $distance,
-                $level['base_speed'],
-                $level['speed_step'],
-            );
+            if ($endlessRun && $endlessStage >= 2) {
+                // Endless stages 2-4 pace like the post-finale zones from
+                // score 0 on: generous flat rate ceiling, vehicle speed cap.
+                $minDuration = max(1.0, ($distance / self::MAX_ZONE_RATE) * 0.75 - 5.0);
+                $expectedSpeed = self::DRIVE_MAX_SPEED;
+            } else {
+                // Pacing sanity: instead of projecting a max score from the
+                // zone-1 runner curve (which flags legit bonus-heavy zone 3+
+                // runs), require the run to have lasted at least as long as a
+                // perfect player would need for this score. Endless stage 1
+                // never leaves the runner curve, so the post-finale pacing
+                // and speed bumps don't apply no matter the distance.
+                $minDuration = $this->minPlausibleDuration(
+                    (float) $distance,
+                    $level['base_speed'],
+                    $level['speed_step'],
+                    ! $endlessRun,
+                );
+
+                // Mirrors the client's continuous ramp: base + min(3, d/2500) * step
+                // (Game.vue targetSpeed). Tier cap 3 == the old top tier.
+                $expectedSpeed = $level['base_speed']
+                    + min(3.0, $distance / self::STEP_DISTANCE) * $level['speed_step'];
+                if (! $endlessRun && $distance >= self::FINALE_DISTANCE) {
+                    $expectedSpeed = max($expectedSpeed, self::DRIVE_MAX_SPEED);
+                }
+            }
             if ($durationSeconds < $minDuration) {
                 $cheatReasons[] = 'distance_over_cap';
                 $verified = false;
-            }
-
-            // Mirrors the client's continuous ramp: base + min(3, d/2500) * step
-            // (Game.vue targetSpeed). Tier cap 3 == the old top tier.
-            $expectedSpeed = $level['base_speed']
-                + min(3.0, $distance / self::STEP_DISTANCE) * $level['speed_step'];
-            if ($distance >= self::FINALE_DISTANCE) {
-                $expectedSpeed = max($expectedSpeed, self::DRIVE_MAX_SPEED);
             }
             if ($maxSpeed > $expectedSpeed + 2.5) {
                 $cheatReasons[] = 'speed_over_cap';
@@ -240,12 +262,16 @@ class RunnerController extends Controller
         $profile->last_run_at = now();
 
         $coinsEarned = 0;
-        $endlessRun = $profile->run_mode === 'endless';
 
         if ($verified) {
-            // Endless runs never touch records or the leaderboard — the world
-            // ranking is classic-only. Coins still pay out below.
-            if (! $endlessRun) {
+            // Endless runs never touch records or the world ranking — they
+            // compete on their own per-stage bests. Coins still pay out below.
+            if ($endlessRun) {
+                $column = "endless{$endlessStage}_best";
+                if ($distance > $profile->{$column}) {
+                    $profile->{$column} = $distance;
+                }
+            } else {
                 if ($distance > $profile->best_distance) {
                     $profile->best_distance = $distance;
                 }
@@ -284,6 +310,7 @@ class RunnerController extends Controller
         $profile->run_started_at = null;
         $profile->run_level = null;
         $profile->run_mode = null;
+        $profile->run_stage = null;
         $profile->save();
 
         return response([
@@ -299,6 +326,12 @@ class RunnerController extends Controller
                     2 => $profile->stage2_reaches,
                     3 => $profile->stage3_reaches,
                     4 => $profile->stage4_reaches,
+                ],
+                'endless_bests' => [
+                    1 => $profile->endless1_best,
+                    2 => $profile->endless2_best,
+                    3 => $profile->endless3_best,
+                    4 => $profile->endless4_best,
                 ],
             ],
         ]);
@@ -417,16 +450,30 @@ class RunnerController extends Controller
 
     public function leaderboard(Request $request): Response
     {
+        $validated = $request->validate([
+            'mode' => ['nullable', 'string', Rule::in(['classic', 'endless'])],
+            'stage' => ['nullable', 'integer', 'min:1', 'max:4'],
+        ]);
+
+        // Classic ranks by best_distance; endless has one ranking per stage
+        // (endlessN_best). Same shape either way, so the client reuses the
+        // list rendering.
+        $column = 'best_distance';
+        if (($validated['mode'] ?? 'classic') === 'endless') {
+            $stage = min(4, max(1, (int) ($validated['stage'] ?? 1)));
+            $column = "endless{$stage}_best";
+        }
+
         $leaders = RunnerProfile::with('user')
-            ->where('best_distance', '>', 0)
+            ->where($column, '>', 0)
             ->whereNull('banned_at')
-            ->orderByDesc('best_distance')
+            ->orderByDesc($column)
             ->limit(10)
             ->get()
-            ->map(function (RunnerProfile $profile) {
+            ->map(function (RunnerProfile $profile) use ($column) {
                 return [
                     'name' => $profile->user?->name ?? 'Runner',
-                    'best_distance' => $profile->best_distance,
+                    'best_distance' => $profile->{$column},
                     'best_speed' => (float) $profile->best_speed,
                 ];
             });
@@ -435,8 +482,8 @@ class RunnerController extends Controller
         $user = $request->user();
         if ($user) {
             $profile = RunnerProfile::where('user_id', $user->id)->first();
-            if ($profile && $profile->best_distance > 0 && ! $profile->banned_at) {
-                $yourRank = RunnerProfile::where('best_distance', '>', $profile->best_distance)
+            if ($profile && $profile->{$column} > 0 && ! $profile->banned_at) {
+                $yourRank = RunnerProfile::where($column, '>', $profile->{$column})
                     ->whereNull('banned_at')
                     ->count() + 1;
             }
@@ -490,18 +537,28 @@ class RunnerController extends Controller
         return response(['ok' => true]);
     }
 
-    private function minPlausibleDuration(float $distance, int $baseSpeed, int $speedStep): float
-    {
+    private function minPlausibleDuration(
+        float $distance,
+        int $baseSpeed,
+        int $speedStep,
+        bool $withFinale = true,
+    ): float {
         // Zone 1 pacing solves d'(t) = SCORE_MULTIPLIER * (baseSpeed +
         // d/STEP_DISTANCE * speedStep); the 2x score power-up can at most
         // double that rate, so invert the doubled curve for the fastest
         // legit time through the runner stretch.
         $growth = 2 * self::SCORE_MULTIPLIER * $speedStep / self::STEP_DISTANCE;
         $scale = $baseSpeed * self::STEP_DISTANCE / $speedStep;
-        $seconds = log(1 + min($distance, self::FINALE_DISTANCE) / $scale) / $growth;
+
+        // Endless stage 1 stays on the runner curve for the whole distance
+        // (the curve keeps accelerating in this model while the real game
+        // caps at tier 3 — still a strict lower bound, so never a false
+        // flag). Classic switches to the post-finale pacing at 10k.
+        $curveDistance = $withFinale ? min($distance, self::FINALE_DISTANCE) : $distance;
+        $seconds = log(1 + $curveDistance / $scale) / $growth;
 
         // Everything past the finale is paced linearly by MAX_ZONE_RATE.
-        if ($distance > self::FINALE_DISTANCE) {
+        if ($withFinale && $distance > self::FINALE_DISTANCE) {
             $seconds += ($distance - self::FINALE_DISTANCE) / self::MAX_ZONE_RATE;
         }
 

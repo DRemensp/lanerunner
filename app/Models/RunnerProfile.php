@@ -31,6 +31,11 @@ class RunnerProfile extends Model
         'stage3_reaches',
         'stage4_reaches',
         'run_mode',
+        'run_stage',
+        'endless1_best',
+        'endless2_best',
+        'endless3_best',
+        'endless4_best',
     ];
 
     protected $casts = [

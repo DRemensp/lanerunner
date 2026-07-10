@@ -578,9 +578,21 @@
                 type="button"
               >
                 <span :class="'endless-tile-bg stage-bg stage-bg-' + stage.n" aria-hidden="true"></span>
+                <!-- Trophy: per-stage endless ranking (click never starts a run). -->
+                <span
+                  class="endless-trophy"
+                  role="button"
+                  :aria-label="'Stage ' + stage.n + ' endless ranking'"
+                  @click.stop="openStageRanking(stage)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v5a5 5 0 01-10 0zM7 5H4.4a2.9 2.9 0 003 3.5M17 5h2.6a2.9 2.9 0 01-3 3.5M12 14v4M8 20.5h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
                 <span class="endless-tile-head">
                   <span class="endless-tile-stage">Stage {{ stage.n }}</span>
                   <span class="endless-tile-name">{{ stage.name }}</span>
+                  <span v-if="stageUnlocked(stage.n) && endlessBests[stage.n] > 0" class="endless-tile-best">
+                    Best {{ Math.floor(endlessBests[stage.n]).toLocaleString() }}
+                  </span>
                 </span>
                 <span v-if="!stageUnlocked(stage.n)" class="endless-lock">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10.5V7.8a4 4 0 018 0v2.7" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="15.2" r="1.5" fill="currentColor"/></svg>
@@ -591,6 +603,30 @@
             </div>
             <div class="endless-note">
               {{ endlessNotice || 'Reach a stage in 5 classic runs to unlock it for endless.' }}
+            </div>
+
+            <!-- Per-stage endless ranking overlay (trophy). -->
+            <div v-if="stageRanking.open" class="stage-ranking-backdrop" @click.self="closeStageRanking">
+              <div class="stage-ranking-card">
+                <div class="stage-ranking-head">
+                  <div class="stage-ranking-title">
+                    Stage {{ stageRanking.stage }} — Endless
+                    <span v-if="stageRanking.yourRank" class="worldrank-you">You #{{ stageRanking.yourRank }}</span>
+                  </div>
+                  <button class="back-btn" @click="closeStageRanking" type="button" aria-label="Close">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+                  </button>
+                </div>
+                <div v-if="stageRanking.loading" class="worldrank-empty">Loading…</div>
+                <ol v-else-if="stageRanking.leaders.length" class="worldrank-list stage-ranking-list" data-allow-scroll>
+                  <li v-for="(leader, index) in stageRanking.leaders" :key="index">
+                    <span class="worldrank-pos">{{ index + 1 }}</span>
+                    <span class="worldrank-name">{{ leader.name }}</span>
+                    <span class="worldrank-score">{{ Math.floor(leader.best_distance).toLocaleString() }}</span>
+                  </li>
+                </ol>
+                <div v-else class="worldrank-empty">No endless runs on this stage yet.</div>
+              </div>
             </div>
           </div>
 
@@ -791,13 +827,15 @@
 
     <div v-if="state === 'crashed'" class="death-overlay">
       <div class="death-card">
-        <div class="death-title">Run Complete</div>
+        <div class="death-title">
+          {{ runMode === 'endless' ? `Endless — Stage ${endlessStage}` : 'Run Complete' }}
+        </div>
         <div class="death-hero">
           <div class="death-hero-label">Score</div>
           <div class="death-hero-value">{{ Math.floor(score).toLocaleString() }}</div>
         </div>
         <div class="death-stats">
-          <div class="death-stat"><span>Best</span><strong>{{ Math.floor(bestScore).toLocaleString() }}</strong></div>
+          <div class="death-stat"><span>Best</span><strong>{{ Math.floor(runMode === 'endless' ? endlessBests[endlessStage] || 0 : bestScore).toLocaleString() }}</strong></div>
           <div class="death-stat gold"><span>Coins</span><strong>+{{ runCoins }}</strong></div>
           <div class="death-stat"><span>Top speed</span><strong>{{ Math.round(runTopSpeed) }}</strong></div>
           <div class="death-stat"><span>Near misses</span><strong>{{ runNearMisses }}</strong></div>
@@ -1264,6 +1302,33 @@ const markRunStage = (stage) => {
 // Mode of the next/current run. Menu Play starts classic, the endless tiles
 // set 'endless'; crash-screen "Run Again" reuses whatever is active.
 const runMode = ref('classic');
+// Which stage an endless run plays (and stays in — forever).
+const endlessStage = ref(1);
+
+// Personal endless bests per stage, shown on the tiles. Guests/offline keep
+// them in localStorage; logged-in players merge the server's authoritative
+// values (endlessN_best) via max, like the stage-reach counters.
+const endlessBests = ref(
+  (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('runner_endless_bests') || '{}');
+      return { 1: stored[1] || 0, 2: stored[2] || 0, 3: stored[3] || 0, 4: stored[4] || 0 };
+    } catch (error) {
+      return { 1: 0, 2: 0, 3: 0, 4: 0 };
+    }
+  })(),
+);
+const saveEndlessBests = () => {
+  localStorage.setItem('runner_endless_bests', JSON.stringify(endlessBests.value));
+};
+const mergeEndlessBests = (server) => {
+  if (!server) return;
+  [1, 2, 3, 4].forEach((stage) => {
+    const best = Number(server[stage]) || 0;
+    endlessBests.value[stage] = Math.max(endlessBests.value[stage], best);
+  });
+  saveEndlessBests();
+};
 
 const selectedCarSlug = ref(localStorage.getItem('runner_car_slug') || 'car-sedan-sports');
 const selectedPlaneSlug = ref(localStorage.getItem('runner_plane_slug') || 'plane-cesium');
@@ -1694,6 +1759,46 @@ const currentPlayerHeight = () =>
 const getGroundCenterForSurface = (surfaceY, playerHeight) => surfaceY + playerHeight / 2;
 const currentGroundHeight = () => currentGroundCenter;
 
+// Direct boot into an endless stage. Stage 2 reuses the finale hand-off (the
+// plaza pulls in close so the intro stays short); stage 3 builds the daylight
+// flight world and docks the player straight into the plane; stage 4 boots
+// the plane first, then drops through the wormhole flash into the void.
+// Score starts at 0 in every stage, so the per-stage endless rankings are
+// comparable. All next-stage triggers are gated on runMode elsewhere.
+const bootEndlessStage = (stage) => {
+  if (stage === 2) {
+    triggerFinale();
+    if (plaza) {
+      plaza.position.z = -80;
+    }
+    return;
+  }
+  // Stage 3/4: the flight world, exactly as the launch sequence leaves it.
+  buildOcean();
+  floorSegments.forEach((segment) => {
+    segment.visible = false;
+  });
+  if (moonMesh) moonMesh.visible = false;
+  if (skylineMesh) skylineMesh.visible = false;
+  if (starPoints) starPoints.visible = false;
+  if (activeCharacter) {
+    activeCharacter.root.visible = false;
+  }
+  proceduralParts.forEach((part) => {
+    part.visible = false;
+  });
+  finaleTriggered = true;
+  rampTriggered = true;
+  buildDockingPlane();
+  enterPlane();
+  player.position.set(0, 10, 2);
+  speed.value = 42;
+  applyEnvironmentNow();
+  if (stage === 4) {
+    enterVoid();
+  }
+};
+
 const startRun = async () => {
   if (!scene || state.value === 'crashing' || startingRun || playerBanned.value) return;
   // Offline rate limit: one run per 5 minutes (native app only, see above).
@@ -1732,7 +1837,12 @@ const startRun = async () => {
   reviving.value = false;
   skippedRun.value = false;
   state.value = 'running';
-  maybeShowTutorial();
+  if (runMode.value === 'endless' && endlessStage.value > 1) {
+    bootEndlessStage(endlessStage.value);
+  } else {
+    // The swipe tutorial teaches zone-1 controls — pointless mid-flight.
+    maybeShowTutorial();
+  }
   if (authUser.value) {
     // Fire and forget: the run token arrives while the player is already
     // running instead of blocking the start on a slow network round-trip.
@@ -1746,8 +1856,9 @@ const startClassicRun = () => {
   startRun();
 };
 
-// Endless carousel: locked tiles explain their unlock; unlocked stage 1
-// starts the endless run (stages 2–4 endless gameplay comes later).
+// Endless carousel: locked tiles explain their unlock; unlocked tiles start
+// the endless run directly in their stage (and it never leaves — every
+// next-stage trigger is disabled in endless mode).
 const endlessNotice = ref('');
 const tapEndlessStage = (stage) => {
   if (!stageUnlocked(stage.n)) {
@@ -1755,13 +1866,34 @@ const tapEndlessStage = (stage) => {
     endlessNotice.value = `Locked — reach Stage ${stage.n} in classic mode 5 times (${count}/5).`;
     return;
   }
-  if (stage.n > 1) {
-    endlessNotice.value = `Stage ${stage.n} endless is coming soon.`;
-    return;
-  }
   endlessNotice.value = '';
   runMode.value = 'endless';
+  endlessStage.value = stage.n;
   startRun();
+};
+
+// Per-stage endless ranking, opened via the trophy on each tile. Fetched on
+// demand and kept until the menu screen closes.
+const stageRanking = ref({ open: false, stage: 1, loading: false, leaders: [], yourRank: null });
+const openStageRanking = async (stage) => {
+  stageRanking.value = { open: true, stage: stage.n, loading: true, leaders: [], yourRank: null };
+  try {
+    const response = await axios.get('/api/runner/leaderboard', {
+      params: { mode: 'endless', stage: stage.n },
+    });
+    if (stageRanking.value.open && stageRanking.value.stage === stage.n) {
+      stageRanking.value.leaders = response.data.leaders || [];
+      stageRanking.value.yourRank = response.data.your_rank ?? null;
+      stageRanking.value.loading = false;
+    }
+  } catch (error) {
+    if (stageRanking.value.open && stageRanking.value.stage === stage.n) {
+      stageRanking.value.loading = false;
+    }
+  }
+};
+const closeStageRanking = () => {
+  stageRanking.value = { ...stageRanking.value, open: false };
 };
 
 // Which half of the mode split is selected on the main menu; classic is the
@@ -2065,6 +2197,7 @@ const loadProfile = async () => {
       }
       totalCoins.value = data.profile.coins ?? 0;
       mergeStageReaches(data.profile.stage_reaches);
+      mergeEndlessBests(data.profile.endless_bests);
       inventoryItems.value = Array.isArray(data.inventory) ? data.inventory : [];
       claimedMissions.value = Array.isArray(data.mission_claims)
         ? data.mission_claims.map((i) => Number(i))
@@ -2278,6 +2411,7 @@ const startRunSession = async () => {
     const response = await axios.post('/api/runner/run/start', {
       level: selectedLevel.value,
       mode: runMode.value,
+      stage: runMode.value === 'endless' ? endlessStage.value : 1,
     });
     // Ignore responses that arrive after another run has started since.
     if (seq === runSessionSeq) {
@@ -2534,6 +2668,7 @@ const persistRun = async () => {
       }
       if (updated) {
         mergeStageReaches(updated.stage_reaches);
+        mergeEndlessBests(updated.endless_bests);
       }
       loadProfile();
     } catch (error) {
@@ -2543,7 +2678,8 @@ const persistRun = async () => {
   }
 
   // Guest records are classic-only, mirroring the server: endless scores
-  // never touch best distance/speed (the ranking is a classic ranking).
+  // never touch best distance/speed (the ranking is a classic ranking) —
+  // they go to the per-stage endless bests instead.
   if (runMode.value === 'classic') {
     const storedBest = Number.parseInt(localStorage.getItem('runner_best_distance') || '0', 10);
     const nextBest = Number.isFinite(storedBest)
@@ -2553,6 +2689,10 @@ const persistRun = async () => {
     bestScore.value = nextBest;
     statBestSpeed.value = Math.max(statBestSpeed.value, maxSpeed);
     localStorage.setItem('runner_best_speed', String(statBestSpeed.value));
+  } else {
+    const stage = endlessStage.value;
+    endlessBests.value[stage] = Math.max(endlessBests.value[stage] || 0, distance);
+    saveEndlessBests();
   }
   statTotalRuns.value += 1;
   localStorage.setItem('runner_total_runs', String(statTotalRuns.value));
@@ -8602,7 +8742,9 @@ const updatePlane = (delta) => {
   if (!enemies.length) {
     enemySpawnTimer -= delta;
     if (enemySpawnTimer <= 0) {
-      if (killsSinceMother >= 5) {
+      // Endless stage 3 never advances: the mothership (whose death opens
+      // the void) stays away — boss drones keep coming forever instead.
+      if (killsSinceMother >= 5 && runMode.value !== 'endless') {
         spawnMothership();
       } else {
         spawnEnemy();
@@ -9300,6 +9442,7 @@ const updateRunner = (delta) => {
     if (
       finalePhase.value === 'drive'
       && !rampTriggered
+      && runMode.value !== 'endless'
       && score.value >= RAMP_SCORE
     ) {
       if (godModeActive.value) {
@@ -9934,14 +10077,17 @@ const animate = (time) => {
     if (speed.value > runTopSpeedRaw) {
       runTopSpeedRaw = speed.value;
     }
+    // Endless runs celebrate their own per-stage best, not the classic one.
+    const recordTarget =
+      runMode.value === 'endless' ? endlessBests.value[endlessStage.value] || 0 : bestScore.value;
     if (
       !recordCelebrated &&
       !devRun.value &&
-      bestScore.value > 400 &&
-      score.value > bestScore.value
+      recordTarget > 400 &&
+      score.value > recordTarget
     ) {
       recordCelebrated = true;
-      showEventToast('New Record!', `${Math.floor(bestScore.value)} beaten — keep going!`, 2400);
+      showEventToast('New Record!', `${Math.floor(recordTarget)} beaten — keep going!`, 2400);
       sfx.powerup();
       spawnBurst(player.position.clone(), ['gold', 'skin'], 14, 6);
     }
@@ -11843,6 +11989,94 @@ onBeforeUnmount(() => {
   font-size: 0.72rem;
   letter-spacing: 0.08em;
   color: rgba(190, 210, 240, 0.7);
+}
+
+/* Trophy top-left of every tile: opens that stage's endless ranking. */
+.endless-trophy {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 10, 22, 0.72);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.16);
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  color: #ffd76b;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.endless-trophy svg {
+  width: 17px;
+  height: 17px;
+}
+
+.endless-trophy:active {
+  transform: scale(0.9);
+}
+
+/* Locked tiles grey out — the trophy stays full color and clickable. */
+.endless-tile.locked .endless-trophy {
+  color: #ffd76b;
+}
+
+.endless-tile-best {
+  font-family: var(--display);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  margin-left: 0.2em;
+  text-transform: uppercase;
+  color: rgba(160, 235, 255, 0.95);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+}
+
+/* Per-stage ranking overlay. */
+.stage-ranking-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 4, 10, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.stage-ranking-card {
+  width: min(400px, 100%);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  background: linear-gradient(180deg, rgba(13, 19, 36, 0.96), rgba(8, 12, 24, 0.96));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14), 0 18px 50px rgba(0, 0, 0, 0.55);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+
+.stage-ranking-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stage-ranking-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #eef6ff;
+}
+
+.stage-ranking-list {
+  max-height: 46vh;
 }
 
 .menu-tiles {
