@@ -61,6 +61,8 @@ export async function initAds() {
       Rewarded: mod.RewardAdPluginEvents?.Rewarded,
       Dismissed: mod.RewardAdPluginEvents?.Dismissed,
       FailedToShow: mod.RewardAdPluginEvents?.FailedToShow,
+      InterstitialDismissed: mod.InterstitialAdPluginEvents?.Dismissed,
+      InterstitialFailedToShow: mod.InterstitialAdPluginEvents?.FailedToShow,
     };
     await AdMob.initialize({ initializeForTesting: USE_TEST });
 
@@ -92,14 +94,79 @@ async function preloadInterstitial() {
   }
 }
 
-// Shows an interstitial if one is ready, then preloads the next. Never throws.
+// Shows a full-screen ad and resolves only once the overlay is really GONE.
+// The plugin's show() promise settles when the video finishes — at that point
+// the end card (with its X) still covers the screen, and resuming the game
+// there means playing blind behind the ad. So the Dismissed event is the only
+// success signal; the WebView regaining visibility is the backup (in case the
+// event gets lost), and a generous watchdog is the last resort so the game can
+// never hang forever.
+function runFullScreenAd({ show, dismissed, failed, rewarded = null }) {
+  return new Promise((resolve) => {
+    // Interstitials have nothing to earn — they start "successful".
+    let got = rewarded === null;
+    let settled = false;
+    let watchdog = null;
+    const handles = [];
+    const cleanups = [];
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (watchdog) clearTimeout(watchdog);
+      handles.forEach((h) => h?.remove?.());
+      cleanups.forEach((fn) => fn());
+      resolve(value);
+    };
+    const listen = async (event, cb) => {
+      if (!event) return;
+      try {
+        handles.push(await AdMob.addListener(event, cb));
+      } catch {
+        // listener registration failed — the fallbacks below still finish()
+      }
+    };
+
+    if (rewarded) {
+      listen(rewarded, () => {
+        got = true;
+      });
+    }
+    listen(dismissed, () => finish(got));
+    listen(failed, () => finish(false));
+
+    // Backup close signal: the page going hidden→visible means the native ad
+    // activity left the foreground.
+    let wasHidden = false;
+    const onVisibility = () => {
+      if (document.hidden) {
+        wasHidden = true;
+      } else if (wasHidden) {
+        finish(got);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    cleanups.push(() => document.removeEventListener('visibilitychange', onVisibility));
+
+    show()
+      .then((result) => {
+        if (result) got = true;
+        // Do NOT finish here — wait for Dismissed. Watchdog only guards
+        // against a lost event; no ad runs anywhere near this long.
+        watchdog = setTimeout(() => finish(got), 180000);
+      })
+      .catch(() => finish(false));
+  });
+}
+
+// Shows an interstitial if one is ready (waiting until it is closed), then
+// preloads the next. Never throws.
 export async function showInterstitial() {
   if (!ready || !interstitialLoaded) return;
-  try {
-    await AdMob.showInterstitial();
-  } catch {
-    // ignore — a failed show should never interrupt the run flow
-  }
+  await runFullScreenAd({
+    show: () => AdMob.showInterstitial(),
+    dismissed: events.InterstitialDismissed,
+    failed: events.InterstitialFailedToShow,
+  });
   interstitialLoaded = false;
   preloadInterstitial();
 }
@@ -118,44 +185,16 @@ async function preloadRewarded() {
 // decide whether to offer the revive button.
 export const rewardedReady = () => ready && rewardedLoaded;
 
-// Shows the rewarded ad. Resolves TRUE only if the player watched to completion
-// and earned the reward; FALSE if they skipped, it failed, or none was ready.
+// Shows the rewarded ad. Resolves TRUE only if the player earned the reward
+// AND the ad overlay is fully closed — never resumes the game behind an ad.
 export async function showRewarded() {
   if (!rewardedReady()) return false;
 
-  const earned = await new Promise((resolve) => {
-    let got = false;
-    const handles = [];
-    let settled = false;
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      handles.forEach((h) => h?.remove?.());
-      resolve(value);
-    };
-    const listen = async (event, cb) => {
-      if (!event) return;
-      try {
-        handles.push(await AdMob.addListener(event, cb));
-      } catch {
-        // listener registration failed — finish() fallbacks still apply
-      }
-    };
-
-    listen(events.Rewarded, () => {
-      got = true;
-    });
-    listen(events.Dismissed, () => finish(got));
-    listen(events.FailedToShow, () => finish(false));
-
-    AdMob.showRewardVideoAd()
-      .then((result) => {
-        // Some plugin versions resolve with the reward object on completion and
-        // never fire Dismissed — treat a truthy result as earned.
-        if (result) got = true;
-        finish(got);
-      })
-      .catch(() => finish(false));
+  const earned = await runFullScreenAd({
+    show: () => AdMob.showRewardVideoAd(),
+    dismissed: events.Dismissed,
+    failed: events.FailedToShow,
+    rewarded: events.Rewarded,
   });
 
   rewardedLoaded = false;
