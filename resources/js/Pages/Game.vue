@@ -387,11 +387,7 @@
           <nav class="menu-tiles">
             <button class="menu-tile" @click="openMenuScreen('level')" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5L4 6.2l1.7 3.5L8 8.6V20h8V8.6l2.3 1.1L20 6.2l-4.5-2.7a3.5 3.5 0 01-7 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-              <span>Skins</span>
-            </button>
-            <button class="menu-tile" @click="openMenuScreen('inventory')" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM12 12l8-4.5M12 12L4 7.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-              <span>Items</span>
+              <span>Collection</span>
             </button>
             <button class="menu-tile" @click="openMenuScreen('missions')" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>
@@ -415,14 +411,11 @@
                   <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
                   <span>{{ totalCoins }}</span>
                 </div>
-                <Link class="ghost-btn small" href="/profile">Account</Link>
-                <Link class="ghost-btn small danger" href="/logout" method="post" as="button">Log out</Link>
               </template>
               <template v-else>
                 <Link class="ghost-btn small" href="/login">Log in</Link>
                 <Link class="primary-btn small" href="/register">Register</Link>
               </template>
-              <button class="ghost-btn small" @click="openBugReport" type="button">Report a bug</button>
             </div>
             <div class="menu-controls">
               <template v-if="isTouchDevice">Swipe to steer &middot; up to jump &middot; down to slide</template>
@@ -440,10 +433,8 @@
             <div class="menu-screen-title">
               {{
                 menuScreen === 'level'
-                  ? 'Skins'
-                  : menuScreen === 'inventory'
-                    ? 'Inventory'
-                    : menuScreen === 'missions'
+                  ? 'Collection'
+                  : menuScreen === 'missions'
                       ? 'Daily Missions'
                       : menuScreen === 'classic'
                         ? ''
@@ -479,19 +470,41 @@
               >
                 {{ zone3Seen ? 'Aircraft' : '???' }}
               </button>
+              <button
+                class="skin-tab"
+                :class="{ active: skinTab === 'items' }"
+                @click="setSkinTab('items')"
+                type="button"
+              >
+                Items
+              </button>
               <div v-if="authUser" class="shop-balance">{{ totalCoins }}c</div>
             </div>
-            <div v-if="skinTab === 'car' && !zone2Seen" class="zone-locked">
+            <template v-if="skinTab === 'items'">
+              <div v-if="isGuest" class="zone-locked">Log in to collect and keep items.</div>
+              <div v-else-if="inventoryItems.length === 0" class="zone-locked">
+                No items yet. Earn or buy items to fill your inventory.
+              </div>
+              <div v-else class="skin-grid" data-allow-scroll>
+                <div v-for="item in inventoryItems" :key="item.item_id" class="skin-cell item-cell">
+                  <span class="item-qty">x{{ item.quantity }}</span>
+                  <svg class="item-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM12 12l8-4.5M12 12L4 7.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                  <span class="skin-cell-name">{{ item.name }}</span>
+                  <span class="skin-cell-sub">{{ item.type }}</span>
+                </div>
+              </div>
+            </template>
+            <div v-else-if="skinTab === 'car' && !zone2Seen" class="zone-locked">
               ??? &mdash; Find the end of the line first.
             </div>
             <div v-else-if="skinTab === 'plane' && !zone3Seen" class="zone-locked">
               ??? &mdash; Only gods take to the sky.
             </div>
-            <div v-else class="skin-strip" data-allow-scroll>
+            <div v-else class="skin-grid" data-allow-scroll>
               <button
                 v-for="skin in activeTabSkins"
                 :key="skin.id"
-                class="skin-chip"
+                class="skin-cell"
                 :class="{
                   active: isSkinActive(skin),
                   locked: !canUseSkin(skin),
@@ -501,11 +514,13 @@
                 @click="tapSkin(skin)"
                 type="button"
               >
-                {{ skin.label }}
+                <span class="skin-swatch" aria-hidden="true"></span>
+                <span class="skin-cell-name">{{ skin.label }}</span>
                 <span v-if="!canUseSkin(skin)" class="skin-price">{{ skin.price }}c</span>
+                <svg v-else-if="isSkinActive(skin)" class="skin-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
             </div>
-            <div class="skin-info">
+            <div v-if="skinTab !== 'items'" class="skin-info">
               <template v-if="previewSkin">
                 <span class="skin-info-name">{{ previewSkin.label }}</span>
                 <button
@@ -655,24 +670,7 @@
           </div>
 
           <div v-else class="menu-screen-card">
-          <template v-if="menuScreen === 'inventory'">
-            <div class="menu-inventory">
-              <div v-if="inventoryItems.length === 0" class="menu-empty">
-                No items yet. Earn or buy items to fill your inventory.
-              </div>
-              <div v-else class="menu-inventory-list" data-allow-scroll>
-                <div v-for="item in inventoryItems" :key="item.item_id" class="menu-inventory-item">
-                  <div>
-                    <div class="menu-item-name">{{ item.name }}</div>
-                    <div class="menu-item-meta">{{ item.type }}</div>
-                  </div>
-                  <div class="menu-item-qty">x{{ item.quantity }}</div>
-                </div>
-              </div>
-            </div>
-            </template>
-
-            <template v-else-if="menuScreen === 'missions'">
+            <template v-if="menuScreen === 'missions'">
               <div class="mission-panel">
                 <div class="mission-sub">
                   Three fresh missions every day. Rewards are paid in coins.
@@ -806,6 +804,20 @@
                   v-model.number="cameraZoom"
                 />
                 <div class="menu-slider-value">{{ Math.round(cameraZoom * 100) }}%</div>
+              </div>
+              <div class="menu-field">
+                <label>Account</label>
+                <div class="settings-links">
+                  <template v-if="authUser">
+                    <Link class="ghost-btn small" href="/profile">Account</Link>
+                    <Link class="ghost-btn small danger" href="/logout" method="post" as="button">Log out</Link>
+                  </template>
+                  <template v-else>
+                    <Link class="ghost-btn small" href="/login">Log in</Link>
+                    <Link class="primary-btn small" href="/register">Register</Link>
+                  </template>
+                  <button class="ghost-btn small" @click="openBugReport" type="button">Report a bug</button>
+                </div>
               </div>
             </div>
           </template>
@@ -1899,10 +1911,6 @@ const openEndless = () => {
 };
 
 const openMenuScreen = (screen) => {
-  if (screen === 'inventory' && isGuest.value) {
-    showLoginPrompt.value = true;
-    return;
-  }
   showLoginPrompt.value = false;
   shopMessage.value = '';
   menuScreen.value = screen;
@@ -10202,9 +10210,6 @@ watch(selectedSkin, () => {
 
 watch(authUser, () => {
   showLoginPrompt.value = false;
-  if (!authUser.value && menuScreen.value === 'inventory') {
-    menuScreen.value = 'main';
-  }
   loadProfile();
   loadLeaderboard();
   checkAuthGate();
@@ -12549,22 +12554,104 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.skin-strip {
-  display: flex;
-  flex-wrap: nowrap;
+/* Collection grid: skins and items as square-ish cells, scrolling
+   vertically inside the dock so the 3D preview stays visible above. */
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
   gap: 8px;
-  overflow-x: auto;
-  padding: 2px 2px 8px;
+  max-height: 34vh;
+  overflow-y: auto;
+  padding: 2px 2px 4px;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
 }
 
-.skin-strip .skin-chip {
-  flex: 0 0 auto;
+.skin-cell {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 8px;
+  padding: 14px 6px 11px;
+  border: none;
+  background: rgba(10, 14, 24, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(120, 180, 255, 0.24);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  color: #e6f0ff;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.62rem;
+  cursor: pointer;
+  transition: transform 0.12s ease;
 }
 
-.skin-chip.previewing {
-  border-color: rgba(255, 210, 100, 0.75);
+.skin-cell:active {
+  transform: scale(0.96);
+}
+
+.skin-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--skin);
+  box-shadow: 0 0 12px var(--skin);
+}
+
+.skin-cell-name {
+  line-height: 1.3;
+  text-align: center;
+}
+
+.skin-cell-sub {
+  font-size: 0.54rem;
+  letter-spacing: 0.1em;
+  color: rgba(160, 190, 230, 0.65);
+}
+
+.skin-cell.active {
+  box-shadow: inset 0 0 0 1px rgba(120, 240, 200, 0.65), 0 0 14px rgba(70, 220, 170, 0.28);
+}
+
+.skin-cell.previewing {
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 100, 0.75);
+}
+
+.skin-cell.active.previewing {
+  box-shadow: inset 0 0 0 1px rgba(120, 240, 200, 0.65), 0 0 14px rgba(70, 220, 170, 0.28);
+}
+
+.skin-cell.locked {
+  opacity: 0.62;
+}
+
+.skin-cell.locked .skin-swatch {
+  box-shadow: none;
+}
+
+.skin-check {
+  width: 14px;
+  height: 14px;
+  color: #7dfce0;
+}
+
+.item-cell {
+  cursor: default;
+}
+
+.item-icon {
+  width: 28px;
+  height: 28px;
+  color: rgba(150, 200, 255, 0.85);
+}
+
+.item-qty {
+  position: absolute;
+  top: 6px;
+  right: 9px;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  color: #ffd76b;
 }
 
 .skin-info {
@@ -12611,41 +12698,7 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
-.skin-chip {
-  border: 1px solid rgba(120, 180, 255, 0.35);
-  color: #e6f0ff;
-  background: rgba(10, 14, 24, 0.8);
-  padding: 8px 14px;
-  border-radius: 999px;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  font-size: 0.7rem;
-  position: relative;
-}
-
-.skin-chip::before {
-  content: '';
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--skin);
-  display: inline-block;
-  margin-right: 8px;
-  box-shadow: 0 0 8px var(--skin);
-}
-
-.skin-chip.active {
-  border-color: rgba(120, 240, 200, 0.6);
-  box-shadow: 0 0 12px rgba(70, 220, 170, 0.4);
-}
-
-.skin-chip.locked {
-  opacity: 0.6;
-  box-shadow: none;
-}
-
 .skin-price {
-  margin-left: 8px;
   padding: 2px 7px;
   border-radius: 999px;
   background: rgba(255, 207, 77, 0.15);
@@ -12667,8 +12720,11 @@ onBeforeUnmount(() => {
   color: rgba(255, 220, 150, 0.9);
 }
 
-.skin-chip.locked::before {
-  box-shadow: none;
+/* Account row inside the settings screen. */
+.settings-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .menu-actions {
@@ -12752,46 +12808,6 @@ onBeforeUnmount(() => {
 .menu-locked-actions {
   display: flex;
   gap: 10px;
-}
-
-.menu-inventory {
-  display: grid;
-  gap: 12px;
-}
-
-.menu-inventory-list {
-  display: grid;
-  gap: 10px;
-  max-height: 40vh;
-  overflow: auto;
-  padding-right: 4px;
-}
-
-.menu-inventory-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(10, 14, 24, 0.65);
-  border: 1px solid rgba(120, 180, 255, 0.25);
-  border-radius: 12px;
-  padding: 10px 14px;
-}
-
-.menu-item-name {
-  font-size: 0.95rem;
-  color: rgba(235, 240, 255, 0.9);
-}
-
-.menu-item-meta {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  color: rgba(140, 180, 255, 0.7);
-}
-
-.menu-item-qty {
-  font-size: 1rem;
-  font-weight: 700;
 }
 
 .menu-empty {
@@ -13146,10 +13162,6 @@ onBeforeUnmount(() => {
 
   .menu-screen-card {
     padding: 14px;
-  }
-
-  .menu-inventory-list {
-    max-height: 34vh;
   }
 
   .menu-controls {
