@@ -809,6 +809,24 @@
       </div>
     </div>
 
+    <!-- Offline run cooldown (native app): friendly, but firm. -->
+    <div v-if="showOfflineNotice" class="modal-overlay" @click.self="closeOfflineNotice">
+      <div class="modal-card" @click.stop>
+        <div class="modal-title">Oh — you're offline!</div>
+        <p>
+          No internet right now. Offline play skips the ads that keep this game
+          free, so offline runs are limited to one every 5 minutes. Back online
+          there's no cooldown at all — just one short ad every third run.
+        </p>
+        <p v-if="offlineRemainingMs > 0" class="offline-countdown">
+          Next run ready in {{ offlineCountdownText }}
+        </p>
+        <div class="modal-actions">
+          <button class="primary-btn small" @click="closeOfflineNotice" type="button">Got it</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -1216,6 +1234,78 @@ const playerSkip = () => {
   devSkip();
 };
 
+// --- Offline run cooldown (native app only) ---
+// Playing offline skips the ads that fund the game (classic ad-avoidance
+// move: flip on airplane mode). Offline runs are therefore rate-limited to
+// one per 5 minutes — fair for genuinely offline players, but going online
+// (one short ad every 3rd run) is always the better deal. The window counts
+// from the END of the last run; while a run is live we keep re-stamping the
+// timestamp (animate loop + pagehide), so force-closing the app mid-run
+// starts the cooldown from the kill moment, not from the run's start.
+const OFFLINE_RUN_COOLDOWN_MS = 5 * 60 * 1000;
+// Runs that die before 1000 points never arm the cooldown — a 20-second
+// death is punishment enough, offline or not.
+const OFFLINE_COOLDOWN_MIN_SCORE = 1000;
+const showOfflineNotice = ref(false);
+const offlineRemainingMs = ref(0);
+let offlineNoticeTimer = null;
+let lastRunStampAt = 0;
+
+const stampRunEnd = () => {
+  if (score.value < OFFLINE_COOLDOWN_MIN_SCORE) return;
+  localStorage.setItem('runner_last_run_end', String(Date.now()));
+};
+
+const offlineCooldownRemaining = () => {
+  if (!adsSupported() || navigator.onLine) return 0;
+  const last = Number.parseInt(localStorage.getItem('runner_last_run_end') || '0', 10) || 0;
+  return Math.max(0, last + OFFLINE_RUN_COOLDOWN_MS - Date.now());
+};
+
+const offlineCountdownText = computed(() => {
+  const total = Math.ceil(offlineRemainingMs.value / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+});
+
+const closeOfflineNotice = () => {
+  showOfflineNotice.value = false;
+  if (offlineNoticeTimer) {
+    clearInterval(offlineNoticeTimer);
+    offlineNoticeTimer = null;
+  }
+};
+
+const openOfflineNotice = () => {
+  offlineRemainingMs.value = offlineCooldownRemaining();
+  showOfflineNotice.value = true;
+  if (offlineNoticeTimer) {
+    clearInterval(offlineNoticeTimer);
+  }
+  // Tick the countdown once a second; auto-close when the run is ready (or
+  // the connection came back), so the player can start right away.
+  offlineNoticeTimer = setInterval(() => {
+    const remaining = offlineCooldownRemaining();
+    offlineRemainingMs.value = remaining;
+    if (remaining <= 0) {
+      closeOfflineNotice();
+    }
+  }, 1000);
+};
+
+const handleWentOffline = () => {
+  if (state.value === 'menu') {
+    openOfflineNotice();
+  }
+};
+
+const stampRunOnLeave = () => {
+  if (state.value === 'running' || state.value === 'paused') {
+    stampRunEnd();
+  }
+};
+
 const driveCamera = ref('chase'); // chase | ego (hood cam, car hidden)
 const finaleToast = ref(false);
 const driveHint = ref(false);
@@ -1352,6 +1442,11 @@ const currentGroundHeight = () => currentGroundCenter;
 
 const startRun = () => {
   if (!scene || state.value === 'crashing') return;
+  // Offline rate limit: one run per 5 minutes (native app only, see above).
+  if (offlineCooldownRemaining() > 0) {
+    openOfflineNotice();
+    return;
+  }
   unlockAudio();
   menuScreen.value = 'main';
   resetRun();
@@ -1459,6 +1554,10 @@ const confirmExit = () => {
 const handleNativeBack = () => {
   if (showExitConfirm.value) {
     showExitConfirm.value = false;
+    return;
+  }
+  if (showOfflineNotice.value) {
+    closeOfflineNotice();
     return;
   }
   if (showPlaylist.value) {
@@ -1958,6 +2057,7 @@ const finalizeRun = () => {
   if (runFinalized) return;
   runFinalized = true;
   reviveAvailable.value = false;
+  stampRunEnd();
   // Stage-skip unlock: a real run that ends while still in zone 1 extends the
   // fail streak; reaching zone 2 resets it (see startDriving).
   if (!devRun.value && finalePhase.value === 'none') {
@@ -9441,6 +9541,15 @@ const animate = (time) => {
   const delta = Math.min(0.05, Math.max(0, (time - lastTime) / 1000 || 0));
   lastTime = time;
 
+  // Offline-cooldown bookkeeping: while a run is live, re-stamp "run ended"
+  // every few seconds. A force-closed app fires no events at all — the last
+  // stamp then dates the kill to within ~8s, so the 5-minute offline window
+  // starts at the moment the app died, exactly as intended.
+  if ((state.value === 'running' || state.value === 'paused') && time - lastRunStampAt > 8000) {
+    lastRunStampAt = time;
+    stampRunEnd();
+  }
+
   // Construction blinkers: one shared material, all lamps pulse in sync.
   if (hazardBlinkMat) {
     hazardBlinkMat.color.setHex(time % 900 < 450 ? 0xffb023 : 0x4d3410);
@@ -9658,6 +9767,14 @@ onMounted(() => {
   // Hardware back button (native app only; browsers never fire this).
   if (adsSupported()) {
     window.Capacitor?.Plugins?.App?.addListener?.('backButton', handleNativeBack);
+    // Offline run cooldown plumbing: stamp a live run when the app is sent
+    // away, greet offline starts with the notice, and surface connection
+    // drops while sitting in the menu.
+    window.addEventListener('pagehide', stampRunOnLeave);
+    window.addEventListener('offline', handleWentOffline);
+    if (!navigator.onLine) {
+      openOfflineNotice();
+    }
   }
 });
 
@@ -9677,6 +9794,11 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', handleVisibility);
   window.removeEventListener('blur', handleWindowBlur);
   window.removeEventListener('resize', handleResize);
+  window.removeEventListener('pagehide', stampRunOnLeave);
+  window.removeEventListener('offline', handleWentOffline);
+  if (offlineNoticeTimer) {
+    clearInterval(offlineNoticeTimer);
+  }
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('keyup', handleKeyup);
   window.removeEventListener('touchstart', handleTouchStart);
@@ -11663,6 +11785,14 @@ onBeforeUnmount(() => {
   letter-spacing: 0.3em;
   font-size: 1rem;
   color: #eaf4ff;
+}
+
+.offline-countdown {
+  font-family: var(--display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+  color: #ffd97a;
 }
 
 .modal-actions {

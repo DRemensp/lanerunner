@@ -1,8 +1,8 @@
 /* Lane Runner service worker: network-first pages with an offline fallback,
    cache-first for immutable build assets, models, and audio. */
-// v3: obstacle models moved into roads/survival subfolders (+ two removed) —
-// bump clears stale cached GLBs from every installed client.
-const CACHE_NAME = 'lanerunner-v3';
+// v4: navigations are now cached as they load, so /game itself boots from
+// cache when offline (offline.html only remains for never-visited pages).
+const CACHE_NAME = 'lanerunner-v4';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
@@ -29,8 +29,20 @@ self.addEventListener('fetch', (event) => {
     if (url.origin !== self.location.origin) return;
 
     if (request.mode === 'navigate') {
+        // Network-first, but keep the last good copy: offline players boot the
+        // game from cache (the in-game offline run cooldown handles fairness —
+        // see Game.vue). The embedded page data is stale offline (auth/CSRF),
+        // which the game already tolerates via the guest-friendly API paths.
         event.respondWith(
-            fetch(request).catch(() => caches.match(OFFLINE_URL)),
+            fetch(request)
+                .then((response) => {
+                    if (response.ok) {
+                        const copy = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+                    }
+                    return response;
+                })
+                .catch(async () => (await caches.match(request)) || caches.match(OFFLINE_URL)),
         );
         return;
     }
