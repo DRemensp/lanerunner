@@ -9,7 +9,11 @@
       @pointercancel="galleryCamEnd"
     ></div>
 
-    <div v-if="!showAuthGate" class="corner-hud" :class="{ running: state === 'running' }">
+    <div
+      v-if="!showAuthGate"
+      class="corner-hud"
+      :class="{ running: state === 'running' || state === 'gallery' }"
+    >
     <div v-if="authUser && state === 'menu'" class="coin-chip">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
       <span>{{ totalCoins }}</span>
@@ -241,6 +245,28 @@
         ></div>
       </div>
       <div v-else-if="isTouchDevice" class="joy-hint">Touch &amp; drag anywhere to steer</div>
+    </div>
+
+    <button
+      v-if="state === 'gallery' && !galleryPaused"
+      class="pause-btn gallery-pause-btn"
+      @click="galleryPaused = true"
+      type="button"
+      aria-label="Pause"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5.5" width="3.4" height="13" rx="1" fill="currentColor"/><rect x="13.6" y="5.5" width="3.4" height="13" rx="1" fill="currentColor"/></svg>
+    </button>
+
+    <div v-if="state === 'gallery' && galleryPaused" class="death-overlay">
+      <div class="death-card">
+        <div class="death-title">Paused</div>
+        <div class="death-actions">
+          <button class="primary-btn" @click="galleryPaused = false" type="button">Resume</button>
+          <button class="ghost-btn" @click="galleryRestart" type="button">Restart</button>
+          <button class="ghost-btn" @click="galleryQuit" type="button">Quit Gallery</button>
+        </div>
+        <div class="pause-hint">Esc or Enter to resume</div>
+      </div>
     </div>
 
     <div
@@ -2130,6 +2156,7 @@ const startGallery = () => {
     camera.fov = 60;
     camera.updateProjectionMatrix();
   }
+  galleryPaused.value = false;
   state.value = 'gallery';
 };
 
@@ -2141,10 +2168,23 @@ const exitGallery = () => {
   });
   state.value = 'menu';
   menuScreen.value = 'main';
+  galleryPaused.value = false;
   if (camera) {
     camera.position.x = 0;
     applyCameraZoom();
   }
+};
+
+// Gallery pause: same Resume/Restart/Quit sheet as the run pause menu.
+// Restart re-enters the showroom fresh, Quit returns to the main menu.
+const galleryPaused = ref(false);
+const galleryRestart = () => {
+  galleryPaused.value = false;
+  startGallery();
+};
+const galleryQuit = () => {
+  galleryPaused.value = false;
+  exitGallery();
 };
 
 const normalizeSkins = (skins) =>
@@ -2907,6 +2947,12 @@ const stopSlide = () => {
 
 const handleKeydown = (event) => {
   if (state.value === 'gallery') {
+    if (galleryPaused.value) {
+      if (event.code === 'Escape' || event.code === 'Enter') {
+        galleryPaused.value = false;
+      }
+      return;
+    }
     switch (event.code) {
       case 'ArrowUp':
       case 'KeyW':
@@ -2928,7 +2974,7 @@ const handleKeydown = (event) => {
         galleryJump();
         break;
       case 'Escape':
-        exitGallery();
+        galleryPaused.value = true;
         break;
       default:
         break;
@@ -10133,7 +10179,9 @@ const animate = (time) => {
       bumpShakeTimer -= delta;
     }
   } else if (state.value === 'gallery') {
-    updateGallery(delta);
+    if (!galleryPaused.value) {
+      updateGallery(delta);
+    }
   } else if (state.value !== 'crashing' && state.value !== 'paused') {
     animateIdle(delta);
     const damp = (current, target) => THREE.MathUtils.damp(current, target, 4, delta);
@@ -11500,6 +11548,14 @@ onBeforeUnmount(() => {
   top: calc(92px + env(safe-area-inset-top));
 }
 
+/* Gallery: standalone pause button in the run-pause spot (top-right). */
+.gallery-pause-btn {
+  position: absolute;
+  top: calc(24px + env(safe-area-inset-top));
+  right: calc(24px + env(safe-area-inset-right));
+  z-index: 6;
+}
+
 .audio-pill {
   display: inline-flex;
   align-items: center;
@@ -11791,7 +11847,11 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-align: center;
   background: rgba(8, 12, 24, 0.8);
-  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14);
+  /* Soft neon edge: thin cyan inset line plus a faint outer glow. */
+  box-shadow:
+    inset 0 0 0 1px rgba(75, 232, 255, 0.38),
+    inset 0 1px 0 rgba(160, 210, 255, 0.14),
+    0 0 14px rgba(46, 229, 255, 0.16);
   clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
   color: #eef6ff;
 }
