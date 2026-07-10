@@ -151,16 +151,19 @@ function runFullScreenAd({ show, dismissed, failed, rewarded = null }) {
 }
 
 // Shows an interstitial if one is ready (waiting until it is closed), then
-// preloads the next. Never throws.
+// preloads the next. Returns TRUE only if an ad was actually displayed and
+// dismissed — callers use this to decide whether the "ad owed" debt is paid.
+// Never throws.
 export async function showInterstitial() {
-  if (!ready || !interstitialLoaded) return;
-  await runFullScreenAd({
+  if (!ready || !interstitialLoaded) return false;
+  const shown = await runFullScreenAd({
     show: () => AdMob.showInterstitial(),
     dismissed: events.InterstitialDismissed,
     failed: events.InterstitialFailedToShow,
   });
   interstitialLoaded = false;
   preloadInterstitial();
+  return shown;
 }
 
 async function preloadRewarded() {

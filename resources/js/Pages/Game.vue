@@ -1191,8 +1191,15 @@ const reviving = ref(false); // rewarded ad is currently playing
 // revive must defer it, or the longer continued score is rejected as unranked
 // because the server consumes the run token on run/end.
 let runFinalized = false;
-let completedRuns = 0; // interstitial cadence counter
-let interstitialPending = false; // show one on the next "Run Again"
+// Interstitial cadence lives in localStorage, NOT in memory: every 3rd
+// finished run creates an "ad debt" that survives app kills. The debt is only
+// paid once an ad was really shown and closed (see startRun) — force-closing
+// the app before or during the ad just moves it to the next run start.
+const adDebt = () => localStorage.getItem('runner_ad_debt') === '1';
+const setAdDebt = (owed) => {
+  localStorage.setItem('runner_ad_debt', owed ? '1' : '0');
+};
+let startingRun = false; // re-entry guard while the pre-run ad is up
 // Shared by the F9 key and the mobile cheat button.
 const devSkip = () => {
   if (state.value !== 'running') return;
@@ -1440,12 +1447,25 @@ const currentPlayerHeight = () =>
 const getGroundCenterForSurface = (surfaceY, playerHeight) => surfaceY + playerHeight / 2;
 const currentGroundHeight = () => currentGroundCenter;
 
-const startRun = () => {
-  if (!scene || state.value === 'crashing') return;
+const startRun = async () => {
+  if (!scene || state.value === 'crashing' || startingRun) return;
   // Offline rate limit: one run per 5 minutes (native app only, see above).
   if (offlineCooldownRemaining() > 0) {
     openOfflineNotice();
     return;
+  }
+  // Ad debt from the 3rd-run cadence: pay it BEFORE the run starts, no matter
+  // which button got us here (Run Again, menu Play, cold app start). The debt
+  // only clears when an ad was truly shown and closed — if none could be
+  // displayed (offline/no fill), the run still starts and the debt survives:
+  // gameplay is never hard-blocked on ad availability.
+  if (adDebt()) {
+    startingRun = true;
+    const shown = await showInterstitial();
+    startingRun = false;
+    if (shown) {
+      setAdDebt(false);
+    }
   }
   unlockAudio();
   menuScreen.value = 'main';
@@ -2068,10 +2088,15 @@ const finalizeRun = () => {
   }
   persistRun();
   loadLeaderboard();
-  if (!devRun.value) {
-    completedRuns += 1;
-    if (completedRuns % 3 === 0) {
-      interstitialPending = true;
+  // Every 3rd real run arms the persistent ad debt (native app only).
+  if (!devRun.value && adsSupported()) {
+    const runs =
+      (Number.parseInt(localStorage.getItem('runner_runs_since_ad') || '0', 10) || 0) + 1;
+    if (runs >= 3) {
+      localStorage.setItem('runner_runs_since_ad', '0');
+      setAdDebt(true);
+    } else {
+      localStorage.setItem('runner_runs_since_ad', String(runs));
     }
   }
 };
@@ -2123,14 +2148,10 @@ const reviveRun = () => {
   spawnBurst(player.position.clone(), ['gold', 'flame'], 20, 8);
 };
 
-// Crash-screen "Run Again": finalize the old run, show the between-runs
-// interstitial when due, then start fresh.
-const nextRun = async () => {
+// Crash-screen "Run Again": finalize the old run, then start fresh — startRun
+// itself collects any pending ad debt first.
+const nextRun = () => {
   finalizeRun();
-  if (interstitialPending) {
-    interstitialPending = false;
-    await showInterstitial();
-  }
   startRun();
 };
 
