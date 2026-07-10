@@ -446,7 +446,7 @@
                     : menuScreen === 'missions'
                       ? 'Daily Missions'
                       : menuScreen === 'classic'
-                        ? 'Classic'
+                        ? ''
                         : menuScreen === 'endless'
                           ? 'Endless'
                           : 'Settings'
@@ -588,6 +588,72 @@
             </div>
           </div>
 
+          <!-- Classic screen: hero title in the upper half, play button at
+               the vertical center with the mode toggle beneath, and the
+               world ranking waiting below the fold. -->
+          <div v-else-if="menuScreen === 'classic'" class="classic-dock" data-allow-scroll>
+            <div class="classic-stage">
+              <h2 class="classic-hero">
+                <span class="classic-hero-main">Classic</span>
+                <span class="classic-hero-sub">Mode</span>
+              </h2>
+              <div class="classic-actions">
+                <button class="play-btn" @click="startClassicRun" type="button">Play</button>
+                <div class="difficulty-row">
+                  <span class="difficulty-label">Mode</span>
+                  <div class="difficulty-toggle">
+                    <button
+                      v-for="level in levelOptions"
+                      :key="level.id"
+                      :class="{ active: selectedLevel === level.id }"
+                      @click="setLevel(level.id)"
+                      type="button"
+                    >
+                      {{ level.label }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="classic-scroll-hint" aria-hidden="true">
+                <span>Ranking</span>
+                <svg viewBox="0 0 24 24"><path d="M5.5 9.5L12 16l6.5-6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+            </div>
+            <div class="leaderboard-panel classic-ranks">
+              <div class="stats-grid">
+                <div class="leaderboard-stat">
+                  <div class="leaderboard-label">Best Score</div>
+                  <div class="leaderboard-value">{{ Math.floor(bestScore) }}</div>
+                </div>
+                <div class="leaderboard-stat">
+                  <div class="leaderboard-label">Top Speed</div>
+                  <div class="leaderboard-value">{{ Math.round(statBestSpeed) }}</div>
+                </div>
+                <div class="leaderboard-stat">
+                  <div class="leaderboard-label">Runs</div>
+                  <div class="leaderboard-value">{{ statTotalRuns }}</div>
+                </div>
+                <div v-if="authUser" class="leaderboard-stat">
+                  <div class="leaderboard-label">Coins</div>
+                  <div class="leaderboard-value">{{ totalCoins }}</div>
+                </div>
+              </div>
+              <div v-if="yourRank" class="your-rank">
+                Your global rank: <strong>#{{ yourRank }}</strong>
+              </div>
+              <div v-if="leaderboard.length" class="menu-leaderboard">
+                <div class="menu-leaderboard-title">Top Runners</div>
+                <ol>
+                  <li v-for="(leader, index) in leaderboard" :key="index">
+                    <span>{{ leader.name }}</span>
+                    <span>{{ leader.best_distance }}</span>
+                  </li>
+                </ol>
+              </div>
+              <div v-else class="menu-empty">No leaderboard data yet.</div>
+            </div>
+          </div>
+
           <div v-else class="menu-screen-card">
           <template v-if="menuScreen === 'inventory'">
             <div class="menu-inventory">
@@ -655,59 +721,6 @@
                   Log in to claim mission rewards.
                 </div>
                 <div v-if="shopMessage" class="shop-message">{{ shopMessage }}</div>
-              </div>
-            </template>
-
-            <template v-else-if="menuScreen === 'classic'">
-              <div class="classic-panel">
-                <button class="play-btn" @click="startClassicRun" type="button">Play</button>
-                <div class="difficulty-row">
-                  <span class="difficulty-label">Mode</span>
-                  <div class="difficulty-toggle">
-                    <button
-                      v-for="level in levelOptions"
-                      :key="level.id"
-                      :class="{ active: selectedLevel === level.id }"
-                      @click="setLevel(level.id)"
-                      type="button"
-                    >
-                      {{ level.label }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div class="leaderboard-panel">
-                <div class="stats-grid">
-                  <div class="leaderboard-stat">
-                    <div class="leaderboard-label">Best Score</div>
-                    <div class="leaderboard-value">{{ Math.floor(bestScore) }}</div>
-                  </div>
-                  <div class="leaderboard-stat">
-                    <div class="leaderboard-label">Top Speed</div>
-                    <div class="leaderboard-value">{{ Math.round(statBestSpeed) }}</div>
-                  </div>
-                  <div class="leaderboard-stat">
-                    <div class="leaderboard-label">Runs</div>
-                    <div class="leaderboard-value">{{ statTotalRuns }}</div>
-                  </div>
-                  <div v-if="authUser" class="leaderboard-stat">
-                    <div class="leaderboard-label">Coins</div>
-                    <div class="leaderboard-value">{{ totalCoins }}</div>
-                  </div>
-                </div>
-                <div v-if="yourRank" class="your-rank">
-                  Your global rank: <strong>#{{ yourRank }}</strong>
-                </div>
-                <div v-if="leaderboard.length" class="menu-leaderboard">
-                  <div class="menu-leaderboard-title">Top Runners</div>
-                  <ol>
-                    <li v-for="(leader, index) in leaderboard" :key="index">
-                      <span>{{ leader.name }}</span>
-                      <span>{{ leader.best_distance }}</span>
-                    </li>
-                  </ol>
-                </div>
-                <div v-else class="menu-empty">No leaderboard data yet.</div>
               </div>
             </template>
 
@@ -1238,7 +1251,7 @@ const markZoneSeen = (zone) => {
 // device switches and never regress.
 const STAGE_UNLOCK_RUNS = 5;
 const endlessStages = [
-  { n: 1, name: 'Lane Runner' },
+  { n: 1, name: 'Night City' },
   { n: 2, name: 'Neon Drive' },
   { n: 3, name: 'Sky Chase' },
   { n: 4, name: 'The Void' },
@@ -11685,12 +11698,101 @@ onBeforeUnmount(() => {
   transform: scale(0.98);
 }
 
-/* Classic screen: play button + mode toggle above the ranking panel. */
-.classic-panel {
+/* --- Classic screen: full-height stage (hero top, play + modes center,
+   scroll hint bottom) with the ranking panel below the fold. --- */
+.classic-dock {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.classic-stage {
+  flex: none;
+  min-height: 100%;
+  width: 100%;
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+  justify-items: center;
+}
+
+.classic-hero {
+  align-self: center;
+  margin: 0;
+  font-family: var(--display);
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 0.94;
+}
+
+.classic-hero-main {
+  display: block;
+  font-size: clamp(2.4rem, 10vw, 3.8rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-left: 0.08em;
+  color: #f6fbff;
+  text-shadow: 0 0 34px rgba(75, 232, 255, 0.4), 0 4px 24px rgba(0, 0, 0, 0.6);
+}
+
+.classic-hero-sub {
+  display: block;
+  margin-top: 10px;
+  font-size: clamp(0.85rem, 3.4vw, 1.15rem);
+  font-weight: 600;
+  letter-spacing: 0.64em;
+  margin-left: 0.64em;
+  color: rgba(175, 205, 245, 0.85);
+}
+
+.classic-actions {
+  align-self: center;
+  width: 100%;
   display: grid;
   justify-items: center;
-  gap: 14px;
-  padding-bottom: 18px;
+  gap: 16px;
+}
+
+.classic-scroll-hint {
+  align-self: end;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding-bottom: 8px;
+  font-family: var(--display);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  margin-left: 0.34em;
+  text-transform: uppercase;
+  color: rgba(150, 190, 255, 0.55);
+}
+
+.classic-scroll-hint svg {
+  width: 16px;
+  height: 16px;
+  animation: classic-hint-bob 1.6s ease-in-out infinite;
+}
+
+@keyframes classic-hint-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(4px);
+  }
+}
+
+/* Ranking card below the fold — same glass card look as menu-screen-card. */
+.classic-ranks {
+  flex: none;
+  background: linear-gradient(180deg, rgba(13, 19, 36, 0.92), rgba(8, 12, 24, 0.92));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.12);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  padding: 18px;
 }
 
 .mode-card.active {
