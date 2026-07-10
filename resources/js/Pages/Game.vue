@@ -9,11 +9,14 @@
       @pointercancel="galleryCamEnd"
     ></div>
 
+    <div v-if="!showAuthGate" class="corner-hud" :class="{ running: state === 'running' }">
+    <div v-if="authUser && state === 'menu'" class="coin-chip">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
+      <span>{{ totalCoins }}</span>
+    </div>
     <div
-      v-if="!showAuthGate"
       class="audio-pill"
       :class="{
-        running: state === 'running',
         expanded: showTrackToast || showPlaylist,
         muted: isMuted,
       }"
@@ -50,6 +53,7 @@
         />
       </svg>
       <span class="audio-title">{{ currentTrackName }}</span>
+    </div>
     </div>
 
     <div
@@ -417,17 +421,9 @@
           </nav>
 
           <div class="menu-foot">
-            <div class="menu-foot-links">
-              <template v-if="authUser">
-                <div class="coin-chip">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
-                  <span>{{ totalCoins }}</span>
-                </div>
-              </template>
-              <template v-else>
-                <Link class="ghost-btn small" href="/login">Log in</Link>
-                <Link class="primary-btn small" href="/register">Register</Link>
-              </template>
+            <div v-if="!authUser" class="menu-foot-links">
+              <Link class="ghost-btn small" href="/login">Log in</Link>
+              <Link class="primary-btn small" href="/register">Register</Link>
             </div>
             <div class="menu-controls">
               <template v-if="isTouchDevice">Swipe to steer &middot; up to jump &middot; down to slide</template>
@@ -11488,12 +11484,23 @@ onBeforeUnmount(() => {
   clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
 }
 
-.audio-pill {
+/* Top-right corner: coin balance (menu only) + audio pill side by side.
+   Top-LEFT belongs to the menu screens' back button. */
+.corner-hud {
   position: absolute;
-  /* Top-RIGHT: the top-left corner belongs to the menu screens' back button,
-     which this pill used to cover. */
   top: calc(24px + env(safe-area-inset-top));
   right: calc(24px + env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 6;
+}
+
+.corner-hud.running {
+  top: calc(92px + env(safe-area-inset-top));
+}
+
+.audio-pill {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -11503,12 +11510,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(90, 140, 255, 0.35);
   color: rgba(225, 235, 255, 0.9);
   cursor: pointer;
-  z-index: 6;
   transition: box-shadow 0.3s ease;
-}
-
-.audio-pill.running {
-  top: calc(92px + env(safe-area-inset-top));
 }
 
 .audio-pill.expanded {
@@ -11814,6 +11816,12 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* Scrolls, but shows no bar — the bouncing "Ranking" hint is the cue. */
+  scrollbar-width: none;
+}
+
+.classic-dock::-webkit-scrollbar {
+  display: none;
 }
 
 .classic-stage {
@@ -13205,12 +13213,12 @@ onBeforeUnmount(() => {
     height: 34px;
   }
 
-  .audio-pill {
+  .corner-hud {
     top: calc(16px + env(safe-area-inset-top));
     right: 16px;
   }
 
-  .audio-pill.running {
+  .corner-hud.running {
     top: calc(56px + env(safe-area-inset-top));
   }
 
