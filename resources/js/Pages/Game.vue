@@ -2092,9 +2092,12 @@ const finalizeRun = () => {
   runFinalized = true;
   reviveAvailable.value = false;
   stampRunEnd();
-  // Stage-skip unlock: a real run that ends while still in zone 1 extends the
-  // fail streak; reaching zone 2 resets it (see startDriving).
-  if (!devRun.value && finalePhase.value === 'none') {
+  // Stage-skip unlock: only a real CRASH in zone 1 extends the fail streak —
+  // state is 'crashed' then. Self-abandoned runs (pause-menu Quit/Restart
+  // finalize while running/paused) count for the ad cadence but are no
+  // "failed attempt": you earn the skip by dying, not by quitting. Reaching
+  // zone 2 resets the streak (see startDriving).
+  if (!devRun.value && state.value === 'crashed' && finalePhase.value === 'none') {
     setZone1Fails(zone1Fails.value + 1);
   }
   if (!devRun.value) {
