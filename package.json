@@ -7,10 +7,10 @@
         "dev": "vite"
     },
     "devDependencies": {
-        "@capacitor-community/admob": "^6.2.0",
-        "@capacitor/android": "^6.2.1",
-        "@capacitor/cli": "^6.2.1",
-        "@capacitor/core": "^6.2.1",
+        "@capacitor-community/admob": "^8.0.0",
+        "@capacitor/android": "^8.4.1",
+        "@capacitor/cli": "^8.4.1",
+        "@capacitor/core": "^8.4.1",
         "@inertiajs/vue3": "^2.0.0",
         "@tailwindcss/forms": "^0.5.3",
         "@vitejs/plugin-vue": "^6.0.1",
