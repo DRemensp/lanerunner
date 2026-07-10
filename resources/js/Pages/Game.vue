@@ -1200,6 +1200,11 @@ const setAdDebt = (owed) => {
   localStorage.setItem('runner_ad_debt', owed ? '1' : '0');
 };
 let startingRun = false; // re-entry guard while the pre-run ad is up
+// In-flight run/end request: run/start must WAIT for it (see startRunSession).
+// Pause-menu Restart finalizes + starts in one tick — if run/start overtook
+// run/end on the server, the old token would mismatch and flag an honest
+// player as suspicious.
+let pendingRunEnd = null;
 // Shared by the F9 key and the mobile cheat button.
 const devSkip = () => {
   if (state.value !== 'running') return;
@@ -1973,6 +1978,13 @@ let runSessionSeq = 0;
 
 const startRunSession = async () => {
   const seq = ++runSessionSeq;
+  // Serialize against the previous run's run/end: both fire in the same tick
+  // on a pause-menu Restart, and the server consumes/validates the token —
+  // run/start arriving first would turn the old run/end into a false cheat
+  // flag (run_id_mismatch).
+  if (pendingRunEnd) {
+    await pendingRunEnd.catch(() => {});
+  }
   try {
     const response = await axios.post('/api/runner/run/start', {
       level: selectedLevel.value,
@@ -2103,7 +2115,7 @@ const finalizeRun = () => {
   if (!devRun.value) {
     recordDailyStats();
   }
-  persistRun();
+  pendingRunEnd = persistRun();
   loadLeaderboard();
   // Every 3rd real run arms the persistent ad debt (native app only).
   if (!devRun.value && adsSupported()) {
