@@ -11,8 +11,15 @@
 //
 // The @capacitor-community/admob plugin is loaded with a dynamic import inside
 // initAds so it is only pulled in on the native platform.
-
-import { Capacitor } from '@capacitor/core';
+//
+// IMPORTANT: no static `@capacitor/core` import here. Game.vue imports this
+// module statically, so a static capacitor import would weld Capacitor core
+// into Game.vue's chunk — the dynamic AdMob chunk then imports the Game chunk
+// for it, which strips the chunk's facade and its
+// "resources/js/Pages/Game.vue" key from the Vite manifest → Laravel 500s with
+// "Unable to locate file in Vite manifest". Native detection instead uses the
+// window.Capacitor bridge that the Capacitor shell injects into the page —
+// which is also the correct signal for a server.url-loaded app.
 
 // Google's official TEST ad unit IDs. They serve real (test) ads on device and
 // are SAFE to ship during development — using your live units on your own
@@ -41,7 +48,8 @@ let ready = false;
 let interstitialLoaded = false;
 let rewardedLoaded = false;
 
-export const adsSupported = () => Capacitor.isNativePlatform();
+export const adsSupported = () =>
+  typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
 export async function initAds() {
   if (!adsSupported()) return;
