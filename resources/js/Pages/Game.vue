@@ -11877,42 +11877,27 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   height: 100%;
+  background-color: #05070f;
+  background-size: cover;
+  background-position: center;
 }
 
-/* Placeholder stage art until the real images land — layered glows so each
-   stage reads as a scene, not a flat stripe: neon night city, sunrise
-   highway, daylight sky, deep-space void. */
+/* Real in-game shots (public/images/stages, cached by the SW): night city
+   run, drive traffic, sky chase, deep-space void. */
 .stage-bg-1 {
-  background:
-    radial-gradient(130% 70% at 50% 108%, rgba(46, 229, 255, 0.4), transparent 62%),
-    radial-gradient(55% 45% at 16% 88%, rgba(191, 123, 255, 0.3), transparent 70%),
-    radial-gradient(40% 35% at 84% 78%, rgba(46, 229, 255, 0.18), transparent 70%),
-    linear-gradient(180deg, #05070f 0%, #0b1430 60%, #101d42 100%);
+  background-image: url('/images/stages/stage-1.jpg');
 }
 
 .stage-bg-2 {
-  background:
-    radial-gradient(75% 60% at 50% 102%, rgba(255, 200, 130, 0.85), rgba(214, 116, 76, 0.35) 55%, transparent 78%),
-    radial-gradient(45% 40% at 78% 86%, rgba(255, 140, 120, 0.3), transparent 70%),
-    linear-gradient(180deg, #241a3e 0%, #4a2647 55%, #8a4437 100%);
+  background-image: url('/images/stages/stage-2.jpg');
 }
 
 .stage-bg-3 {
-  background:
-    radial-gradient(85% 65% at 50% 6%, rgba(255, 255, 255, 0.55), transparent 60%),
-    radial-gradient(50% 40% at 24% 70%, rgba(255, 255, 255, 0.22), transparent 70%),
-    linear-gradient(180deg, #a3daf6 0%, #5da9dd 60%, #2a6ea6 100%);
+  background-image: url('/images/stages/stage-3.jpg');
 }
 
 .stage-bg-4 {
-  background:
-    radial-gradient(2px 2px at 22% 28%, rgba(255, 255, 255, 0.95), transparent 55%),
-    radial-gradient(1.6px 1.6px at 68% 18%, rgba(255, 255, 255, 0.8), transparent 55%),
-    radial-gradient(1.6px 1.6px at 84% 62%, rgba(255, 255, 255, 0.75), transparent 55%),
-    radial-gradient(1.4px 1.4px at 42% 74%, rgba(255, 255, 255, 0.7), transparent 55%),
-    radial-gradient(1.8px 1.8px at 12% 56%, rgba(255, 255, 255, 0.8), transparent 55%),
-    radial-gradient(70% 55% at 50% 88%, rgba(168, 143, 255, 0.38), transparent 72%),
-    linear-gradient(180deg, #040112 0%, #0d0524 60%, #1c0f3e 100%);
+  background-image: url('/images/stages/stage-4.jpg');
 }
 
 .mode-card-label {

@@ -2,7 +2,8 @@
    cache-first for immutable build assets, models, and audio. */
 // v4: navigations are now cached as they load, so /game itself boots from
 // cache when offline (offline.html only remains for never-visited pages).
-const CACHE_NAME = 'lanerunner-v4';
+// v5: /images (menu stage art) joins the cache-first static media.
+const CACHE_NAME = 'lanerunner-v5';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
@@ -52,6 +53,7 @@ self.addEventListener('fetch', (event) => {
         url.pathname.startsWith('/build/') ||
         url.pathname.startsWith('/models/') ||
         url.pathname.startsWith('/audio/') ||
+        url.pathname.startsWith('/images/') ||
         url.pathname.startsWith('/icons/')
     ) {
         event.respondWith(
