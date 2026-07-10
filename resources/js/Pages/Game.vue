@@ -97,7 +97,7 @@
               @click="toggleTrack(track)"
               type="button"
             >
-              {{ track.enabled ? '-' : '+' }}
+              {{ track.enabled ? 'Remove' : 'Add' }}
             </button>
             <button class="audio-track" @click="playSpecific(track)" type="button">
               <span>{{ track.title }}</span>
@@ -11622,24 +11622,31 @@ onBeforeUnmount(() => {
 
 .audio-row {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: auto 1fr;
   gap: 8px;
   align-items: center;
 }
 
+/* Action-labelled toggle: red "Remove" while the track is in the playlist,
+   green "Add" while it is out — the label names the click, not the state. */
 .audio-toggle {
-  width: 24px;
+  min-width: 62px;
   height: 24px;
+  padding: 0 8px;
   border-radius: 6px;
-  border: 1px solid rgba(120, 180, 255, 0.35);
-  background: rgba(10, 14, 24, 0.7);
-  color: rgba(225, 235, 255, 0.85);
+  border: 1px solid rgba(255, 120, 120, 0.5);
+  background: rgba(56, 14, 20, 0.65);
+  color: #ff9d9d;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
   cursor: pointer;
   text-transform: uppercase;
 }
 
 .audio-toggle.off {
-  opacity: 0.5;
+  border-color: rgba(110, 235, 165, 0.5);
+  background: rgba(10, 44, 26, 0.65);
+  color: #7dfca6;
 }
 
 .audio-track {
