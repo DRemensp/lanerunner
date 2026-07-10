@@ -1454,6 +1454,13 @@ const startRun = async () => {
     openOfflineNotice();
     return;
   }
+  // Pause-menu "Restart" abandons a live run — it still counts: finalize it
+  // here (after the early-return guards, so a blocked start never half-ends
+  // a run). If this finalize arms the 3rd-run ad debt, the very next check
+  // collects it — Esc→Restart can't outrun the cadence.
+  if (state.value === 'running' || state.value === 'paused') {
+    finalizeRun();
+  }
   // Ad debt from the 3rd-run cadence: pay it BEFORE the run starts, no matter
   // which button got us here (Run Again, menu Play, cold app start). The debt
   // only clears when an ad was truly shown and closed — if none could be
@@ -1548,6 +1555,13 @@ const resumeRun = () => {
 };
 
 const quitRun = () => {
+  // Abandoning via the pause menu still ENDS a run: finalize it (persist,
+  // ad cadence, skip-fail streak) so bailing out just before death can't
+  // dodge the every-3rd-run ad. Already-finalized states (crash screen via
+  // menuFromCrash) pass through untouched thanks to the runFinalized guard.
+  if (state.value === 'running' || state.value === 'paused') {
+    finalizeRun();
+  }
   resetRun();
   backToMenu();
 };
