@@ -360,17 +360,18 @@
         </div>
 
         <!-- Mode split: two TALL columns filling the menu height. Left is
-             Classic (the full journey), right is Endless, opening
-             the swipeable stage carousel. Backgrounds are placeholder
-             gradients until the real stage art lands: Classic stacks all
-             four stages vertically (1x4), Endless shows only stage 1. -->
+             Classic, opening the classic screen (play + mode + ranking);
+             right is Endless, opening the swipeable stage carousel.
+             Backgrounds are placeholder gradients until the real stage art
+             lands: Classic stacks all four stages vertically (1x4), Endless
+             shows only stage 1. -->
         <div class="mode-split">
-          <div class="mode-card active">
+          <button class="mode-card mode-card-classic" @click="openClassic" type="button">
             <span class="mode-card-bg mode-card-stack" aria-hidden="true">
               <span v-for="stage in endlessStages" :key="stage.n" :class="'stage-bg stage-bg-' + stage.n"></span>
             </span>
             <span class="mode-card-label">Classic</span>
-          </div>
+          </button>
 
           <button class="mode-card mode-card-endless" @click="openEndless" type="button">
             <span class="mode-card-bg" aria-hidden="true">
@@ -396,10 +397,6 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>
               <span>Missions</span>
               <span v-if="completedMissionCount" class="tile-badge">{{ completedMissionCount }}</span>
-            </button>
-            <button class="menu-tile" @click="openMenuScreen('leaderboard')" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v5a5 5 0 01-10 0zM7 5H4.4a2.9 2.9 0 003 3.5M17 5h2.6a2.9 2.9 0 01-3 3.5M12 14v4M8 20.5h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span>Ranks</span>
             </button>
             <button class="menu-tile" @click="openMenuScreen('settings')" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h8M17.5 7H20M4 17h2.5M12 17h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="14.5" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
@@ -448,8 +445,8 @@
                     ? 'Inventory'
                     : menuScreen === 'missions'
                       ? 'Daily Missions'
-                      : menuScreen === 'leaderboard'
-                        ? 'Leaderboard'
+                      : menuScreen === 'classic'
+                        ? 'Classic'
                         : menuScreen === 'endless'
                           ? 'Endless'
                           : 'Settings'
@@ -661,7 +658,24 @@
               </div>
             </template>
 
-            <template v-else-if="menuScreen === 'leaderboard'">
+            <template v-else-if="menuScreen === 'classic'">
+              <div class="classic-panel">
+                <button class="play-btn" @click="startClassicRun" type="button">Play</button>
+                <div class="difficulty-row">
+                  <span class="difficulty-label">Mode</span>
+                  <div class="difficulty-toggle">
+                    <button
+                      v-for="level in levelOptions"
+                      :key="level.id"
+                      :class="{ active: selectedLevel === level.id }"
+                      @click="setLevel(level.id)"
+                      type="button"
+                    >
+                      {{ level.label }}
+                    </button>
+                  </div>
+                </div>
+              </div>
               <div class="leaderboard-panel">
                 <div class="stats-grid">
                   <div class="leaderboard-stat">
@@ -1858,8 +1872,13 @@ const closeStageRanking = () => {
 };
 
 // Which half of the mode split is selected on the main menu; classic is the
-// default and shows the play button + world ranking.
+// default.
 const menuMode = ref('classic');
+
+// Classic card: opens the classic screen (play + mode + world ranking).
+const openClassic = () => {
+  menuScreen.value = 'classic';
+};
 
 const openEndless = () => {
   endlessNotice.value = '';
@@ -11655,13 +11674,23 @@ onBeforeUnmount(() => {
   color: #eef6ff;
 }
 
+.mode-card-classic,
 .mode-card-endless {
   cursor: pointer;
   transition: transform 0.15s ease;
 }
 
+.mode-card-classic:active,
 .mode-card-endless:active {
   transform: scale(0.98);
+}
+
+/* Classic screen: play button + mode toggle above the ranking panel. */
+.classic-panel {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding-bottom: 18px;
 }
 
 .mode-card.active {
