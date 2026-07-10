@@ -421,6 +421,7 @@
                 <Link class="ghost-btn small" href="/login">Log in</Link>
                 <Link class="primary-btn small" href="/register">Register</Link>
               </template>
+              <button class="ghost-btn small" @click="openBugReport" type="button">Report a bug</button>
             </div>
             <div class="menu-controls">
               <template v-if="isTouchDevice">Swipe to steer &middot; up to jump &middot; down to slide</template>
@@ -805,6 +806,42 @@
         <div class="modal-actions">
           <button class="ghost-btn small" @click="showExitConfirm = false" type="button">Stay</button>
           <button class="primary-btn small" @click="confirmExit" type="button">Exit</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bug report: straight into the database, nothing else. -->
+    <div v-if="showBugReport" class="modal-overlay" @click.self="closeBugReport">
+      <div class="modal-card" @click.stop>
+        <div class="modal-title">Report a Bug</div>
+        <p v-if="bugReportStatus !== 'sent'">
+          What went wrong? The more detail, the faster it gets fixed.
+        </p>
+        <p v-else>Thanks! Your report has been saved.</p>
+        <textarea
+          v-if="bugReportStatus !== 'sent'"
+          v-model="bugReportText"
+          class="bug-report-input"
+          rows="5"
+          maxlength="2000"
+          placeholder="Describe the bug — what happened, and what did you expect?"
+        ></textarea>
+        <p v-if="bugReportStatus === 'error'" class="bug-report-error">
+          Could not send the report — check your connection and try again.
+        </p>
+        <div class="modal-actions">
+          <button class="ghost-btn small" @click="closeBugReport" type="button">
+            {{ bugReportStatus === 'sent' ? 'Close' : 'Cancel' }}
+          </button>
+          <button
+            v-if="bugReportStatus !== 'sent'"
+            class="primary-btn small"
+            :disabled="bugReportStatus === 'sending' || bugReportText.trim().length < 5"
+            @click="sendBugReport"
+            type="button"
+          >
+            {{ bugReportStatus === 'sending' ? 'Sending…' : 'Send' }}
+          </button>
         </div>
       </div>
     </div>
@@ -1205,6 +1242,23 @@ let startingRun = false; // re-entry guard while the pre-run ad is up
 // run/end on the server, the old token would mismatch and flag an honest
 // player as suspicious.
 let pendingRunEnd = null;
+
+// Stable per-device id, guests included: generated once, sent with telemetry,
+// bug reports and run/end — lets the server correlate (and ban) devices even
+// without an account.
+const deviceId = (() => {
+  let id = localStorage.getItem('runner_device_id');
+  if (!id) {
+    id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem('runner_device_id', id);
+  }
+  return id;
+})();
+
+// Fire-and-forget ad telemetry; offline/errors are silently dropped.
+const logAdEvent = (type) => {
+  axios.post('/api/runner/ad-event', { type, device_id: deviceId }).catch(() => {});
+};
 // Shared by the F9 key and the mobile cheat button.
 const devSkip = () => {
   if (state.value !== 'running') return;
@@ -1315,6 +1369,40 @@ const handleWentOffline = () => {
 const stampRunOnLeave = () => {
   if (state.value === 'running' || state.value === 'paused') {
     stampRunEnd();
+  }
+};
+
+// --- Bug report form (main menu) ---
+const showBugReport = ref(false);
+const bugReportText = ref('');
+const bugReportStatus = ref('idle'); // idle | sending | sent | error
+
+const openBugReport = () => {
+  bugReportStatus.value = 'idle';
+  showBugReport.value = true;
+};
+
+const closeBugReport = () => {
+  showBugReport.value = false;
+  if (bugReportStatus.value === 'sent') {
+    bugReportText.value = '';
+    bugReportStatus.value = 'idle';
+  }
+};
+
+const sendBugReport = async () => {
+  const message = bugReportText.value.trim();
+  if (message.length < 5 || bugReportStatus.value === 'sending') return;
+  bugReportStatus.value = 'sending';
+  try {
+    await axios.post('/api/runner/bug-report', {
+      message,
+      device_id: deviceId,
+      context: `${adsSupported() ? 'app' : 'web'} · best ${Math.floor(bestScore.value)}`,
+    });
+    bugReportStatus.value = 'sent';
+  } catch {
+    bugReportStatus.value = 'error';
   }
 };
 
@@ -1475,6 +1563,7 @@ const startRun = async () => {
     startingRun = true;
     const shown = await showInterstitial();
     startingRun = false;
+    logAdEvent(shown ? 'interstitial_shown' : 'interstitial_empty');
     if (shown) {
       setAdDebt(false);
     }
@@ -1597,6 +1686,10 @@ const handleNativeBack = () => {
   }
   if (showOfflineNotice.value) {
     closeOfflineNotice();
+    return;
+  }
+  if (showBugReport.value) {
+    closeBugReport();
     return;
   }
   if (showPlaylist.value) {
@@ -2137,6 +2230,7 @@ const watchRevive = async () => {
   reviving.value = true;
   const earned = await showRewarded();
   reviving.value = false;
+  logAdEvent(earned ? 'rewarded_shown' : 'rewarded_failed');
   if (earned) {
     reviveUsed.value = true;
     reviveRun();
@@ -2215,6 +2309,7 @@ const persistRun = async () => {
         max_speed: maxSpeed,
         coins: runCoins.value,
         run_id: runToken.value,
+        device_id: deviceId,
       });
       if (response.data && response.data.accepted === false) {
         runSaveNotice.value = hadToken && !response.data.guest ? 'unranked' : 'offline';
@@ -11843,6 +11938,29 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.12em;
   color: #ffd97a;
+}
+
+.bug-report-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 96px;
+  padding: 10px 12px;
+  background: rgba(8, 12, 24, 0.7);
+  border: 1px solid rgba(90, 140, 255, 0.35);
+  border-radius: 6px;
+  color: #e8f1ff;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.bug-report-input:focus {
+  outline: none;
+  border-color: rgba(120, 180, 255, 0.7);
+}
+
+.bug-report-error {
+  color: #ff8087;
+  font-size: 0.85rem;
 }
 
 .modal-actions {

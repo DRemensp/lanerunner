@@ -34,6 +34,9 @@ Route::prefix('api/runner')->group(function () {
     Route::post('/skin/buy', [RunnerController::class, 'buySkin']);
     Route::get('/leaderboard', [RunnerController::class, 'leaderboard']);
     Route::post('/mission/claim', [RunnerController::class, 'claimMission']);
+    // Telemetry + feedback, guests included (device_id). Throttled per IP.
+    Route::post('/ad-event', [RunnerController::class, 'adEvent'])->middleware('throttle:60,1');
+    Route::post('/bug-report', [RunnerController::class, 'bugReport'])->middleware('throttle:5,10');
 });
 
 Route::middleware('auth')->prefix('api/inventory')->group(function () {

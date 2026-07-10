@@ -140,6 +140,7 @@ class RunnerController extends Controller
             'max_speed' => ['nullable', 'numeric', 'min:0'],
             'coins' => ['nullable', 'integer', 'min:0'],
             'run_id' => ['nullable', 'uuid'],
+            'device_id' => ['nullable', 'string', 'max:64'],
         ]);
 
         $user = $request->user();
@@ -151,6 +152,9 @@ class RunnerController extends Controller
         }
 
         $profile = $service->ensureProfile($user);
+        if (! empty($validated['device_id'])) {
+            $profile->last_device_id = $validated['device_id'];
+        }
         $distance = (int) $validated['distance'];
         $maxSpeed = isset($validated['max_speed']) ? (float) $validated['max_speed'] : 0.0;
 
@@ -196,6 +200,11 @@ class RunnerController extends Controller
                 $cheatReasons[] = 'speed_over_cap';
                 $verified = false;
             }
+        }
+
+        // Banned accounts keep playing, but nothing ranks or pays out.
+        if ($profile->banned_at) {
+            $verified = false;
         }
 
         $profile->total_runs += 1;
@@ -359,6 +368,7 @@ class RunnerController extends Controller
     {
         $leaders = RunnerProfile::with('user')
             ->where('best_distance', '>', 0)
+            ->whereNull('banned_at')
             ->orderByDesc('best_distance')
             ->limit(10)
             ->get()
@@ -374,8 +384,9 @@ class RunnerController extends Controller
         $user = $request->user();
         if ($user) {
             $profile = RunnerProfile::where('user_id', $user->id)->first();
-            if ($profile && $profile->best_distance > 0) {
+            if ($profile && $profile->best_distance > 0 && ! $profile->banned_at) {
                 $yourRank = RunnerProfile::where('best_distance', '>', $profile->best_distance)
+                    ->whereNull('banned_at')
                     ->count() + 1;
             }
         }
@@ -384,6 +395,48 @@ class RunnerController extends Controller
             'leaders' => $leaders,
             'your_rank' => $yourRank,
         ]);
+    }
+
+    // Ad telemetry: one raw row per event, guests included via device_id.
+    // Aggregation happens in SQL when needed — no dashboards, no processing.
+    public function adEvent(Request $request): Response
+    {
+        $validated = $request->validate([
+            'type' => ['required', 'string', Rule::in([
+                'interstitial_shown',
+                'interstitial_empty',
+                'rewarded_shown',
+                'rewarded_failed',
+            ])],
+            'device_id' => ['required', 'string', 'max:64'],
+        ]);
+
+        \App\Models\AdEvent::create([
+            'user_id' => $request->user()?->id,
+            'device_id' => $validated['device_id'],
+            'type' => $validated['type'],
+        ]);
+
+        return response(['ok' => true]);
+    }
+
+    // Player bug reports: stored verbatim, read directly from the database.
+    public function bugReport(Request $request): Response
+    {
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'min:5', 'max:2000'],
+            'device_id' => ['required', 'string', 'max:64'],
+            'context' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        \App\Models\BugReport::create([
+            'user_id' => $request->user()?->id,
+            'device_id' => $validated['device_id'],
+            'message' => $validated['message'],
+            'context' => $validated['context'] ?? null,
+        ]);
+
+        return response(['ok' => true]);
     }
 
     private function minPlausibleDuration(float $distance, int $baseSpeed, int $speedStep): float

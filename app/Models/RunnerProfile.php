@@ -25,6 +25,8 @@ class RunnerProfile extends Model
         'suspicious_at',
         'last_suspicious_reason',
         'last_run_at',
+        'last_device_id',
+        'banned_at',
     ];
 
     protected $casts = [
@@ -32,6 +34,7 @@ class RunnerProfile extends Model
         'run_started_at' => 'datetime',
         'suspicious' => 'boolean',
         'suspicious_at' => 'datetime',
+        'banned_at' => 'datetime',
     ];
 
     public function user()
