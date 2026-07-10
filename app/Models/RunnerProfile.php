@@ -27,6 +27,10 @@ class RunnerProfile extends Model
         'last_run_at',
         'last_device_id',
         'banned_at',
+        'stage2_reaches',
+        'stage3_reaches',
+        'stage4_reaches',
+        'run_mode',
     ];
 
     protected $casts = [

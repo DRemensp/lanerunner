@@ -360,8 +360,35 @@
           <div v-if="bestScore > 0" class="menu-best">Best {{ Math.floor(bestScore).toLocaleString() }}</div>
         </div>
 
+        <!-- Mode split: left half Classic (the full journey), right half
+             Endless (per-stage, opens the swipeable stage carousel).
+             Backgrounds are placeholder gradients until the real stage art
+             lands: Classic previews all four stages in a 2x2 grid, Endless
+             shows only stage 1. -->
+        <div class="mode-split">
+          <button
+            class="mode-card"
+            :class="{ active: menuMode === 'classic' }"
+            @click="menuMode = 'classic'"
+            type="button"
+          >
+            <span class="mode-card-bg mode-card-grid" aria-hidden="true">
+              <span v-for="stage in endlessStages" :key="stage.n" :class="'stage-bg stage-bg-' + stage.n"></span>
+            </span>
+            <span class="mode-card-label">Classic</span>
+            <span class="mode-card-sub">The full journey</span>
+          </button>
+          <button class="mode-card" @click="openEndless" type="button">
+            <span class="mode-card-bg" aria-hidden="true">
+              <span class="stage-bg stage-bg-1"></span>
+            </span>
+            <span class="mode-card-label">Endless</span>
+            <span class="mode-card-sub">One stage, no finish</span>
+          </button>
+        </div>
+
         <div class="menu-center">
-          <button class="play-btn" @click="startRun" type="button">Play</button>
+          <button class="play-btn" @click="startClassicRun" type="button">Play</button>
           <div class="difficulty-row">
             <span class="difficulty-label">Mode</span>
             <div class="difficulty-toggle">
@@ -379,6 +406,22 @@
         </div>
 
         <div class="menu-bottom">
+          <!-- World ranking under the classic half: top 10 + own rank. -->
+          <div v-if="menuMode === 'classic'" class="menu-worldrank">
+            <div class="worldrank-head">
+              <span class="worldrank-title">World Ranking</span>
+              <span v-if="yourRank" class="worldrank-you">You #{{ yourRank }}</span>
+            </div>
+            <ol v-if="leaderboard.length" class="worldrank-list" data-allow-scroll>
+              <li v-for="(leader, index) in leaderboard" :key="index">
+                <span class="worldrank-pos">{{ index + 1 }}</span>
+                <span class="worldrank-name">{{ leader.name }}</span>
+                <span class="worldrank-score">{{ Math.floor(leader.best_distance).toLocaleString() }}</span>
+              </li>
+            </ol>
+            <div v-else class="worldrank-empty">No ranked runs yet.</div>
+          </div>
+
           <nav class="menu-tiles">
             <button class="menu-tile" @click="openMenuScreen('level')" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5L4 6.2l1.7 3.5L8 8.6V20h8V8.6l2.3 1.1L20 6.2l-4.5-2.7a3.5 3.5 0 01-7 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
@@ -446,7 +489,9 @@
                       ? 'Daily Missions'
                       : menuScreen === 'leaderboard'
                         ? 'Leaderboard'
-                        : 'Settings'
+                        : menuScreen === 'endless'
+                          ? 'Endless'
+                          : 'Settings'
               }}
             </div>
           </div>
@@ -516,6 +561,36 @@
                 <span v-else-if="isSkinActive(previewSkin)" class="skin-info-note">Selected</span>
               </template>
               <span v-if="shopMessage" class="shop-message">{{ shopMessage }}</span>
+            </div>
+          </div>
+
+          <!-- Endless stage carousel: swipe/scroll left-right through tall
+               stage tiles. Locked tiles grey out behind a centered lock and
+               show the unlock progress (5 classic runs reaching that stage). -->
+          <div v-else-if="menuScreen === 'endless'" class="endless-dock">
+            <div class="endless-strip" data-allow-scroll>
+              <button
+                v-for="stage in endlessStages"
+                :key="stage.n"
+                class="endless-tile"
+                :class="{ locked: !stageUnlocked(stage.n) }"
+                @click="tapEndlessStage(stage)"
+                type="button"
+              >
+                <span :class="'endless-tile-bg stage-bg stage-bg-' + stage.n" aria-hidden="true"></span>
+                <span class="endless-tile-head">
+                  <span class="endless-tile-stage">Stage {{ stage.n }}</span>
+                  <span class="endless-tile-name">{{ stage.name }}</span>
+                </span>
+                <span v-if="!stageUnlocked(stage.n)" class="endless-lock">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10.5V7.8a4 4 0 018 0v2.7" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="15.2" r="1.5" fill="currentColor"/></svg>
+                  <span class="endless-lock-count">{{ Math.min(stageReaches[stage.n], STAGE_UNLOCK_RUNS) }}/{{ STAGE_UNLOCK_RUNS }}</span>
+                </span>
+                <span v-else class="endless-tile-go">Play</span>
+              </button>
+            </div>
+            <div class="endless-note">
+              {{ endlessNotice || 'Reach a stage in 5 classic runs to unlock it for endless.' }}
             </div>
           </div>
 
@@ -1142,6 +1217,54 @@ const markZoneSeen = (zone) => {
   }
 };
 
+// --- Endless-mode unlocks ---
+// Stage N endless unlocks after reaching stage N in STAGE_UNLOCK_RUNS
+// different classic runs (stage 1 is always open). Counters live in
+// localStorage so guests/offline work; logged-in players merge with the
+// server-side counters (RunnerController) via max, so unlocks survive
+// device switches and never regress.
+const STAGE_UNLOCK_RUNS = 5;
+const endlessStages = [
+  { n: 1, name: 'Lane Runner' },
+  { n: 2, name: 'Neon Drive' },
+  { n: 3, name: 'Sky Chase' },
+  { n: 4, name: 'The Void' },
+];
+const stageReaches = ref(
+  (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('runner_stage_reaches') || '{}');
+      return { 2: stored[2] || 0, 3: stored[3] || 0, 4: stored[4] || 0 };
+    } catch (error) {
+      return { 2: 0, 3: 0, 4: 0 };
+    }
+  })(),
+);
+const saveStageReaches = () => {
+  localStorage.setItem('runner_stage_reaches', JSON.stringify(stageReaches.value));
+};
+const mergeStageReaches = (server) => {
+  if (!server) return;
+  [2, 3, 4].forEach((stage) => {
+    const count = Number(server[stage]) || 0;
+    stageReaches.value[stage] = Math.max(stageReaches.value[stage], count);
+  });
+  saveStageReaches();
+};
+const stageUnlocked = (stage) =>
+  stage === 1 || stageReaches.value[stage] >= STAGE_UNLOCK_RUNS;
+
+// Highest stage (zone) the CURRENT run has reached; bumped by the zone
+// transitions, consumed once in finalizeRun and sent with run/end.
+let runMaxStage = 1;
+const markRunStage = (stage) => {
+  runMaxStage = Math.max(runMaxStage, stage);
+};
+
+// Mode of the next/current run. Menu Play starts classic, the endless tiles
+// set 'endless'; crash-screen "Run Again" reuses whatever is active.
+const runMode = ref('classic');
+
 const selectedCarSlug = ref(localStorage.getItem('runner_car_slug') || 'car-sedan-sports');
 const selectedPlaneSlug = ref(localStorage.getItem('runner_plane_slug') || 'plane-cesium');
 
@@ -1290,6 +1413,8 @@ const applyBanFlag = (banned) => {
 // Shared by the F9 key and the mobile cheat button.
 const devSkip = () => {
   if (state.value !== 'running') return;
+  // Endless is locked to its stage — no zone jumping, not even for devs.
+  if (runMode.value === 'endless') return;
   if (!finaleTriggered && finalePhase.value === 'none') {
     devRun.value = true;
     score.value = FINALE_SCORE;
@@ -1322,6 +1447,7 @@ const skipAvailable = computed(() => zone2Seen.value && zone1Fails.value >= 3);
 
 const playerSkip = () => {
   if (!skipAvailable.value) return;
+  if (runMode.value === 'endless') return;
   if (state.value !== 'running' || finalePhase.value !== 'none' || finaleTriggered) return;
   setZone1Fails(0);
   skippedRun.value = true;
@@ -1612,6 +1738,39 @@ const startRun = async () => {
     // running instead of blocking the start on a slow network round-trip.
     startRunSession();
   }
+};
+
+// Menu Play (left half): always a classic run.
+const startClassicRun = () => {
+  runMode.value = 'classic';
+  startRun();
+};
+
+// Endless carousel: locked tiles explain their unlock; unlocked stage 1
+// starts the endless run (stages 2–4 endless gameplay comes later).
+const endlessNotice = ref('');
+const tapEndlessStage = (stage) => {
+  if (!stageUnlocked(stage.n)) {
+    const count = Math.min(stageReaches.value[stage.n], STAGE_UNLOCK_RUNS);
+    endlessNotice.value = `Locked — reach Stage ${stage.n} in classic mode 5 times (${count}/5).`;
+    return;
+  }
+  if (stage.n > 1) {
+    endlessNotice.value = `Stage ${stage.n} endless is coming soon.`;
+    return;
+  }
+  endlessNotice.value = '';
+  runMode.value = 'endless';
+  startRun();
+};
+
+// Which half of the mode split is selected on the main menu; classic is the
+// default and shows the play button + world ranking.
+const menuMode = ref('classic');
+
+const openEndless = () => {
+  endlessNotice.value = '';
+  menuScreen.value = 'endless';
 };
 
 const openMenuScreen = (screen) => {
@@ -1905,6 +2064,7 @@ const loadProfile = async () => {
         selectedSkin.value = Number(data.profile.active_skin_id);
       }
       totalCoins.value = data.profile.coins ?? 0;
+      mergeStageReaches(data.profile.stage_reaches);
       inventoryItems.value = Array.isArray(data.inventory) ? data.inventory : [];
       claimedMissions.value = Array.isArray(data.mission_claims)
         ? data.mission_claims.map((i) => Number(i))
@@ -2117,6 +2277,7 @@ const startRunSession = async () => {
   try {
     const response = await axios.post('/api/runner/run/start', {
       level: selectedLevel.value,
+      mode: runMode.value,
     });
     // Ignore responses that arrive after another run has started since.
     if (seq === runSessionSeq) {
@@ -2136,6 +2297,7 @@ const resetRun = () => {
   devRun.value = false;
   score.value = 0;
   runCoins.value = 0;
+  runMaxStage = 1;
   speed.value = currentLevel.value.baseSpeed;
   spawnTimer = 0.7;
   currentLane = 1;
@@ -2244,6 +2406,17 @@ const finalizeRun = () => {
   if (!devRun.value) {
     recordDailyStats();
   }
+  // Endless unlock progress: each real classic run pays one tick per stage
+  // it reached. Local counters serve guests/offline; the server counts the
+  // same thing authoritatively for logged-in players (merged via max).
+  if (!devRun.value && runMode.value === 'classic') {
+    [2, 3, 4].forEach((stage) => {
+      if (runMaxStage >= stage) {
+        stageReaches.value[stage] += 1;
+      }
+    });
+    saveStageReaches();
+  }
   pendingRunEnd = persistRun();
   loadLeaderboard();
   // Every 3rd real run arms the persistent ad debt (native app only).
@@ -2334,6 +2507,7 @@ const persistRun = async () => {
   }
   const distance = Math.max(0, Math.floor(score.value));
   const maxSpeed = Number(speed.value.toFixed(2));
+  const reachedStage = runMaxStage;
 
   if (authUser.value) {
     // No run token means /run/start already failed (network/session), so
@@ -2346,6 +2520,7 @@ const persistRun = async () => {
         coins: runCoins.value,
         run_id: runToken.value,
         device_id: deviceId,
+        stage: reachedStage,
       });
       if (response.data && response.data.accepted === false) {
         runSaveNotice.value = hadToken && !response.data.guest ? 'unranked' : 'offline';
@@ -2357,6 +2532,9 @@ const persistRun = async () => {
       if (updated && typeof updated.coins === 'number') {
         totalCoins.value = updated.coins;
       }
+      if (updated) {
+        mergeStageReaches(updated.stage_reaches);
+      }
       loadProfile();
     } catch (error) {
       runSaveNotice.value = 'offline';
@@ -2364,16 +2542,20 @@ const persistRun = async () => {
     return;
   }
 
-  const storedBest = Number.parseInt(localStorage.getItem('runner_best_distance') || '0', 10);
-  const nextBest = Number.isFinite(storedBest)
-    ? Math.max(storedBest, distance)
-    : distance;
-  localStorage.setItem('runner_best_distance', String(nextBest));
-  bestScore.value = nextBest;
+  // Guest records are classic-only, mirroring the server: endless scores
+  // never touch best distance/speed (the ranking is a classic ranking).
+  if (runMode.value === 'classic') {
+    const storedBest = Number.parseInt(localStorage.getItem('runner_best_distance') || '0', 10);
+    const nextBest = Number.isFinite(storedBest)
+      ? Math.max(storedBest, distance)
+      : distance;
+    localStorage.setItem('runner_best_distance', String(nextBest));
+    bestScore.value = nextBest;
+    statBestSpeed.value = Math.max(statBestSpeed.value, maxSpeed);
+    localStorage.setItem('runner_best_speed', String(statBestSpeed.value));
+  }
   statTotalRuns.value += 1;
   localStorage.setItem('runner_total_runs', String(statTotalRuns.value));
-  statBestSpeed.value = Math.max(statBestSpeed.value, maxSpeed);
-  localStorage.setItem('runner_best_speed', String(statBestSpeed.value));
 };
 
 const clearObstacles = () => {
@@ -6304,6 +6486,7 @@ const triggerFinale = () => {
 const startDriving = () => {
   finalePhase.value = 'drive';
   markZoneSeen(2);
+  markRunStage(2);
   // Legitimately reaching zone 2 clears the stage-skip fail streak.
   if (!devRun.value) {
     setZone1Fails(0);
@@ -7580,6 +7763,7 @@ const doLaunch = () => {
 const enterPlane = () => {
   finalePhase.value = 'plane';
   markZoneSeen(3);
+  markRunStage(3);
   sfx.dock();
   if (carVisual) {
     player.remove(carVisual);
@@ -8068,6 +8252,7 @@ const updateCollapse = (delta) => {
 const enterVoid = () => {
   clearVoidObjects();
   finalePhase.value = 'void';
+  markRunStage(4);
   // There is no sky left in the void — cloud deck goes away.
   if (cloudCeiling) {
     scene.remove(cloudCeiling);
@@ -9162,7 +9347,9 @@ const updateRunner = (delta) => {
     const targetSpeed =
       level.baseSpeed + Math.min(3, score.value / level.stepDistance) * level.speedStep;
     speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, 4, delta);
-    if (!finaleTriggered && score.value >= FINALE_SCORE) {
+    // Endless mode never leaves its stage: the finale (zone 2 hand-off)
+    // stays off and the run just keeps going.
+    if (!finaleTriggered && runMode.value !== 'endless' && score.value >= FINALE_SCORE) {
       triggerFinale();
     }
   }
@@ -11337,6 +11524,327 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
+/* --- Mode split: Classic (left) | Endless (right) --- */
+.mode-split {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mode-card {
+  position: relative;
+  height: clamp(92px, 15vh, 140px);
+  border: none;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 3px;
+  overflow: hidden;
+  text-align: left;
+  background: rgba(8, 12, 24, 0.8);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  color: #eef6ff;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.mode-card:active {
+  transform: scale(0.97);
+}
+
+.mode-card.active {
+  box-shadow: inset 0 0 0 1px rgba(75, 232, 255, 0.55), 0 0 22px rgba(75, 232, 255, 0.16);
+}
+
+.mode-card-bg {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* Readability scrim over the stage art. */
+.mode-card-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(4, 6, 14, 0.18), rgba(4, 6, 14, 0.74));
+}
+
+/* Classic previews all four stages as a 2x2 grid. */
+.mode-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+}
+
+.stage-bg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Placeholder stage art until the real images land — each gradient mirrors
+   its zone palette (night city / sunrise drive / day sky / the void). */
+.stage-bg-1 {
+  background: linear-gradient(160deg, #16224a 0%, #05070f 55%, #073038 100%);
+}
+
+.stage-bg-2 {
+  background: linear-gradient(160deg, #2e1f45 0%, #703348 55%, #b06a4a 100%);
+}
+
+.stage-bg-3 {
+  background: linear-gradient(160deg, #aee0f8 0%, #58a7dc 55%, #2a6ea6 100%);
+}
+
+.stage-bg-4 {
+  background: linear-gradient(160deg, #221349 0%, #02010a 60%, #12062c 100%);
+}
+
+.mode-card-label {
+  position: relative;
+  font-family: var(--display);
+  font-size: clamp(0.9rem, 3.4vw, 1.15rem);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+
+.mode-card-sub {
+  position: relative;
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(214, 230, 255, 0.78);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+}
+
+/* --- World ranking panel (classic half, bottom) --- */
+.menu-worldrank {
+  width: 100%;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(13, 19, 36, 0.88), rgba(8, 12, 24, 0.88));
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.12);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  display: grid;
+  gap: 8px;
+}
+
+.worldrank-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.worldrank-title {
+  font-family: var(--display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(150, 190, 255, 0.7);
+}
+
+.worldrank-you {
+  font-family: var(--display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.worldrank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+  max-height: 104px;
+  overflow-y: auto;
+}
+
+.worldrank-list li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 0.78rem;
+  color: rgba(222, 236, 255, 0.9);
+}
+
+.worldrank-pos {
+  flex: none;
+  width: 1.6em;
+  font-family: var(--display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: rgba(150, 190, 255, 0.65);
+}
+
+.worldrank-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worldrank-score {
+  font-variant-numeric: tabular-nums;
+  color: rgba(160, 235, 255, 0.95);
+}
+
+.worldrank-empty {
+  font-size: 0.74rem;
+  color: rgba(190, 210, 240, 0.55);
+}
+
+/* --- Endless stage carousel --- */
+.endless-dock {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.endless-strip {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 10vw 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.endless-tile {
+  position: relative;
+  flex: none;
+  scroll-snap-align: center;
+  width: min(64vw, 250px);
+  height: min(60vh, 430px);
+  border: none;
+  padding: 22px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  overflow: hidden;
+  background: rgba(8, 12, 24, 0.8);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  color: #eef6ff;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.endless-tile:active {
+  transform: scale(0.97);
+}
+
+.endless-tile-bg {
+  position: absolute;
+  inset: 0;
+}
+
+.endless-tile-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(4, 6, 14, 0.55), rgba(4, 6, 14, 0.12) 38%, rgba(4, 6, 14, 0.6));
+}
+
+/* Locked: art greys out, lock sits dead center. */
+.endless-tile.locked .endless-tile-bg {
+  filter: grayscale(0.85) brightness(0.55);
+}
+
+.endless-tile.locked {
+  color: rgba(214, 228, 250, 0.75);
+}
+
+.endless-tile-head {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+}
+
+.endless-tile-stage {
+  font-family: var(--display);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  margin-left: 0.32em;
+  text-transform: uppercase;
+  color: rgba(190, 215, 255, 0.85);
+}
+
+.endless-tile-name {
+  font-family: var(--display);
+  font-size: clamp(1rem, 4vw, 1.3rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+}
+
+.endless-lock {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+}
+
+.endless-lock svg {
+  width: 52px;
+  height: 52px;
+  color: rgba(232, 240, 255, 0.92);
+  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.65));
+}
+
+.endless-lock-count {
+  font-family: var(--display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  margin-left: 0.26em;
+  color: rgba(212, 226, 250, 0.88);
+}
+
+.endless-tile-go {
+  position: relative;
+  padding: 9px 28px;
+  font-family: var(--display);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  margin-left: 0.3em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, rgba(120, 240, 255, 0.95), rgba(45, 160, 210, 0.95));
+  color: #04121c;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.endless-note {
+  min-height: 1.1em;
+  text-align: center;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: rgba(190, 210, 240, 0.7);
+}
+
 .menu-tiles {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -12174,6 +12682,19 @@ onBeforeUnmount(() => {
 
   .menu-hero {
     margin-top: 2vh;
+  }
+
+  .mode-card {
+    height: clamp(78px, 12vh, 110px);
+    padding: 10px 12px;
+  }
+
+  .worldrank-list {
+    max-height: 88px;
+  }
+
+  .endless-tile {
+    width: min(70vw, 240px);
   }
 
   .menu-tiles {

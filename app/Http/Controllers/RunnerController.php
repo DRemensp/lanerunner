@@ -41,6 +41,16 @@ class RunnerController extends Controller
 
     private const DRIVE_MAX_SPEED = 160.0;
 
+    // Endless unlocks: reach a stage in 5 different verified classic runs to
+    // unlock its endless tile (stage 1 is always open). The client reports
+    // the stage it reached; these distance floors clamp the claim so nobody
+    // farms stage counters with short runs. Stage 2 = FINALE (10k), stage 3 =
+    // ramp (20k), stage 4 = the void — it opens only after a mothership kill,
+    // which pays +2500 on top of the ramp score.
+    private const STAGE_MIN_DISTANCE = [2 => 10000, 3 => 20000, 4 => 22500];
+
+    private const STAGE_UNLOCK_RUNS = 5;
+
     // Past FINALE_DISTANCE the run leaves the runner speed curve entirely:
     // zone 2 driving pays 2.4 * speed (client-capped at 80), zones 3+ stack
     // flat kill bonuses on top (drones +600, motherships +2500) plus
@@ -104,6 +114,12 @@ class RunnerController extends Controller
                 'total_runs' => $profile->total_runs,
                 'coins' => $profile->coins,
                 'active_skin_id' => $profile->active_skin_id,
+                'stage_reaches' => [
+                    2 => $profile->stage2_reaches,
+                    3 => $profile->stage3_reaches,
+                    4 => $profile->stage4_reaches,
+                ],
+                'stage_unlock_runs' => self::STAGE_UNLOCK_RUNS,
             ],
             'skins' => $skins,
             'owned_skin_ids' => $user->skins()->pluck('skins.id')->values(),
@@ -119,6 +135,7 @@ class RunnerController extends Controller
     {
         $validated = $request->validate([
             'level' => ['required', 'string', Rule::in(array_keys(self::LEVELS))],
+            'mode' => ['nullable', 'string', Rule::in(['classic', 'endless'])],
         ]);
 
         $user = $request->user();
@@ -132,6 +149,7 @@ class RunnerController extends Controller
         $profile->active_run_id = (string) Str::uuid();
         $profile->run_started_at = now();
         $profile->run_level = $validated['level'];
+        $profile->run_mode = $validated['mode'] ?? 'classic';
         $profile->save();
 
         return response([
@@ -148,6 +166,7 @@ class RunnerController extends Controller
             'coins' => ['nullable', 'integer', 'min:0'],
             'run_id' => ['nullable', 'uuid'],
             'device_id' => ['nullable', 'string', 'max:64'],
+            'stage' => ['nullable', 'integer', 'min:1', 'max:4'],
         ]);
 
         $user = $request->user();
@@ -221,14 +240,30 @@ class RunnerController extends Controller
         $profile->last_run_at = now();
 
         $coinsEarned = 0;
+        $endlessRun = $profile->run_mode === 'endless';
 
         if ($verified) {
-            if ($distance > $profile->best_distance) {
-                $profile->best_distance = $distance;
-            }
+            // Endless runs never touch records or the leaderboard — the world
+            // ranking is classic-only. Coins still pay out below.
+            if (! $endlessRun) {
+                if ($distance > $profile->best_distance) {
+                    $profile->best_distance = $distance;
+                }
 
-            if ($maxSpeed > $profile->best_speed) {
-                $profile->best_speed = $maxSpeed;
+                if ($maxSpeed > $profile->best_speed) {
+                    $profile->best_speed = $maxSpeed;
+                }
+
+                // Stage-reach counters feed the endless unlocks: the client
+                // reports the stage the run reached, clamped by the distance
+                // floors so short runs can't farm counters.
+                $claimedStage = (int) ($validated['stage'] ?? 1);
+                foreach (self::STAGE_MIN_DISTANCE as $stage => $minDistance) {
+                    if ($claimedStage >= $stage && $distance >= $minDistance) {
+                        $column = "stage{$stage}_reaches";
+                        $profile->{$column} += 1;
+                    }
+                }
             }
 
             // Coins spawn as trails of up to ~8 per row plus jump arcs and
@@ -248,6 +283,7 @@ class RunnerController extends Controller
         $profile->active_run_id = null;
         $profile->run_started_at = null;
         $profile->run_level = null;
+        $profile->run_mode = null;
         $profile->save();
 
         return response([
@@ -259,6 +295,11 @@ class RunnerController extends Controller
                 'best_speed' => (float) $profile->best_speed,
                 'total_runs' => $profile->total_runs,
                 'coins' => $profile->coins,
+                'stage_reaches' => [
+                    2 => $profile->stage2_reaches,
+                    3 => $profile->stage3_reaches,
+                    4 => $profile->stage4_reaches,
+                ],
             ],
         ]);
     }
