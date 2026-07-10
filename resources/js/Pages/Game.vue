@@ -810,6 +810,23 @@
       </div>
     </div>
 
+    <!-- Ban lock: replaces the game entirely for banned devices/accounts.
+         Sits at gate level (z 8) so the bug-report modal (z 9) can open on
+         top of it for appeals. No close button — this screen IS the game now. -->
+    <div v-if="playerBanned" class="gate-overlay">
+      <div class="gate-card">
+        <div class="gate-title">Access Suspended</div>
+        <p>
+          This device or account has been suspended for violating fair play.
+          Runs, coins, and the leaderboard are no longer available.
+        </p>
+        <p>Think this is a mistake? Send a short appeal below.</p>
+        <div class="gate-actions">
+          <button class="ghost-btn" @click="openBugReport" type="button">Appeal</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Bug report: straight into the database, nothing else. -->
     <div v-if="showBugReport" class="modal-overlay" @click.self="closeBugReport">
       <div class="modal-card" @click.stop>
@@ -1259,6 +1276,17 @@ const deviceId = (() => {
 const logAdEvent = (type) => {
   axios.post('/api/runner/ad-event', { type, device_id: deviceId }).catch(() => {});
 };
+
+// Banned players (manual DB entry: runner_profiles.banned_at or a row in
+// banned_devices) are locked out of playing entirely — a full-screen
+// suspension overlay replaces the game. The flag is cached locally so the
+// lock also holds while offline; every successful profile load refreshes it,
+// so an unban lifts the lock on the next online start.
+const playerBanned = ref(localStorage.getItem('runner_banned') === '1');
+const applyBanFlag = (banned) => {
+  playerBanned.value = !!banned;
+  localStorage.setItem('runner_banned', banned ? '1' : '0');
+};
 // Shared by the F9 key and the mobile cheat button.
 const devSkip = () => {
   if (state.value !== 'running') return;
@@ -1541,7 +1569,7 @@ const getGroundCenterForSurface = (surfaceY, playerHeight) => surfaceY + playerH
 const currentGroundHeight = () => currentGroundCenter;
 
 const startRun = async () => {
-  if (!scene || state.value === 'crashing' || startingRun) return;
+  if (!scene || state.value === 'crashing' || startingRun || playerBanned.value) return;
   // Offline rate limit: one run per 5 minutes (native app only, see above).
   if (offlineCooldownRemaining() > 0) {
     openOfflineNotice();
@@ -1690,6 +1718,11 @@ const handleNativeBack = () => {
   }
   if (showBugReport.value) {
     closeBugReport();
+    return;
+  }
+  if (playerBanned.value) {
+    // Nothing to navigate on the ban screen — back means leave.
+    showExitConfirm.value = true;
     return;
   }
   if (showPlaylist.value) {
@@ -1849,8 +1882,11 @@ const loadProfile = async () => {
   loadingProfile.value = true;
 
   try {
-    const response = await axios.get('/api/runner/profile');
+    const response = await axios.get('/api/runner/profile', {
+      params: { device_id: deviceId },
+    });
     const { data } = response;
+    applyBanFlag(data.banned);
 
     if (Array.isArray(data.skins) && data.skins.length > 0) {
       skinOptions.value = normalizeSkins(data.skins);

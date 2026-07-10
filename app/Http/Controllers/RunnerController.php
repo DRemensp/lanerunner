@@ -62,10 +62,16 @@ class RunnerController extends Controller
             'is_default',
         ]);
 
+        // Ban check covers guests too: the client sends its device id along.
+        $deviceId = (string) $request->query('device_id', '');
+        $deviceBanned = $deviceId !== ''
+            && \App\Models\BannedDevice::where('device_id', $deviceId)->exists();
+
         $user = $request->user();
         if (! $user) {
             return response([
                 'guest' => true,
+                'banned' => $deviceBanned,
                 'skins' => $skins,
             ]);
         }
@@ -87,6 +93,7 @@ class RunnerController extends Controller
 
         return response([
             'guest' => false,
+            'banned' => $deviceBanned || $profile->banned_at !== null,
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -202,8 +209,11 @@ class RunnerController extends Controller
             }
         }
 
-        // Banned accounts keep playing, but nothing ranks or pays out.
-        if ($profile->banned_at) {
+        // Banned accounts/devices: nothing ranks or pays out, ever — the
+        // client additionally locks them out entirely via the profile flag.
+        $deviceBanned = ! empty($validated['device_id'])
+            && \App\Models\BannedDevice::where('device_id', $validated['device_id'])->exists();
+        if ($profile->banned_at || $deviceBanned) {
             $verified = false;
         }
 
