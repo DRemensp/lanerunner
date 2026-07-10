@@ -357,7 +357,6 @@
             <span class="menu-logo-top">Lane</span>
             <span class="menu-logo-main">Runner</span>
           </h1>
-          <div v-if="bestScore > 0" class="menu-best">Best {{ Math.floor(bestScore).toLocaleString() }}</div>
         </div>
 
         <!-- Mode split: two TALL columns filling the menu height. Left is
