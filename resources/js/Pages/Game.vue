@@ -350,6 +350,18 @@
     </div>
 
     <div v-if="state === 'menu' && !showAuthGate" class="menu-overlay">
+      <!-- Main-menu backdrop: slow Ken-Burns slideshow of the stage shots
+           instead of the raw live game scene. -->
+      <div v-if="menuScreen === 'main'" class="menu-backdrop" aria-hidden="true">
+        <div
+          v-for="(img, i) in menuBackdrops"
+          :key="img"
+          class="menu-backdrop-slide"
+          :class="{ active: i === menuBgIndex }"
+          :style="{ backgroundImage: `url(${img})` }"
+        ></div>
+        <div class="menu-backdrop-scrim"></div>
+      </div>
       <div v-if="menuScreen === 'main'" class="menu-layout">
         <div class="menu-hero">
           <div class="menu-eyebrow">Neon Night City</div>
@@ -387,7 +399,7 @@
           <nav class="menu-tiles">
             <button class="menu-tile" @click="openMenuScreen('level')" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5L4 6.2l1.7 3.5L8 8.6V20h8V8.6l2.3 1.1L20 6.2l-4.5-2.7a3.5 3.5 0 01-7 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-              <span>Collection</span>
+              <span>Store</span>
             </button>
             <button class="menu-tile" @click="openMenuScreen('missions')" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>
@@ -433,7 +445,7 @@
             <div class="menu-screen-title">
               {{
                 menuScreen === 'level'
-                  ? 'Collection'
+                  ? 'Store'
                   : menuScreen === 'missions'
                       ? 'Daily Missions'
                       : menuScreen === 'classic'
@@ -1070,6 +1082,33 @@ const loadingProfile = ref(false);
 const runToken = ref(null);
 const inventoryItems = ref([]);
 const menuScreen = ref('main');
+
+// Main-menu backdrop slideshow: the stage shots crossfade with a slow
+// Ken-Burns drift while the player sits on the main menu; the timer stops
+// on subscreens and during runs.
+const menuBackdrops = [
+  '/images/stages/stage-1-wide.jpg',
+  '/images/stages/stage-2-wide.jpg',
+  '/images/stages/stage-3-wide.jpg',
+  '/images/stages/stage-4-wide.jpg',
+];
+const menuBgIndex = ref(0);
+let menuBgTimer = null;
+watch(
+  [state, menuScreen],
+  () => {
+    const active = state.value === 'menu' && menuScreen.value === 'main';
+    if (active && !menuBgTimer) {
+      menuBgTimer = setInterval(() => {
+        menuBgIndex.value = (menuBgIndex.value + 1) % menuBackdrops.length;
+      }, 7000);
+    } else if (!active && menuBgTimer) {
+      clearInterval(menuBgTimer);
+      menuBgTimer = null;
+    }
+  },
+  { immediate: true },
+);
 const showLoginPrompt = ref(false);
 const showAuthGate = ref(false);
 const cameraZoom = ref(1);
@@ -10299,6 +10338,10 @@ onBeforeUnmount(() => {
       clearTimeout(timer);
     }
   });
+  if (menuBgTimer) {
+    clearInterval(menuBgTimer);
+    menuBgTimer = null;
+  }
   if (pointerUnlockHandler) {
     window.removeEventListener('pointerdown', pointerUnlockHandler);
   }
@@ -11323,6 +11366,58 @@ onBeforeUnmount(() => {
     linear-gradient(180deg, rgba(5, 7, 15, 0.92) 0%, rgba(5, 7, 15, 0.55) 45%, rgba(5, 7, 15, 0.88) 100%);
   z-index: 3;
   animation: fadeIn 0.5s ease;
+}
+
+/* --- Main-menu backdrop slideshow: stage shots crossfading with a slow
+   Ken-Burns drift, dimmed hard so the menu stays readable. --- */
+.menu-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.menu-overlay > .menu-layout,
+.menu-overlay > .menu-screen {
+  position: relative;
+  z-index: 1;
+}
+
+.menu-backdrop-slide {
+  position: absolute;
+  inset: -5%;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 1.8s ease;
+  animation: menu-kenburns 20s ease-in-out infinite alternate;
+  will-change: opacity, transform;
+}
+
+/* Stagger the drift so neighbouring slides never move in lockstep. */
+.menu-backdrop-slide:nth-child(2n) {
+  animation-duration: 26s;
+  animation-direction: alternate-reverse;
+}
+
+.menu-backdrop-slide.active {
+  opacity: 1;
+}
+
+@keyframes menu-kenburns {
+  from {
+    transform: scale(1) translateX(-1%);
+  }
+  to {
+    transform: scale(1.09) translateX(1%);
+  }
+}
+
+.menu-backdrop-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% -12%, rgba(60, 130, 220, 0.14), transparent 55%),
+    linear-gradient(180deg, rgba(5, 7, 15, 0.9) 0%, rgba(5, 7, 15, 0.68) 45%, rgba(5, 7, 15, 0.9) 100%);
 }
 
 .menu-layout {
@@ -12601,6 +12696,8 @@ onBeforeUnmount(() => {
 .skin-cell-name {
   line-height: 1.3;
   text-align: center;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 .skin-cell-sub {
@@ -13120,6 +13217,12 @@ onBeforeUnmount(() => {
     width: 100%;
   }
 
+  /* Phones: exactly 3 collection cells per row, cells may shrink below
+     their content width (minmax 0) so the grid never overflows the dock. */
+  .skin-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .menu-hero {
     margin-top: 2vh;
   }
@@ -13176,6 +13279,10 @@ onBeforeUnmount(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .play-btn::after {
+    animation: none;
+  }
+
+  .menu-backdrop-slide {
     animation: none;
   }
 

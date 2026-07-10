@@ -13,7 +13,7 @@ const buildTrack = (id, title, file) => ({
 });
 
 export function createAudioSystem({ state, speed }) {
-  const audioVolume = ref(0.7);
+  const audioVolume = ref(0.3);
   const isMuted = ref(false);
   const isPaused = ref(false);
   const currentTrackName = ref('');
@@ -51,8 +51,8 @@ export function createAudioSystem({ state, speed }) {
   let musicDuckCurrent = 1;
 
   const loadAudioPrefs = () => {
-    const storedVolume = Number.parseFloat(localStorage.getItem('runner_audio_volume') || '0.7');
-    audioVolume.value = Number.isFinite(storedVolume) ? storedVolume : 0.7;
+    const storedVolume = Number.parseFloat(localStorage.getItem('runner_audio_volume') || '0.3');
+    audioVolume.value = Number.isFinite(storedVolume) ? storedVolume : 0.3;
     isMuted.value = localStorage.getItem('runner_audio_muted') === '1';
 
     const disabled = localStorage.getItem('runner_audio_disabled');
