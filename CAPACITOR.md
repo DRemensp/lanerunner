@@ -14,53 +14,48 @@ web/PWA build is untouched: all ad code is a no-op in a browser
   - **Interstitial** every 3rd completed run, shown on "Run Again" (never over the death stats).
   - **Rewarded revive**, one per run: green button on the death screen, resumes the run with a 3s grace. The run is persisted **once**, at the true end — a revive defers it so the longer score still ranks.
 
-## One-time native setup (on your machine, needs Android Studio)
+## Native project status (already done, committed in `android/`)
+
+- `npx cap add android` has been run — the `android/` Gradle project is in the
+  repo (Capacitor treats it as source, not a build artifact).
+- The real AdMob **App ID** (`ca-app-pub-6027355044047549~5722748890`) is
+  already in `android/app/src/main/AndroidManifest.xml`.
+- Both real **ad-unit IDs** are in `PROD_IDS` in `resources/js/game/ads.js`.
+- Package id: `com.onforge.lanerunner` (fresh Play listing; the old
+  `…lanerunner.twa` id was never published, so it was free to replace).
+
+After changing web code, plugins, or `capacitor.config.ts`, run:
 
 ```bash
-npm install                 # pulls the Capacitor + AdMob packages
-npx cap add android         # scaffolds the android/ Gradle project
-npx cap sync                # copies config + installs the AdMob native plugin
+npx cap sync android
 ```
 
-### 1. Add your AdMob **App ID** (required — the app crashes on launch without it)
-
-The App ID is NOT the same as an ad-unit ID. In
-`android/app/src/main/AndroidManifest.xml`, inside `<application>`:
-
-```xml
-<meta-data
-    android:name="com.google.android.gms.ads.APPLICATION_ID"
-    android:value="ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY"/>
-```
-
-For development you can use Google's **test App ID**:
-`ca-app-pub-3940256099942544~3347511713`.
-
-### 2. Build & run
+## Build & run (needs Android Studio)
 
 ```bash
 npx cap open android        # opens Android Studio → Run on device/emulator
 ```
 
+With `USE_TEST = true` (current state) the app shows Google's official test
+ads — safe for your account, full flow testable.
+
 ## Going live (flip from test ads to real money)
 
-In `resources/js/game/ads.js`:
-
-1. Paste your real ad-unit IDs into `PROD_IDS` (`interstitial`, `rewarded`).
-2. Set `USE_TEST = false`.
-3. Put your real AdMob **App ID** in the manifest (step 1 above).
-4. Redeploy the web build (the app loads it remotely) and rebuild the Android app.
+1. In `resources/js/game/ads.js`: set `USE_TEST = false` (the real ad-unit IDs
+   are already in `PROD_IDS`).
+2. Deploy the website — the app loads the game remotely, so the flip ships via
+   Forge, no app rebuild needed.
 
 > Keep `USE_TEST = true` while developing. Showing **live** ads on your own
-> device can get the AdMob account flagged. The defaults are Google's official
-> **test** ad units, which serve safe placeholder ads.
+> device can get the AdMob account flagged.
 
 ## Play listing / signing
 
-`appId` in `capacitor.config.ts` is set to the existing TWA package
-(`com.on_forge.lanerunner.twa`). To **replace the current listing in place**,
-keep this id, sign with the **same** keystore as the TWA, and bump the
-`versionCode`. To publish a fresh listing instead, change the `appId`.
+First upload creates a new listing under `com.onforge.lanerunner` — this id can
+NEVER change afterwards. Build a signed bundle in Android Studio (Build →
+Generate Signed App Bundle; create a new keystore and BACK IT UP) or use Play
+App Signing. Remember: mark "Contains ads" + fill the Data safety form in the
+Play Console, and link the app to the AdMob entry once it's live.
 
 ## Notes
 

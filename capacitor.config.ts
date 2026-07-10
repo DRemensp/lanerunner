@@ -6,10 +6,9 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // (AdMob). To ship a fully offline/bundled build instead, drop `server.url`
 // and point `webDir` at a static export of the game.
 const config: CapacitorConfig = {
-  // Keep this equal to the existing Play listing's applicationId (and sign with
-  // the same key) to UPDATE the current app in place. Change it only to publish
-  // a brand-new listing.
-  appId: 'com.on_forge.lanerunner.twa',
+  // Package id of the (future) Play listing. Nothing is published yet, so this
+  // was free to choose — after the FIRST Play upload it can never change.
+  appId: 'com.onforge.lanerunner',
   appName: 'Neon Rail Dash',
   webDir: 'capacitor/www',
   server: {
