@@ -411,6 +411,7 @@
               <span class="stage-bg stage-bg-1"></span>
             </span>
             <span class="mode-card-label">Endless</span>
+            <span class="endless-infinity" aria-hidden="true">&infin;</span>
             <span class="mode-card-sub">One stage, no finish<br />Tap to pick a stage</span>
           </button>
         </div>
@@ -11707,12 +11708,19 @@ onBeforeUnmount(() => {
   display: block;
 }
 
-/* Readability scrim over the stage art. */
+/* Light readability scrim: just enough for the label at the top and the
+   hint at the bottom — the stage art itself stays vivid. */
 .mode-card-bg::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(4, 6, 14, 0.42), rgba(4, 6, 14, 0.22) 40%, rgba(4, 6, 14, 0.66));
+  background: linear-gradient(
+    180deg,
+    rgba(4, 6, 14, 0.6) 0%,
+    rgba(4, 6, 14, 0.05) 20%,
+    rgba(4, 6, 14, 0.05) 72%,
+    rgba(4, 6, 14, 0.55) 100%
+  );
 }
 
 /* Classic previews all four stages stacked vertically (1x4). */
@@ -11720,16 +11728,52 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: repeat(4, 1fr);
-  gap: 2px;
+  gap: 3px;
+  background: rgba(4, 6, 14, 0.9);
 }
 
-/* Middle of the classic column: play button + difficulty toggle. */
+/* Middle of the classic column: play button + difficulty toggle on a glass
+   panel so they never swim on the stage art. */
 .mode-card-middle {
   position: relative;
   width: 100%;
   display: grid;
   justify-items: center;
   gap: 12px;
+  padding: 14px 10px;
+  background: rgba(5, 8, 18, 0.55);
+  backdrop-filter: blur(7px);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+
+/* Narrow column: the toggle must never overflow the glass panel — shrink
+   the labels instead and keep each on one line. */
+.mode-card-middle .difficulty-row {
+  width: 100%;
+  min-width: 0;
+}
+
+.mode-card-middle .difficulty-toggle {
+  max-width: 100%;
+}
+
+.mode-card-middle .difficulty-toggle button {
+  white-space: nowrap;
+  font-size: clamp(0.5rem, 1.8vw, 0.62rem);
+  padding: 8px 8px;
+  letter-spacing: 0.1em;
+}
+
+/* Big soft infinity filling the endless column's center. */
+.endless-infinity {
+  position: relative;
+  font-family: var(--display);
+  font-size: clamp(3.4rem, 12vw, 5.2rem);
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(170, 240, 255, 0.92);
+  text-shadow: 0 0 34px rgba(46, 229, 255, 0.6), 0 0 90px rgba(46, 229, 255, 0.3);
 }
 
 .stage-bg {
@@ -11738,22 +11782,40 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-/* Placeholder stage art until the real images land — each gradient mirrors
-   its zone palette (night city / sunrise drive / day sky / the void). */
+/* Placeholder stage art until the real images land — layered glows so each
+   stage reads as a scene, not a flat stripe: neon night city, sunrise
+   highway, daylight sky, deep-space void. */
 .stage-bg-1 {
-  background: linear-gradient(160deg, #16224a 0%, #05070f 55%, #073038 100%);
+  background:
+    radial-gradient(130% 70% at 50% 108%, rgba(46, 229, 255, 0.4), transparent 62%),
+    radial-gradient(55% 45% at 16% 88%, rgba(191, 123, 255, 0.3), transparent 70%),
+    radial-gradient(40% 35% at 84% 78%, rgba(46, 229, 255, 0.18), transparent 70%),
+    linear-gradient(180deg, #05070f 0%, #0b1430 60%, #101d42 100%);
 }
 
 .stage-bg-2 {
-  background: linear-gradient(160deg, #2e1f45 0%, #703348 55%, #b06a4a 100%);
+  background:
+    radial-gradient(75% 60% at 50% 102%, rgba(255, 200, 130, 0.85), rgba(214, 116, 76, 0.35) 55%, transparent 78%),
+    radial-gradient(45% 40% at 78% 86%, rgba(255, 140, 120, 0.3), transparent 70%),
+    linear-gradient(180deg, #241a3e 0%, #4a2647 55%, #8a4437 100%);
 }
 
 .stage-bg-3 {
-  background: linear-gradient(160deg, #aee0f8 0%, #58a7dc 55%, #2a6ea6 100%);
+  background:
+    radial-gradient(85% 65% at 50% 6%, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(50% 40% at 24% 70%, rgba(255, 255, 255, 0.22), transparent 70%),
+    linear-gradient(180deg, #a3daf6 0%, #5da9dd 60%, #2a6ea6 100%);
 }
 
 .stage-bg-4 {
-  background: linear-gradient(160deg, #221349 0%, #02010a 60%, #12062c 100%);
+  background:
+    radial-gradient(2px 2px at 22% 28%, rgba(255, 255, 255, 0.95), transparent 55%),
+    radial-gradient(1.6px 1.6px at 68% 18%, rgba(255, 255, 255, 0.8), transparent 55%),
+    radial-gradient(1.6px 1.6px at 84% 62%, rgba(255, 255, 255, 0.75), transparent 55%),
+    radial-gradient(1.4px 1.4px at 42% 74%, rgba(255, 255, 255, 0.7), transparent 55%),
+    radial-gradient(1.8px 1.8px at 12% 56%, rgba(255, 255, 255, 0.8), transparent 55%),
+    radial-gradient(70% 55% at 50% 88%, rgba(168, 143, 255, 0.38), transparent 72%),
+    linear-gradient(180deg, #040112 0%, #0d0524 60%, #1c0f3e 100%);
 }
 
 .mode-card-label {
