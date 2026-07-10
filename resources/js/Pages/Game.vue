@@ -11875,6 +11875,7 @@ onBeforeUnmount(() => {
 
 .stage-bg {
   display: block;
+  position: relative;
   width: 100%;
   height: 100%;
   background-color: #05070f;
@@ -11882,22 +11883,59 @@ onBeforeUnmount(() => {
   background-position: center;
 }
 
+/* Shader-style finish over every stage shot so it reads as designed art,
+   not a pasted screenshot: fine scanlines, a cool neon wash from the top
+   and a soft vignette pulling the edges into the card. */
+.stage-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(3, 6, 14, 0.18) 0,
+      rgba(3, 6, 14, 0.18) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    linear-gradient(180deg, rgba(46, 229, 255, 0.1), transparent 34%),
+    radial-gradient(130% 105% at 50% 45%, transparent 52%, rgba(3, 5, 12, 0.62) 100%);
+}
+
 /* Real in-game shots (public/images/stages, cached by the SW): night city
-   run, drive traffic, sky chase, deep-space void. */
+   run, drive traffic, sky chase, deep-space void. Wide crops fill the
+   Classic 1x4 strips, tall crops fill the portrait endless card + tiles. */
 .stage-bg-1 {
-  background-image: url('/images/stages/stage-1.jpg');
+  background-image: url('/images/stages/stage-1-wide.jpg');
 }
 
 .stage-bg-2 {
-  background-image: url('/images/stages/stage-2.jpg');
+  background-image: url('/images/stages/stage-2-wide.jpg');
 }
 
 .stage-bg-3 {
-  background-image: url('/images/stages/stage-3.jpg');
+  background-image: url('/images/stages/stage-3-wide.jpg');
 }
 
 .stage-bg-4 {
-  background-image: url('/images/stages/stage-4.jpg');
+  background-image: url('/images/stages/stage-4-wide.jpg');
+}
+
+.mode-card-endless .stage-bg-1,
+.endless-tile-bg.stage-bg-1 {
+  background-image: url('/images/stages/stage-1-tall.jpg');
+}
+
+.endless-tile-bg.stage-bg-2 {
+  background-image: url('/images/stages/stage-2-tall.jpg');
+}
+
+.endless-tile-bg.stage-bg-3 {
+  background-image: url('/images/stages/stage-3-tall.jpg');
+}
+
+.endless-tile-bg.stage-bg-4 {
+  background-image: url('/images/stages/stage-4-tall.jpg');
 }
 
 .mode-card-label {
