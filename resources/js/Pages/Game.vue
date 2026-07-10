@@ -797,6 +797,18 @@
       </div>
     </div>
 
+    <!-- Android hardware back on the main menu: confirm before leaving. -->
+    <div v-if="showExitConfirm" class="modal-overlay" @click.self="showExitConfirm = false">
+      <div class="modal-card" @click.stop>
+        <div class="modal-title">Leave the game?</div>
+        <p>Your coins and progress are saved.</p>
+        <div class="modal-actions">
+          <button class="ghost-btn small" @click="showExitConfirm = false" type="button">Stay</button>
+          <button class="primary-btn small" @click="confirmExit" type="button">Exit</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -1405,6 +1417,61 @@ const quitRun = () => {
 const menuFromCrash = () => {
   finalizeRun();
   quitRun();
+};
+
+// --- Android hardware back button (native app only) ---
+// One step back per press, innermost layer first; on the bare main menu it
+// asks for confirmation instead of killing the app. Registered in onMounted
+// via the @capacitor/app plugin — registering a listener disables Capacitor's
+// default back behavior (which would close the app).
+const showExitConfirm = ref(false);
+
+const confirmExit = () => {
+  showExitConfirm.value = false;
+  window.Capacitor?.Plugins?.App?.exitApp?.();
+};
+
+const handleNativeBack = () => {
+  if (showExitConfirm.value) {
+    showExitConfirm.value = false;
+    return;
+  }
+  if (showPlaylist.value) {
+    showPlaylist.value = false;
+    return;
+  }
+  if (showLoginPrompt.value) {
+    showLoginPrompt.value = false;
+    return;
+  }
+  if (showAuthGate.value) {
+    showExitConfirm.value = true;
+    return;
+  }
+  if (state.value === 'running') {
+    pauseRun();
+    return;
+  }
+  if (state.value === 'paused') {
+    resumeRun();
+    return;
+  }
+  if (state.value === 'crashed') {
+    menuFromCrash();
+    return;
+  }
+  if (state.value === 'crashing') {
+    return;
+  }
+  if (state.value === 'gallery') {
+    exitGallery();
+    return;
+  }
+  if (menuScreen.value !== 'main') {
+    backToMainMenu();
+    return;
+  }
+  showExitConfirm.value = true;
 };
 
 const startGallery = () => {
@@ -9554,6 +9621,10 @@ onMounted(() => {
   animate(0);
   // AdMob (native Google-Play build only — no-op on web/PWA).
   initAds();
+  // Hardware back button (native app only; browsers never fire this).
+  if (adsSupported()) {
+    window.Capacitor?.Plugins?.App?.addListener?.('backButton', handleNativeBack);
+  }
 });
 
 onBeforeUnmount(() => {
@@ -10656,8 +10727,10 @@ onBeforeUnmount(() => {
 
 .audio-pill {
   position: absolute;
+  /* Top-RIGHT: the top-left corner belongs to the menu screens' back button,
+     which this pill used to cover. */
   top: calc(24px + env(safe-area-inset-top));
-  left: calc(24px + env(safe-area-inset-left));
+  right: calc(24px + env(safe-area-inset-right));
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -10716,7 +10789,7 @@ onBeforeUnmount(() => {
 .audio-panel {
   position: absolute;
   top: calc(76px + env(safe-area-inset-top));
-  left: calc(24px + env(safe-area-inset-left));
+  right: calc(24px + env(safe-area-inset-right));
   width: min(320px, 92vw);
   padding: 16px;
   border-radius: 16px;
@@ -11714,7 +11787,7 @@ onBeforeUnmount(() => {
 
   .audio-pill {
     top: calc(16px + env(safe-area-inset-top));
-    left: 16px;
+    right: 16px;
   }
 
   .audio-pill.running {
