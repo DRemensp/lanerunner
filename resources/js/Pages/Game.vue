@@ -11923,7 +11923,7 @@ onBeforeUnmount(() => {
 
 .mode-card-endless .stage-bg-1,
 .endless-tile-bg.stage-bg-1 {
-  background-image: url('/images/stages/stage-1-tall.jpg');
+  background-image: url('/images/stages/stage-1-endless.jpg');
 }
 
 .endless-tile-bg.stage-bg-2 {
