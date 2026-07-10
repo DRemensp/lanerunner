@@ -361,8 +361,7 @@
         </div>
 
         <!-- Mode split: two TALL columns filling the menu height. Left is
-             Classic (the full journey) with the play button in its middle
-             and the world ranking at its bottom; right is Endless, opening
+             Classic (the full journey), right is Endless, opening
              the swipeable stage carousel. Backgrounds are placeholder
              gradients until the real stage art lands: Classic stacks all
              four stages vertically (1x4), Endless shows only stage 1. -->
@@ -372,38 +371,6 @@
               <span v-for="stage in endlessStages" :key="stage.n" :class="'stage-bg stage-bg-' + stage.n"></span>
             </span>
             <span class="mode-card-label">Classic</span>
-            <div class="mode-card-middle">
-              <button class="play-btn" @click="startClassicRun" type="button">Play</button>
-              <div class="difficulty-row">
-                <span class="difficulty-label">Mode</span>
-                <div class="difficulty-toggle">
-                  <button
-                    v-for="level in levelOptions"
-                    :key="level.id"
-                    :class="{ active: selectedLevel === level.id }"
-                    @click="setLevel(level.id)"
-                    type="button"
-                  >
-                    {{ level.label }}
-                  </button>
-                </div>
-              </div>
-            </div>
-            <!-- World ranking at the bottom of the classic column. -->
-            <div class="menu-worldrank">
-              <div class="worldrank-head">
-                <span class="worldrank-title">World Ranking</span>
-                <span v-if="yourRank" class="worldrank-you">You #{{ yourRank }}</span>
-              </div>
-              <ol v-if="leaderboard.length" class="worldrank-list" data-allow-scroll>
-                <li v-for="(leader, index) in leaderboard" :key="index">
-                  <span class="worldrank-pos">{{ index + 1 }}</span>
-                  <span class="worldrank-name">{{ leader.name }}</span>
-                  <span class="worldrank-score">{{ Math.floor(leader.best_distance).toLocaleString() }}</span>
-                </li>
-              </ol>
-              <div v-else class="worldrank-empty">No ranked runs yet.</div>
-            </div>
           </div>
 
           <button class="mode-card mode-card-endless" @click="openEndless" type="button">
