@@ -13238,19 +13238,6 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  /* Phones: the mode cards sit flush — no gap between them and full bleed
-     through the layout's 22px side padding. */
-  .mode-split {
-    gap: 0;
-    width: calc(100% + 44px);
-    margin-left: -22px;
-    margin-right: -22px;
-  }
-
-  .mode-card {
-    clip-path: none;
-  }
-
   .menu-hero {
     margin-top: 2vh;
   }
