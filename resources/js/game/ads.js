@@ -98,9 +98,13 @@ async function preloadInterstitial() {
 // The plugin's show() promise settles when the video finishes — at that point
 // the end card (with its X) still covers the screen, and resuming the game
 // there means playing blind behind the ad. So the Dismissed event is the only
-// success signal; the WebView regaining visibility is the backup (in case the
-// event gets lost), and a generous watchdog is the last resort so the game can
+// success signal, with a generous watchdog as the last resort so the game can
 // never hang forever.
+//
+// Deliberately NO visibilitychange backup: app-switching DURING an ad (video
+// pauses, player returns later) produces hidden→visible flips while the ad is
+// still open — a backup keyed on visibility settles the promise too early and
+// eats the earned reward (real bug, found on device).
 function runFullScreenAd({ show, dismissed, failed, rewarded = null }) {
   return new Promise((resolve) => {
     // Interstitials have nothing to earn — they start "successful".
@@ -108,13 +112,11 @@ function runFullScreenAd({ show, dismissed, failed, rewarded = null }) {
     let settled = false;
     let watchdog = null;
     const handles = [];
-    const cleanups = [];
     const finish = (value) => {
       if (settled) return;
       settled = true;
       if (watchdog) clearTimeout(watchdog);
       handles.forEach((h) => h?.remove?.());
-      cleanups.forEach((fn) => fn());
       resolve(value);
     };
     const listen = async (event, cb) => {
@@ -134,25 +136,15 @@ function runFullScreenAd({ show, dismissed, failed, rewarded = null }) {
     listen(dismissed, () => finish(got));
     listen(failed, () => finish(false));
 
-    // Backup close signal: the page going hidden→visible means the native ad
-    // activity left the foreground.
-    let wasHidden = false;
-    const onVisibility = () => {
-      if (document.hidden) {
-        wasHidden = true;
-      } else if (wasHidden) {
-        finish(got);
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    cleanups.push(() => document.removeEventListener('visibilitychange', onVisibility));
+    // Armed from the start, so even an ad that dies without any event (killed
+    // activity, lost callbacks) can never strand the player on a dead button.
+    // No ad runs anywhere near this long.
+    watchdog = setTimeout(() => finish(got), 180000);
 
     show()
       .then((result) => {
         if (result) got = true;
-        // Do NOT finish here — wait for Dismissed. Watchdog only guards
-        // against a lost event; no ad runs anywhere near this long.
-        watchdog = setTimeout(() => finish(got), 180000);
+        // Do NOT finish here — wait for Dismissed: the end card is still up.
       })
       .catch(() => finish(false));
   });
