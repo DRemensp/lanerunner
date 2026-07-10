@@ -360,68 +360,62 @@
           <div v-if="bestScore > 0" class="menu-best">Best {{ Math.floor(bestScore).toLocaleString() }}</div>
         </div>
 
-        <!-- Mode split: left half Classic (the full journey), right half
-             Endless (per-stage, opens the swipeable stage carousel).
-             Backgrounds are placeholder gradients until the real stage art
-             lands: Classic previews all four stages in a 2x2 grid, Endless
-             shows only stage 1. -->
+        <!-- Mode split: two TALL columns filling the menu height. Left is
+             Classic (the full journey) with the play button in its middle
+             and the world ranking at its bottom; right is Endless, opening
+             the swipeable stage carousel. Backgrounds are placeholder
+             gradients until the real stage art lands: Classic stacks all
+             four stages vertically (1x4), Endless shows only stage 1. -->
         <div class="mode-split">
-          <button
-            class="mode-card"
-            :class="{ active: menuMode === 'classic' }"
-            @click="menuMode = 'classic'"
-            type="button"
-          >
-            <span class="mode-card-bg mode-card-grid" aria-hidden="true">
+          <div class="mode-card active">
+            <span class="mode-card-bg mode-card-stack" aria-hidden="true">
               <span v-for="stage in endlessStages" :key="stage.n" :class="'stage-bg stage-bg-' + stage.n"></span>
             </span>
             <span class="mode-card-label">Classic</span>
-            <span class="mode-card-sub">The full journey</span>
-          </button>
-          <button class="mode-card" @click="openEndless" type="button">
+            <div class="mode-card-middle">
+              <button class="play-btn" @click="startClassicRun" type="button">Play</button>
+              <div class="difficulty-row">
+                <span class="difficulty-label">Mode</span>
+                <div class="difficulty-toggle">
+                  <button
+                    v-for="level in levelOptions"
+                    :key="level.id"
+                    :class="{ active: selectedLevel === level.id }"
+                    @click="setLevel(level.id)"
+                    type="button"
+                  >
+                    {{ level.label }}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <!-- World ranking at the bottom of the classic column. -->
+            <div class="menu-worldrank">
+              <div class="worldrank-head">
+                <span class="worldrank-title">World Ranking</span>
+                <span v-if="yourRank" class="worldrank-you">You #{{ yourRank }}</span>
+              </div>
+              <ol v-if="leaderboard.length" class="worldrank-list" data-allow-scroll>
+                <li v-for="(leader, index) in leaderboard" :key="index">
+                  <span class="worldrank-pos">{{ index + 1 }}</span>
+                  <span class="worldrank-name">{{ leader.name }}</span>
+                  <span class="worldrank-score">{{ Math.floor(leader.best_distance).toLocaleString() }}</span>
+                </li>
+              </ol>
+              <div v-else class="worldrank-empty">No ranked runs yet.</div>
+            </div>
+          </div>
+
+          <button class="mode-card mode-card-endless" @click="openEndless" type="button">
             <span class="mode-card-bg" aria-hidden="true">
               <span class="stage-bg stage-bg-1"></span>
             </span>
             <span class="mode-card-label">Endless</span>
-            <span class="mode-card-sub">One stage, no finish</span>
+            <span class="mode-card-sub">One stage, no finish<br />Tap to pick a stage</span>
           </button>
         </div>
 
-        <div class="menu-center">
-          <button class="play-btn" @click="startClassicRun" type="button">Play</button>
-          <div class="difficulty-row">
-            <span class="difficulty-label">Mode</span>
-            <div class="difficulty-toggle">
-              <button
-                v-for="level in levelOptions"
-                :key="level.id"
-                :class="{ active: selectedLevel === level.id }"
-                @click="setLevel(level.id)"
-                type="button"
-              >
-                {{ level.label }}
-              </button>
-            </div>
-          </div>
-        </div>
-
         <div class="menu-bottom">
-          <!-- World ranking under the classic half: top 10 + own rank. -->
-          <div v-if="menuMode === 'classic'" class="menu-worldrank">
-            <div class="worldrank-head">
-              <span class="worldrank-title">World Ranking</span>
-              <span v-if="yourRank" class="worldrank-you">You #{{ yourRank }}</span>
-            </div>
-            <ol v-if="leaderboard.length" class="worldrank-list" data-allow-scroll>
-              <li v-for="(leader, index) in leaderboard" :key="index">
-                <span class="worldrank-pos">{{ index + 1 }}</span>
-                <span class="worldrank-name">{{ leader.name }}</span>
-                <span class="worldrank-score">{{ Math.floor(leader.best_distance).toLocaleString() }}</span>
-              </li>
-            </ol>
-            <div v-else class="worldrank-empty">No ranked runs yet.</div>
-          </div>
-
           <nav class="menu-tiles">
             <button class="menu-tile" @click="openMenuScreen('level')" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5L4 6.2l1.7 3.5L8 8.6V20h8V8.6l2.3 1.1L20 6.2l-4.5-2.7a3.5 3.5 0 01-7 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
@@ -11560,12 +11554,6 @@ onBeforeUnmount(() => {
   letter-spacing: 0.08em;
 }
 
-.menu-center {
-  width: 100%;
-  display: grid;
-  justify-items: center;
-  gap: 16px;
-}
 
 .play-btn {
   width: min(320px, 100%);
@@ -11670,36 +11658,43 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
-/* --- Mode split: Classic (left) | Endless (right) --- */
+/* --- Mode split: Classic (left) | Endless (right), two TALL columns
+   filling the space between the hero and the bottom nav. --- */
 .mode-split {
   width: 100%;
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
 .mode-card {
   position: relative;
-  height: clamp(92px, 15vh, 140px);
+  height: 100%;
+  min-height: 0;
   border: none;
-  padding: 12px 14px;
+  padding: 16px 12px 12px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  align-items: flex-start;
-  gap: 3px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
   overflow: hidden;
-  text-align: left;
+  text-align: center;
   background: rgba(8, 12, 24, 0.8);
   box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.14);
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
   color: #eef6ff;
+}
+
+.mode-card-endless {
   cursor: pointer;
   transition: transform 0.15s ease;
 }
 
-.mode-card:active {
-  transform: scale(0.97);
+.mode-card-endless:active {
+  transform: scale(0.98);
 }
 
 .mode-card.active {
@@ -11717,15 +11712,24 @@ onBeforeUnmount(() => {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(4, 6, 14, 0.18), rgba(4, 6, 14, 0.74));
+  background: linear-gradient(180deg, rgba(4, 6, 14, 0.42), rgba(4, 6, 14, 0.22) 40%, rgba(4, 6, 14, 0.66));
 }
 
-/* Classic previews all four stages as a 2x2 grid. */
-.mode-card-grid {
+/* Classic previews all four stages stacked vertically (1x4). */
+.mode-card-stack {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(4, 1fr);
   gap: 2px;
+}
+
+/* Middle of the classic column: play button + difficulty toggle. */
+.mode-card-middle {
+  position: relative;
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
 }
 
 .stage-bg {
@@ -11755,9 +11759,10 @@ onBeforeUnmount(() => {
 .mode-card-label {
   position: relative;
   font-family: var(--display);
-  font-size: clamp(0.9rem, 3.4vw, 1.15rem);
+  font-size: clamp(0.95rem, 3.6vw, 1.2rem);
   font-weight: 700;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.24em;
+  margin-left: 0.24em;
   text-transform: uppercase;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
 }
@@ -11765,21 +11770,24 @@ onBeforeUnmount(() => {
 .mode-card-sub {
   position: relative;
   font-size: 0.6rem;
+  line-height: 1.7;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: rgba(214, 230, 255, 0.78);
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
 }
 
-/* --- World ranking panel (classic half, bottom) --- */
+/* --- World ranking panel (bottom of the classic column) --- */
 .menu-worldrank {
+  position: relative;
   width: 100%;
-  padding: 12px 14px;
-  background: linear-gradient(180deg, rgba(13, 19, 36, 0.88), rgba(8, 12, 24, 0.88));
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(13, 19, 36, 0.9), rgba(8, 12, 24, 0.9));
   box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.12);
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
   display: grid;
-  gap: 8px;
+  gap: 7px;
+  text-align: left;
 }
 
 .worldrank-head {
@@ -11812,7 +11820,7 @@ onBeforeUnmount(() => {
   padding: 0;
   display: grid;
   gap: 5px;
-  max-height: 104px;
+  max-height: 20vh;
   overflow-y: auto;
 }
 
@@ -12919,12 +12927,16 @@ onBeforeUnmount(() => {
   }
 
   .mode-card {
-    height: clamp(78px, 12vh, 110px);
-    padding: 10px 12px;
+    padding: 12px 8px 8px;
   }
 
   .worldrank-list {
-    max-height: 88px;
+    max-height: 16vh;
+  }
+
+  .play-btn {
+    padding: 14px 10px 13px;
+    font-size: 1.05rem;
   }
 
   .endless-tile {
