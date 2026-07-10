@@ -401,6 +401,10 @@
 
         <div class="menu-bottom">
           <nav class="menu-tiles">
+            <button class="menu-tile" @click="startGallery" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 15.5l4.6-4.6 3 3 4-4.6 5.4 6.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8.2" cy="8.6" r="1.4" fill="currentColor"/></svg>
+              <span>Gallery</span>
+            </button>
             <button class="menu-tile" @click="openMenuScreen('level')" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5L4 6.2l1.7 3.5L8 8.6V20h8V8.6l2.3 1.1L20 6.2l-4.5-2.7a3.5 3.5 0 01-7 0z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
               <span>Store</span>
@@ -413,10 +417,6 @@
             <button class="menu-tile" @click="openMenuScreen('settings')" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h8M17.5 7H20M4 17h2.5M12 17h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="14.5" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
               <span>Settings</span>
-            </button>
-            <button class="menu-tile" @click="startGallery" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 15.5l4.6-4.6 3 3 4-4.6 5.4 6.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8.2" cy="8.6" r="1.4" fill="currentColor"/></svg>
-              <span>Gallery</span>
             </button>
           </nav>
 
@@ -12386,7 +12386,7 @@ onBeforeUnmount(() => {
 
 .menu-tiles {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
@@ -13236,6 +13236,19 @@ onBeforeUnmount(() => {
      their content width (minmax 0) so the grid never overflows the dock. */
   .skin-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* Phones: the mode cards sit flush — no gap between them and full bleed
+     through the layout's 22px side padding. */
+  .mode-split {
+    gap: 0;
+    width: calc(100% + 44px);
+    margin-left: -22px;
+    margin-right: -22px;
+  }
+
+  .mode-card {
+    clip-path: none;
   }
 
   .menu-hero {
