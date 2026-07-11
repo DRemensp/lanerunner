@@ -3,7 +3,7 @@
   "host": "lanerunner.on-forge.com",
   "name": "Neon Rail Dash",
   "launcherName": "Lanerunner",
-  "display": "fullscreen",
+  "display": "fullscreen-sticky",
   "themeColor": "#05070F",
   "themeColorDark": "#000000",
   "navigationColor": "#000000",

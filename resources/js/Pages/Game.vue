@@ -2733,7 +2733,14 @@ const finalizeRun = () => {
   // finalize while running/paused) count for the ad cadence but are no
   // "failed attempt": you earn the skip by dying, not by quitting. Reaching
   // zone 2 resets the streak (see startDriving).
-  if (!devRun.value && state.value === 'crashed' && finalePhase.value === 'none') {
+  // Endless stage 1 also runs with finalePhase 'none' — those deaths must
+  // NOT feed the classic stage-skip streak, only real classic zone-1 crashes.
+  if (
+    !devRun.value &&
+    runMode.value === 'classic' &&
+    state.value === 'crashed' &&
+    finalePhase.value === 'none'
+  ) {
     setZone1Fails(zone1Fails.value + 1);
   }
   if (!devRun.value) {
