@@ -11959,7 +11959,8 @@ onBeforeUnmount(() => {
   clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
 }
 
-/* Top-right corner: the audio pill, tucked high so it clears the hero. */
+/* Top-right corner: the audio pill, tucked high so it clears the hero.
+   Above the pause overlay (z 7) — the pill stays clickable while paused. */
 .corner-hud {
   position: absolute;
   top: calc(10px + env(safe-area-inset-top));
@@ -11967,7 +11968,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  z-index: 6;
+  z-index: 8;
 }
 
 /* Coin balance top-left (menu only). On subscreens it slides below the
@@ -12196,7 +12197,8 @@ onBeforeUnmount(() => {
   background: rgba(10, 14, 24, 0.95);
   display: grid;
   gap: 14px;
-  z-index: 5;
+  /* Panel + backdrop above the pause overlay (z 7), like the pill. */
+  z-index: 9;
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.45);
 }
 
@@ -12204,7 +12206,7 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   background: rgba(4, 6, 12, 0.35);
-  z-index: 4;
+  z-index: 8;
 }
 
 .audio-panel-head {

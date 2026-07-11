@@ -485,6 +485,12 @@ export function createAudioSystem({ state, speed }) {
       if (next) {
         setActiveTrack(next);
       }
+    } else if (activeAudio && activeAudio.paused && !isPaused.value) {
+      // Externally paused (native ad overlay, OS audio focus) with no
+      // focus event to catch it: any sync (state change, pill tap,
+      // pointer unlock) restarts the current track where it left off.
+      applyAudioVolume();
+      activeAudio.play().catch(() => {});
     }
   };
 
@@ -520,7 +526,12 @@ export function createAudioSystem({ state, speed }) {
       if (sfxCtx && sfxCtx.state === 'suspended') {
         sfxCtx.resume().catch(() => {});
       }
-      if (pausedByBackground && activeAudio && !isPaused.value) {
+      // Resume whenever music OUGHT to play — not only when our own blur
+      // handler paused it. Native overlays (AdMob rewarded/interstitial)
+      // pause WebView media directly without any blur/visibility event,
+      // so a flag check would skip the play() and leave the game silent.
+      // play() on an already-playing element is a no-op.
+      if (activeAudio && currentTrack && !isPaused.value) {
         applyAudioVolume();
         activeAudio.play().catch(() => {});
       }
