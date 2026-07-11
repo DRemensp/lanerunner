@@ -147,7 +147,7 @@
     <!-- Dash cooldown ring, bottom corner per handedness. Refills as a
          conic sweep; pulses once fully charged. -->
     <div
-      v-if="state === 'running' && (finalePhase === 'none' || finalePhase === 'approach')"
+      v-if="state === 'running' && finalePhase === 'none'"
       class="dash-indicator"
       :class="[handedness === 'left' ? 'dash-side-left' : 'dash-side-right', { ready: dashCooldownLeft <= 0 }]"
       aria-hidden="true"
@@ -1098,7 +1098,7 @@ import {
   jumpVelocity,
   slideScale,
   slideDuration,
-  dashBoost,
+  dashDistance,
   dashDuration,
   dashCooldown,
   dropBoost,
@@ -1788,9 +1788,13 @@ let currentLane = 1;
 let isSliding = false;
 let slideTimer = 0;
 
-// Double-tap dash: forward burst on a cooldown (runner zone only). The
+// Double-tap dash: forward impulse on a cooldown (runner zone only). The
 // cooldown is reactive because the corner indicator renders from it.
+// dashSnap hard-stops the burst; dashSweep is this frame's dash travel,
+// used by checkCollision so the burst can't tunnel through obstacles.
 let dashTimer = 0;
+let dashSnap = false;
+let dashSweep = 0;
 const dashCooldownLeft = ref(0);
 let lastTap = null;
 let touchStart = null;
@@ -3005,10 +3009,12 @@ const attemptJump = () => {
 
 const triggerDash = () => {
   if (state.value !== 'running' || !player) return;
-  if (finalePhase.value !== 'none' && finalePhase.value !== 'approach') return;
+  if (finalePhase.value !== 'none') return;
   if (dashCooldownLeft.value > 0) return;
   dashTimer = dashDuration;
   dashCooldownLeft.value = dashCooldown;
+  bumpShakeTimer = 0.16;
+  spawnBurst(player.position.clone(), ['skin'], 12, 5);
   sfx.powerup();
   vibrate(24);
 };
@@ -6834,7 +6840,12 @@ const checkCollision = (obstacle, playerHeight) => {
   const dx = Math.abs(player.position.x - obstacle.position.x);
   const dz = Math.abs(player.position.z - obstacle.position.z);
 
-  if (dx >= (box.w + oSize.w) / 2 || dz >= (box.d + oSize.d) / 2) {
+  // Dash sweep: at burst speed an obstacle can hop clear past the player
+  // between two frames. Stretch the depth check backward (only toward the
+  // already-passed side) by this frame's dash travel — no tunneling, and
+  // nothing dies early to an obstacle still in front.
+  const passedSweep = dashSweep > 0 && obstacle.position.z > player.position.z ? dashSweep : 0;
+  if (dx >= (box.w + oSize.w) / 2 || dz >= (box.d + oSize.d) / 2 + passedSweep) {
     return false;
   }
 
@@ -9887,14 +9898,19 @@ const updateRunner = (delta) => {
     // curve the anti-cheat models server-side (minPlausibleDuration solves
     // d'(t) = 2.4·(base + d/2500·step); expectedSpeed mirrors min(3, …)).
     // Checkpoints/districts every 2500 remain as events.
-    // Dash burst rides on top of the curve; the server allows exactly
-    // dashBoost above expectedSpeed (RunnerController::DASH_BOOST).
-    const dashBonus = dashTimer > 0 ? dashBoost * Math.min(1, dashTimer / (dashDuration * 0.4)) : 0;
     const targetSpeed =
-      level.baseSpeed +
-      Math.min(3, score.value / level.stepDistance) * level.speedStep +
-      dashBonus;
-    speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, dashTimer > 0 ? 9 : 4, delta);
+      level.baseSpeed + Math.min(3, score.value / level.stepDistance) * level.speedStep;
+    if (dashTimer > 0) {
+      // Dash impulse: a fixed distance in a fixed window, hard on. The
+      // extra rate comes straight from the impulse definition — no easing.
+      speed.value = targetSpeed + dashDistance / dashDuration;
+    } else if (dashSnap) {
+      // Hard stop the frame the burst ends.
+      dashSnap = false;
+      speed.value = targetSpeed;
+    } else {
+      speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, 4, delta);
+    }
     // Endless mode never leaves its stage: the finale (zone 2 hand-off)
     // stays off and the run just keeps going.
     if (!finaleTriggered && runMode.value !== 'endless' && score.value >= FINALE_SCORE) {
@@ -9932,7 +9948,11 @@ const updateRunner = (delta) => {
   }
 
   const prevY = player.position.y;
-  if (!driving) {
+  // Air dash carries: vertical motion freezes for the burst, so the jump
+  // arc stretches forward and reaches farther platforms.
+  const airDash =
+    dashTimer > 0 && player.position.y > currentGroundCenter + groundedEpsilon;
+  if (!driving && !airDash) {
     playerVelocityY += gravity * delta;
     player.position.y += playerVelocityY * delta;
   }
@@ -9992,7 +10012,13 @@ const updateRunner = (delta) => {
     }
 
     if (dashTimer > 0) {
+      dashSweep = speed.value * delta;
       dashTimer = Math.max(0, dashTimer - delta);
+      if (dashTimer === 0) {
+        dashSnap = true;
+      }
+    } else {
+      dashSweep = 0;
     }
     if (dashCooldownLeft.value > 0) {
       dashCooldownLeft.value = Math.max(0, dashCooldownLeft.value - delta);
@@ -10486,8 +10512,12 @@ const animate = (time) => {
 
   if (state.value === 'running') {
     updateRunner(delta);
-    if (speed.value > runTopSpeedRaw) {
-      runTopSpeedRaw = speed.value;
+    // Dash frames are excluded from the reported top speed: the server's
+    // speed_over_cap models the acceleration curve, not the burst.
+    const reportSpeed =
+      dashTimer > 0 ? Math.max(0, speed.value - dashDistance / dashDuration) : speed.value;
+    if (reportSpeed > runTopSpeedRaw) {
+      runTopSpeedRaw = reportSpeed;
     }
     // Endless runs celebrate their own per-stage best, not the classic one.
     const recordTarget =

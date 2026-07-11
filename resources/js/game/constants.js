@@ -27,11 +27,14 @@ export const gravity = -28;
 export const jumpVelocity = 11.4;
 export const slideScale = 0.55;
 export const slideDuration = 0.6;
-// Double-tap dash: short forward burst (runner zone only). The speed bonus
-// MUST stay mirrored in RunnerController::DASH_BOOST — the server allows
-// maxSpeed up to expectedSpeed + margin + DASH_BOOST.
-export const dashBoost = 12;
-export const dashDuration = 0.85;
+// Double-tap dash: an IMPULSE — dashDistance meters shoved past the player
+// in dashDuration seconds, hard start and hard stop (runner zone only, no
+// i-frames: dashing into an obstacle kills). Anti-cheat: dash frames are
+// excluded from the reported top speed (see runTopSpeedRaw sampling), and
+// the distance gain (~12m per cooldown) sits inside minPlausibleDuration's
+// grace margin — no server-side headroom needed.
+export const dashDistance = 12;
+export const dashDuration = 0.22;
 export const dashCooldown = 5;
 export const dropBoost = 1.6;
 export const swipeThreshold = 40;
