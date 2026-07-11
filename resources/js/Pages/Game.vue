@@ -916,7 +916,6 @@
                       <a href="https://uppbeat.io/t/mazbou-q/dont-stop-regardless" target="_blank" rel="noopener">Mazbou Q — Don't Stop Regardless</a>
                     </li>
                   </ul>
-                  <div class="music-credits-license">License codes: FLV0AQVIETOL403Y · ENLPJVREYJ9TFJGB</div>
                 </div>
               </div>
             </div>
@@ -13648,11 +13647,6 @@ onBeforeUnmount(() => {
   text-decoration: underline;
 }
 
-.music-credits-license {
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  color: rgba(160, 190, 230, 0.55);
-}
 
 .menu-actions {
   display: flex;
