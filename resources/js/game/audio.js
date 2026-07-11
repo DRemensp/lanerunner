@@ -5,10 +5,13 @@ import { ref, computed, watch } from 'vue';
 import { MathUtils } from 'three';
 import { driveMaxSpeed } from './constants';
 
-const buildTrack = (id, title, file) => ({
+// Cover art lives in /audio/covers/<id>.<ext>, extracted once from the
+// MP3s' ID3 APIC frames (a few are PNG, the rest JPEG).
+const buildTrack = (id, title, file, coverExt = 'jpg') => ({
   id,
   title,
   src: encodeURI(`/audio/${file}`),
+  cover: `/audio/covers/${id}.${coverExt}`,
   enabled: true,
 });
 
@@ -17,14 +20,15 @@ export function createAudioSystem({ state, speed }) {
   const isMuted = ref(false);
   const isPaused = ref(false);
   const currentTrackName = ref('');
+  const currentTrackCover = ref('');
   const showTrackToast = ref(false);
   const showPlaylist = ref(false);
 
   const tracks = ref([
-    buildTrack('new-school', 'The New School', 'Nick Petrov - The New School.mp3'),
-    buildTrack('golden', 'Golden', 'DEVMO - Golden.mp3'),
+    buildTrack('new-school', 'The New School', 'Nick Petrov - The New School.mp3', 'png'),
+    buildTrack('golden', 'Golden', 'DEVMO - Golden.mp3', 'png'),
     buildTrack('bring-it-back', 'Bring It Back', 'Notize - Bring It Back.mp3'),
-    buildTrack('soul-swingin', 'Soul Swingin', 'Richard Farrell - Soul Swingin.mp3'),
+    buildTrack('soul-swingin', 'Soul Swingin', 'Richard Farrell - Soul Swingin.mp3', 'png'),
     buildTrack('sugarsweet', 'Sugarsweet', 'Zach Sorgen - Sugarsweet.mp3'),
     // Uppbeat tracks (credits in Settings → Music).
     buildTrack('stuzzy-fonk', 'Stuzzy Fonk', 'Hey Pluto - Stuzzy Fonk.mp3'),
@@ -315,8 +319,9 @@ export function createAudioSystem({ state, speed }) {
     }
   };
 
-  const triggerTrackToast = (title) => {
-    currentTrackName.value = title;
+  const triggerTrackToast = (track) => {
+    currentTrackName.value = track.title;
+    currentTrackCover.value = track.cover;
     showTrackToast.value = true;
     if (toastTimer) {
       clearTimeout(toastTimer);
@@ -433,7 +438,7 @@ export function createAudioSystem({ state, speed }) {
         if (isPaused.value) {
           activeAudio.pause();
         }
-        triggerTrackToast(track.title);
+        triggerTrackToast(track);
       }
     };
 
@@ -599,6 +604,7 @@ export function createAudioSystem({ state, speed }) {
     isMuted,
     isPaused,
     currentTrackName,
+    currentTrackCover,
     showTrackToast,
     showPlaylist,
     tracks,

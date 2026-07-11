@@ -23,40 +23,29 @@
       :class="{
         expanded: showTrackToast || showPlaylist,
         muted: isMuted,
+        halted: isPaused || isMuted,
       }"
       @click="handleAudioButton"
     >
-      <svg class="audio-icon" viewBox="0 0 24 24" aria-hidden="true">
-        <path
-          d="M4 9h4l5-4v14l-5-4H4z"
-          fill="currentColor"
-        />
-        <path
-          class="audio-wave"
-          d="M16 8c1.7 1.7 1.7 6.3 0 8"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linecap="round"
-        />
-        <path
-          class="audio-wave"
-          d="M18.5 5.5c3 3.4 3 9.6 0 13"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linecap="round"
-        />
-        <path
-          class="audio-mute"
-          d="M19 19L5 5"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-        />
-      </svg>
-      <span class="audio-title">{{ currentTrackName }}</span>
+      <!-- Spinning vinyl: the track's cover art as the record label. -->
+      <span class="audio-disc" aria-hidden="true">
+        <span class="audio-disc-spin">
+          <Transition name="disc-swap">
+            <img v-if="currentTrackCover" :key="currentTrackCover" class="audio-disc-art" :src="currentTrackCover" alt="" />
+            <span v-else class="audio-disc-art audio-disc-blank"></span>
+          </Transition>
+          <span class="audio-disc-groove"></span>
+          <span class="audio-disc-hole"></span>
+        </span>
+        <span class="audio-disc-mute">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M19 19L5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        </span>
+      </span>
+      <span class="audio-title-clip">
+        <Transition name="title-swap">
+          <span :key="currentTrackName" class="audio-title">{{ currentTrackName }}</span>
+        </Transition>
+      </span>
     </div>
     </div>
 
@@ -98,7 +87,12 @@
       <div class="audio-section">
         <div class="audio-section-title">Tracks</div>
         <div class="audio-list">
-          <div v-for="track in playlistTracks" :key="track.id" class="audio-row">
+          <div
+            v-for="track in playlistTracks"
+            :key="track.id"
+            class="audio-row"
+            :class="{ playing: track.title === currentTrackName }"
+          >
             <button
               class="audio-toggle"
               :class="{ off: !track.enabled }"
@@ -108,7 +102,11 @@
               {{ track.enabled ? 'Remove' : 'Add' }}
             </button>
             <button class="audio-track" @click="playSpecific(track)" type="button">
-              <span>{{ track.title }}</span>
+              <img class="audio-track-cover" :src="track.cover" alt="" loading="lazy" />
+              <span class="audio-track-title">{{ track.title }}</span>
+              <span v-if="track.title === currentTrackName" class="audio-eq" :class="{ frozen: isPaused || isMuted }" aria-hidden="true">
+                <i></i><i></i><i></i>
+              </span>
             </button>
           </div>
         </div>
@@ -1229,6 +1227,7 @@ const {
   isMuted,
   isPaused,
   currentTrackName,
+  currentTrackCover,
   showTrackToast,
   showPlaylist,
   playlistTracks,
@@ -11719,51 +11718,194 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 5px 6px;
   border-radius: 999px;
-  background: rgba(8, 12, 22, 0.7);
+  background: linear-gradient(180deg, rgba(14, 20, 38, 0.85), rgba(6, 9, 18, 0.85));
   border: 1px solid rgba(90, 140, 255, 0.35);
+  box-shadow: inset 0 1px 0 rgba(160, 210, 255, 0.12);
   color: rgba(225, 235, 255, 0.9);
   cursor: pointer;
-  transition: box-shadow 0.3s ease;
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.audio-pill.expanded {
+  padding-right: 16px;
+  border-color: rgba(75, 232, 255, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(160, 210, 255, 0.12),
+    0 0 18px rgba(46, 229, 255, 0.22),
+    0 10px 24px rgba(6, 10, 20, 0.5);
+}
+
+/* --- Vinyl disc: cover art as the record label, spinning while music
+   plays; the groove ring and center hole sell the record look. --- */
+.audio-disc {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+}
+
+.audio-disc-spin {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #05070f;
+  box-shadow: 0 0 0 1px rgba(120, 180, 255, 0.35), 0 0 12px rgba(46, 229, 255, 0.25);
+  animation: disc-rotate 6s linear infinite;
+}
+
+.audio-pill.halted .audio-disc-spin {
+  animation-play-state: paused;
+}
+
+@keyframes disc-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.audio-disc-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.audio-disc-blank {
+  background: radial-gradient(circle at 50% 50%, #1a2440 0%, #0a0f1f 70%);
+}
+
+/* Faint concentric grooves over the art. */
+.audio-disc-groove {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: repeating-radial-gradient(
+    circle at 50% 50%,
+    transparent 0,
+    transparent 2.5px,
+    rgba(4, 6, 12, 0.28) 3px,
+    transparent 3.5px
+  );
+}
+
+.audio-disc-hole {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #04060c;
+  box-shadow: 0 0 0 2px rgba(200, 220, 255, 0.35);
+}
+
+/* Cover crossfade + spin-in on track change. */
+.disc-swap-enter-active,
+.disc-swap-leave-active {
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.disc-swap-enter-from {
+  opacity: 0;
+  transform: rotate(-100deg) scale(0.7);
+}
+
+.disc-swap-leave-to {
+  opacity: 0;
+  transform: rotate(100deg) scale(0.7);
+}
+
+.disc-swap-leave-active {
+  position: absolute;
+}
+
+/* Mute badge over the disc's lower-right corner. */
+.audio-disc-mute {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(60, 16, 24, 0.95);
+  box-shadow: 0 0 0 1px rgba(255, 120, 120, 0.55);
+  color: #ff9d9d;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+.audio-disc-mute svg {
+  width: 10px;
+  height: 10px;
+}
+
+.audio-pill.muted .audio-disc-mute {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .audio-pill.expanded {
   box-shadow: 0 10px 24px rgba(6, 10, 20, 0.5);
 }
 
-.audio-icon {
-  width: 18px;
-  height: 18px;
-  display: block;
-}
-
-.audio-pill .audio-mute {
-  opacity: 0;
-}
-
-.audio-pill.muted .audio-wave {
-  opacity: 0;
-}
-
-.audio-pill.muted .audio-mute {
-  opacity: 1;
-}
-
-.audio-title {
+/* Title container collapses to nothing when idle; when expanded the track
+   name slides through it on every change. */
+.audio-title-clip {
+  position: relative;
   max-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  font-size: 0.75rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
   transition: max-width 0.4s ease, opacity 0.4s ease;
   opacity: 0;
 }
 
-.audio-pill.expanded .audio-title {
+.audio-pill.expanded .audio-title-clip {
   max-width: 220px;
   opacity: 1;
+}
+
+.audio-title {
+  display: inline-block;
+  white-space: nowrap;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #eaf6ff, #7fe8ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Track change: old title slides up and out, new one rises in. */
+.title-swap-enter-active,
+.title-swap-leave-active {
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.title-swap-enter-from {
+  opacity: 0;
+  transform: translateY(120%);
+}
+
+.title-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-120%);
+}
+
+.title-swap-leave-active {
+  position: absolute;
+  left: 0;
 }
 
 .audio-panel {
@@ -11867,14 +12009,82 @@ onBeforeUnmount(() => {
 }
 
 .audio-track {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
   border: none;
   background: transparent;
   color: rgba(225, 235, 255, 0.85);
   text-align: left;
-  padding: 0;
+  padding: 2px 0;
   cursor: pointer;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
+}
+
+.audio-track-cover {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(120, 180, 255, 0.25);
+}
+
+.audio-track-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-row.playing .audio-track-title {
+  color: #7fe8ff;
+}
+
+.audio-row.playing .audio-track-cover {
+  box-shadow: 0 0 0 1px rgba(75, 232, 255, 0.7), 0 0 10px rgba(46, 229, 255, 0.35);
+}
+
+/* Tiny equalizer beside the playing track. */
+.audio-eq {
+  flex: none;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  margin-left: 2px;
+}
+
+.audio-eq i {
+  width: 3px;
+  border-radius: 1px;
+  background: #4be8ff;
+  animation: eq-bounce 0.9s ease-in-out infinite;
+}
+
+.audio-eq i:nth-child(2) {
+  animation-delay: 0.25s;
+}
+
+.audio-eq i:nth-child(3) {
+  animation-delay: 0.5s;
+}
+
+.audio-eq.frozen i {
+  animation-play-state: paused;
+  height: 4px;
+}
+
+@keyframes eq-bounce {
+  0%,
+  100% {
+    height: 4px;
+  }
+  50% {
+    height: 12px;
+  }
 }
 
 
