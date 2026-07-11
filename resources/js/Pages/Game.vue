@@ -12317,13 +12317,27 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-align: center;
   background: rgba(8, 12, 24, 0.8);
-  /* Soft neon edge: thin cyan inset line plus a faint outer glow. */
-  box-shadow:
-    inset 0 0 0 1px rgba(75, 232, 255, 0.38),
-    inset 0 1px 0 rgba(160, 210, 255, 0.14),
-    0 0 14px rgba(46, 229, 255, 0.16);
   clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
   color: #eef6ff;
+}
+
+/* Neon ring ON TOP of the stage art (an inset box-shadow on the card
+   itself would be buried under the absolutely-positioned bg image). */
+.mode-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 2px rgba(75, 232, 255, 0.7),
+    inset 0 0 20px rgba(46, 229, 255, 0.22);
+}
+
+/* Outer glow lives on the UNCLIPPED wrapper: clip-path clips after
+   filters, so a drop-shadow on the card itself would be cut away. On the
+   wrapper it wraps both card silhouettes. */
+.mode-split {
+  filter: drop-shadow(0 0 10px rgba(46, 229, 255, 0.38));
 }
 
 .mode-card-classic,
