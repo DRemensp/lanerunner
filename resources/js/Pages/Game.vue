@@ -840,6 +840,25 @@
                 </div>
               </div>
               <div class="menu-field">
+                <label>Orientation</label>
+                <div class="difficulty-toggle">
+                  <button
+                    :class="{ active: orientationPref === 'portrait' }"
+                    @click="setOrientation('portrait')"
+                    type="button"
+                  >
+                    Portrait
+                  </button>
+                  <button
+                    :class="{ active: orientationPref === 'landscape' }"
+                    @click="setOrientation('landscape')"
+                    type="button"
+                  >
+                    Landscape
+                  </button>
+                </div>
+              </div>
+              <div class="menu-field">
                 <label>Render Quality</label>
                 <div class="difficulty-toggle">
                   <button
@@ -3503,6 +3522,26 @@ const setVibration = (on) => {
 const vibrate = (ms) => {
   if (!vibrationEnabled.value) return;
   navigator.vibrate?.(ms);
+};
+
+// Orientation is an explicit choice (portrait or landscape, never auto).
+// Native app: the ScreenOrientation plugin locks the activity. Browser:
+// screen.orientation.lock only works in fullscreen — attempted, then
+// silently ignored (the PWA manifest pins portrait as install default).
+const orientationPref = ref(localStorage.getItem('runner_orientation') || 'portrait');
+const applyOrientation = () => {
+  const orientation = orientationPref.value;
+  const native = window.Capacitor?.Plugins?.ScreenOrientation;
+  if (native?.lock) {
+    native.lock({ orientation }).catch(() => {});
+    return;
+  }
+  screen.orientation?.lock?.(orientation).catch(() => {});
+};
+const setOrientation = (pref) => {
+  orientationPref.value = pref;
+  localStorage.setItem('runner_orientation', pref);
+  applyOrientation();
 };
 
 // Battery Saver renders at a lower pixel ratio — a big win on hot phones.
@@ -10763,6 +10802,7 @@ onMounted(() => {
   loadLevelPref();
   loadHandednessPref();
   loadDailyStats();
+  applyOrientation();
   initAudio();
   // Try autoplay right away: the Capacitor WebView allows it outright, and
   // Chrome allows it for returning players (media engagement). If the
