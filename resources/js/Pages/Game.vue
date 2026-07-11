@@ -5709,7 +5709,7 @@ const registerVehicleModel = (def, model) => {
       size.solidTop = true;
     }
     if (def.key === 'sign-highway') {
-      addGantryBillboards(mesh, size);
+      addGantryBillboards(mesh);
     }
     return { mesh, size: { ...size } };
   };
@@ -5882,21 +5882,22 @@ const spawnJamSet = (laneIndex, baseZ) => {
 // stage art or a neon house ad — re-rolled on every spawn for variety.
 let gantryAdTextures = null;
 const makeAdTexture = (top, bottom, accent) => {
+  // 512x348 matches the boards' measured 1.47:1 face.
   const canvas = document.createElement('canvas');
   canvas.width = 512;
-  canvas.height = 288;
+  canvas.height = 348;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#070b16';
-  ctx.fillRect(0, 0, 512, 288);
+  ctx.fillRect(0, 0, 512, 348);
   ctx.strokeStyle = accent;
   ctx.lineWidth = 10;
-  ctx.strokeRect(14, 14, 484, 260);
+  ctx.strokeRect(14, 14, 484, 320);
   ctx.textAlign = 'center';
   ctx.font = '700 58px "Chakra Petch", sans-serif';
   ctx.fillStyle = '#f2f6ff';
-  ctx.fillText(top, 256, 126);
+  ctx.fillText(top, 256, 152);
   ctx.fillStyle = accent;
-  ctx.fillText(bottom, 256, 210);
+  ctx.fillText(bottom, 256, 244);
   const tex = track(new THREE.CanvasTexture(canvas));
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -5912,6 +5913,9 @@ const getGantryAdTextures = () => {
   ].map((src) => {
     const tex = loader.load(src);
     tex.colorSpace = THREE.SRGBColorSpace;
+    // Cover-crop the 16:9 shots onto the 1.47:1 boards (trim the sides).
+    tex.repeat.set(1.47 / (16 / 9), 1);
+    tex.offset.x = (1 - tex.repeat.x) / 2;
     return track(tex);
   });
   gantryAdTextures.push(
@@ -5921,23 +5925,27 @@ const getGantryAdTextures = () => {
   return gantryAdTextures;
 };
 
-const addGantryBillboards = (group, size) => {
+const addGantryBillboards = (group) => {
+  // Placement measured from the GLB after the registerVehicleModel
+  // transform (rotateY 90°, fitWidth 9, scaleY 1.1, centered): the two
+  // yellow board plates sit at z = -0.033, x = ±[0.225…3.713],
+  // y = 1.128…3.502 → centers ±1.969 / 2.315, face 3.49 × 2.37 (1.47:1).
   const mats = [];
   const geo = track(new THREE.PlaneGeometry(1, 1));
   const adTextures = getGantryAdTextures();
-  [-size.w * 0.2, size.w * 0.2].forEach((x) => {
+  [-1.969, 1.969].forEach((x) => {
     // Starts with a random image so gallery clones are dressed too;
     // spawnSignGantry re-rolls it on every road spawn.
     const mat = track(new THREE.MeshBasicMaterial({ color: 0xffffff, map: pickFrom(adTextures) }));
     mats.push(mat);
-    // One plane per face so the art reads from both driving directions.
+    // Front face 2cm before the plate; mirrored back face right behind it.
     [
-      [size.d / 2 + 0.03, 0],
-      [-size.d / 2 - 0.03, Math.PI],
+      [-0.013, 0],
+      [-0.053, Math.PI],
     ].forEach(([z, ry]) => {
       const plane = new THREE.Mesh(geo, mat);
-      plane.scale.set(size.w * 0.3, size.h * 0.34, 1);
-      plane.position.set(x, size.h * 0.18, z);
+      plane.scale.set(3.28, 2.14, 1);
+      plane.position.set(x, 2.315, z);
       plane.rotation.y = ry;
       group.add(plane);
     });
