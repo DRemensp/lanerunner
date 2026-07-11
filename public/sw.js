@@ -5,7 +5,8 @@
 // v5: /images (menu stage art) joins the cache-first static media.
 // v6: purge cached audio — the five non-Uppbeat tracks lost their license
 // and must disappear from client caches too.
-const CACHE_NAME = 'lanerunner-v6';
+// v7: new app/PWA icons (night-city runner art).
+const CACHE_NAME = 'lanerunner-v7';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
