@@ -7,7 +7,8 @@
 // and must disappear from client caches too.
 // v7: new app/PWA icons (night-city runner art).
 // v8: endless preview recrop (same filename, cache-first would pin the old one).
-const CACHE_NAME = 'lanerunner-v8';
+// v9: new SVG-based app icon + another endless recrop.
+const CACHE_NAME = 'lanerunner-v9';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
