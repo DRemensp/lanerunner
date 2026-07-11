@@ -12,7 +12,7 @@
     <div
       v-if="!showAuthGate"
       class="corner-hud"
-      :class="{ running: state === 'running' || state === 'gallery' }"
+      :class="{ running: state === 'running' || state === 'paused' || state === 'gallery' }"
     >
     <div v-if="authUser && state === 'menu'" class="coin-chip">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
@@ -21,7 +21,7 @@
     <div
       class="audio-pill"
       :class="{
-        expanded: state === 'menu' || showTrackToast || showPlaylist,
+        expanded: state === 'menu' || state === 'paused' || showTrackToast || showPlaylist,
         muted: isMuted,
         halted: isPaused || isMuted,
       }"
@@ -384,12 +384,13 @@
       <div v-if="multiTime > 0" class="power-chip multi">x2 Score {{ Math.ceil(multiTime) }}s</div>
     </div>
 
-    <div v-if="state === 'paused' && !resumeCountdown" class="death-overlay">
+    <div v-if="state === 'paused' && !resumeCountdown && !pauseSettingsOpen" class="death-overlay">
       <div class="death-card">
         <div class="death-title">Paused</div>
         <div class="death-actions">
           <button class="primary-btn" @click="resumeRun" type="button">Resume</button>
           <button class="ghost-btn" @click="startRun" type="button">Restart</button>
+          <button class="ghost-btn" @click="openPauseSettings" type="button">Settings</button>
           <button class="ghost-btn" @click="quitRun" type="button">Quit Run</button>
         </div>
         <div class="pause-hint">Esc or Enter to resume</div>
@@ -402,7 +403,10 @@
       <div class="resume-count-sub">Get ready</div>
     </div>
 
-    <div v-if="state === 'menu' && !showAuthGate" class="menu-overlay">
+    <div
+      v-if="(state === 'menu' || (state === 'paused' && pauseSettingsOpen)) && !showAuthGate"
+      class="menu-overlay"
+    >
       <!-- Menu backdrop: slow Ken-Burns slideshow of the stage shots
            instead of the raw live game scene — on every menu screen except
            the store, where the live 3D skin preview must stay visible. -->
@@ -2066,6 +2070,8 @@ const backToMainMenu = () => {
   clearCarPreview();
   previewSkin.value = null;
   menuScreen.value = 'main';
+  // Settings opened from the pause menu: back returns to the pause card.
+  pauseSettingsOpen.value = false;
 };
 
 const closeLoginPrompt = () => {
@@ -2111,6 +2117,13 @@ const pauseRun = () => {
 // pause menu, leaving the run frozen the whole time.
 const resumeCountdown = ref(0);
 let resumeTimer = null;
+// Settings sheet reachable from the pause menu: reuses the whole menu
+// settings screen while the run stays frozen underneath.
+const pauseSettingsOpen = ref(false);
+const openPauseSettings = () => {
+  menuScreen.value = 'settings';
+  pauseSettingsOpen.value = true;
+};
 const cancelResumeCountdown = () => {
   if (resumeTimer) {
     clearInterval(resumeTimer);
@@ -3114,6 +3127,12 @@ const handleKeydown = (event) => {
   }
 
   if (state.value === 'paused') {
+    if (pauseSettingsOpen.value) {
+      if (event.code === 'Escape') {
+        backToMainMenu();
+      }
+      return;
+    }
     if (resumeCountdown.value) {
       if (event.code === 'Escape') {
         cancelResumeCountdown();
@@ -10690,6 +10709,7 @@ watch(state, () => {
   if (state.value !== 'menu') {
     menuScreen.value = 'main';
   }
+  pauseSettingsOpen.value = false;
   syncPlaylist();
 });
 
