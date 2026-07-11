@@ -26,6 +26,12 @@ export function createAudioSystem({ state, speed }) {
     buildTrack('bring-it-back', 'Bring It Back', 'Notize - Bring It Back.mp3'),
     buildTrack('soul-swingin', 'Soul Swingin', 'Richard Farrell - Soul Swingin.mp3'),
     buildTrack('sugarsweet', 'Sugarsweet', 'Zach Sorgen - Sugarsweet.mp3'),
+    // Uppbeat tracks (credits in Settings → Music).
+    buildTrack('stuzzy-fonk', 'Stuzzy Fonk', 'Hey Pluto - Stuzzy Fonk.mp3'),
+    buildTrack('best-friend', 'Best Friend', 'Kasseo - Best Friend.mp3'),
+    buildTrack('never-wanna-stop', 'Never Wanna Stop Loving You', 'All Good Folks - Never Wanna Stop Loving You.mp3'),
+    buildTrack('magic', 'Magic', 'Mood Maze - Magic.mp3'),
+    buildTrack('do-it', 'Do It', 'Aylex - Do It.mp3'),
   ]);
 
   const playlistTracks = computed(() => tracks.value);

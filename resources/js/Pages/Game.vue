@@ -853,6 +853,30 @@
                   <button class="ghost-btn small" @click="openBugReport" type="button">Report a bug</button>
                 </div>
               </div>
+              <div class="menu-field">
+                <label>Music Credits</label>
+                <div class="music-credits">
+                  <div class="music-credits-head">Music from #Uppbeat</div>
+                  <ul>
+                    <li>
+                      <a href="https://uppbeat.io/t/hey-pluto/stuzzy-fonk" target="_blank" rel="noopener">Hey Pluto — Stuzzy Fonk</a>
+                    </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/kasseo/best-friend" target="_blank" rel="noopener">Kasseo — Best Friend</a>
+                    </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/all-good-folks/never-wanna-stop-loving-you" target="_blank" rel="noopener">All Good Folks — Never Wanna Stop Loving You</a>
+                    </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/mood-maze/magic" target="_blank" rel="noopener">Mood Maze — Magic</a>
+                    </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/aylex/do-it" target="_blank" rel="noopener">Aylex — Do It</a>
+                    </li>
+                  </ul>
+                  <div class="music-credits-license">License code: FLV0AQVIETOL403Y</div>
+                </div>
+              </div>
             </div>
           </template>
         </div>
@@ -13032,6 +13056,42 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Uppbeat music credits at the bottom of the settings screen. */
+.music-credits {
+  display: grid;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: rgba(200, 215, 245, 0.75);
+}
+
+.music-credits-head {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(160, 190, 230, 0.8);
+}
+
+.music-credits ul {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 3px;
+}
+
+.music-credits a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+.music-credits a:hover {
+  text-decoration: underline;
+}
+
+.music-credits-license {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: rgba(160, 190, 230, 0.55);
 }
 
 .menu-actions {
