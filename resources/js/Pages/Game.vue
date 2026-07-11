@@ -384,9 +384,10 @@
     </div>
 
     <div v-if="state === 'menu' && !showAuthGate" class="menu-overlay">
-      <!-- Main-menu backdrop: slow Ken-Burns slideshow of the stage shots
-           instead of the raw live game scene. -->
-      <div v-if="menuScreen === 'main'" class="menu-backdrop" aria-hidden="true">
+      <!-- Menu backdrop: slow Ken-Burns slideshow of the stage shots
+           instead of the raw live game scene — on every menu screen except
+           the store, where the live 3D skin preview must stay visible. -->
+      <div v-if="menuScreen !== 'level'" class="menu-backdrop" aria-hidden="true">
         <div
           v-for="(img, i) in menuBackdrops"
           :key="img"
@@ -1146,7 +1147,7 @@ let menuBgTimer = null;
 watch(
   [state, menuScreen],
   () => {
-    const active = state.value === 'menu' && menuScreen.value === 'main';
+    const active = state.value === 'menu' && menuScreen.value !== 'level';
     if (active && !menuBgTimer) {
       menuBgTimer = setInterval(() => {
         menuBgIndex.value = (menuBgIndex.value + 1) % menuBackdrops.length;
