@@ -9,15 +9,22 @@
       @pointercancel="galleryCamEnd"
     ></div>
 
+    <!-- Coin balance top-LEFT; on subscreens it drops below the back
+         button so it can never cover it. -->
+    <div
+      v-if="authUser && state === 'menu' && !showAuthGate"
+      class="coin-chip coin-hud"
+      :class="{ shifted: menuScreen !== 'main' }"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
+      <span>{{ totalCoins }}</span>
+    </div>
+
     <div
       v-if="!showAuthGate"
       class="corner-hud"
       :class="{ running: state === 'running' || state === 'paused' || state === 'gallery' }"
     >
-    <div v-if="authUser && state === 'menu'" class="coin-chip">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
-      <span>{{ totalCoins }}</span>
-    </div>
     <div
       class="audio-pill"
       :class="{
@@ -10606,15 +10613,18 @@ const animate = (time) => {
       // The shop dock sits at the bottom, so aim low: the subject floats in
       // the free upper half. Bigger subjects need more camera distance.
       const kind = previewCar ? previewKind : 'runner';
+      // Portrait: the dock hides the bottom ~55% of the screen, so the
+      // look target sits far BELOW the subject — that tilts the camera
+      // down and floats the subject in the visible upper half.
       const frames = {
         runner: portrait
-          ? { cam: [0, 1.6, -2.8], look: [0, 0.75, 2] }
+          ? { cam: [0, 1.7, -2.8], look: [0, -0.45, 2] }
           : { cam: [-1.4, 1.5, -1.6], look: [0.7, 0.85, 2] },
         car: portrait
-          ? { cam: [0, 2.2, -5.4], look: [0, 0.3, 2] }
+          ? { cam: [0, 2.4, -5.4], look: [0, -1.4, 2] }
           : { cam: [-1.2, 2.0, -3.8], look: [0.5, 0.5, 2] },
         plane: portrait
-          ? { cam: [0, 2.8, -8.8], look: [0, 1.0, 2] }
+          ? { cam: [0, 3.0, -8.8], look: [0, -1.8, 2] }
           : { cam: [-1.5, 2.6, -6.6], look: [0.5, 1.2, 2] },
       };
       const frame = frames[kind] || frames.runner;
@@ -11949,16 +11959,28 @@ onBeforeUnmount(() => {
   clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
 }
 
-/* Top-right corner: coin balance (menu only) + audio pill side by side.
-   Top-LEFT belongs to the menu screens' back button. */
+/* Top-right corner: the audio pill, tucked high so it clears the hero. */
 .corner-hud {
   position: absolute;
-  top: calc(24px + env(safe-area-inset-top));
-  right: calc(24px + env(safe-area-inset-right));
+  top: calc(10px + env(safe-area-inset-top));
+  right: calc(16px + env(safe-area-inset-right));
   display: flex;
   align-items: center;
   gap: 10px;
   z-index: 6;
+}
+
+/* Coin balance top-left (menu only). On subscreens it slides below the
+   back button (which owns that corner) instead of covering it. */
+.coin-hud {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  left: calc(16px + env(safe-area-inset-left));
+  z-index: 6;
+}
+
+.coin-hud.shifted {
+  top: calc(72px + env(safe-area-inset-top));
 }
 
 .corner-hud.running {
@@ -12882,6 +12904,9 @@ onBeforeUnmount(() => {
   position: relative;
   flex: none;
   scroll-snap-align: center;
+  /* Hard detent: a fling settles on the NEXT tile instead of sailing two
+     or three past — with 4 stages, paging one per swipe is the safe feel. */
+  scroll-snap-stop: always;
   width: min(64vw, 250px);
   height: min(60vh, 430px);
   border: none;
@@ -14054,8 +14079,8 @@ onBeforeUnmount(() => {
   }
 
   .corner-hud {
-    top: calc(16px + env(safe-area-inset-top));
-    right: 16px;
+    top: calc(8px + env(safe-area-inset-top));
+    right: 12px;
   }
 
   .corner-hud.running {
