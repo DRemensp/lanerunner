@@ -731,7 +731,7 @@
             </div>
           </div>
 
-          <div v-else class="menu-screen-card">
+          <div v-else class="menu-screen-card" data-allow-scroll>
             <template v-if="menuScreen === 'missions'">
               <div class="mission-panel">
                 <div class="mission-sub">
