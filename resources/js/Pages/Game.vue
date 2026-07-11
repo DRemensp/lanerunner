@@ -3327,8 +3327,12 @@ const handleTouchMove = (event) => {
 
   // Fires the moment either axis first crosses its threshold — however
   // long the finger took to get there (Subway-Surfers-like slow swipes).
+  // The gesture then CHAINS: instead of ending, the origin resets to the
+  // current finger position, so left→up→down in one continuous touch
+  // fires each move separately.
   if (triggerSwipe(dx, dy)) {
-    touchStart = null;
+    touchStart.x = touch.clientX;
+    touchStart.y = touch.clientY;
   }
 };
 
