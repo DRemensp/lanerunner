@@ -21,7 +21,7 @@
     <div
       class="audio-pill"
       :class="{
-        expanded: showTrackToast || showPlaylist,
+        expanded: state === 'menu' || showTrackToast || showPlaylist,
         muted: isMuted,
         halted: isPaused || isMuted,
       }"

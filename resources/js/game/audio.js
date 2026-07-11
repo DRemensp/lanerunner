@@ -552,15 +552,28 @@ export function createAudioSystem({ state, speed }) {
     }
   };
 
+  // The shuffle queue is one full CYCLE: every enabled track exactly once.
+  // Manual picks and add/remove must edit the current cycle in place — a
+  // full reset would reshuffle already-played tracks back into the pot
+  // (tracks repeated 2-3x within a few songs).
+  const removeFromQueue = (id) => {
+    shuffleQueue = shuffleQueue.filter((queued) => queued.id !== id);
+  };
+
   const toggleTrack = (track) => {
     track.enabled = !track.enabled;
     persistAudioPrefs();
-    shuffleQueue = [];
-    if (!track.enabled && currentTrack?.id === track.id) {
-      playNext(true);
+    if (!track.enabled) {
+      removeFromQueue(track.id);
+      if (currentTrack?.id === track.id) {
+        playNext(true);
+      }
       return;
     }
-    if (track.enabled && (!currentTrack || !currentTrack.enabled)) {
+    // Re-enabled: slot it into the running cycle at a random spot.
+    const pos = Math.floor(Math.random() * (shuffleQueue.length + 1));
+    shuffleQueue.splice(pos, 0, track);
+    if (!currentTrack || !currentTrack.enabled) {
       syncPlaylist(true);
     }
   };
@@ -568,7 +581,9 @@ export function createAudioSystem({ state, speed }) {
   const playSpecific = (track) => {
     if (state.value === 'running') return;
     if (!track.enabled) return;
-    shuffleQueue = [];
+    // Counts as this cycle's play of that track; if it already played this
+    // cycle it's simply a bonus listen without touching the cycle.
+    removeFromQueue(track.id);
     setActiveTrack(track);
   };
 
