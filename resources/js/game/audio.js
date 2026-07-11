@@ -367,6 +367,19 @@ export function createAudioSystem({ state, speed }) {
   const pickNextTrack = () => {
     const list = getEnabledTracks();
     if (!list.length) return null;
+    // Very first play ever (fresh device): open with the signature track
+    // instead of a random one. Shuffle takes over from track two on.
+    if (!localStorage.getItem('runner_music_opened')) {
+      localStorage.setItem('runner_music_opened', '1');
+      const opener = list.find((track) => track.id === 'best-friend');
+      if (opener) {
+        if (!shuffleQueue.length) {
+          rebuildShuffleQueue();
+        }
+        shuffleQueue = shuffleQueue.filter((track) => track.id !== opener.id);
+        return opener;
+      }
+    }
     if (!shuffleQueue.length) {
       rebuildShuffleQueue();
     }
