@@ -32,7 +32,6 @@ export const swipeThreshold = 40;
 // Sideways swiping (lane change) is the most common action and fires earlier
 // than vertical — otherwise it feels more sluggish than jump/slide.
 export const swipeThresholdX = 26;
-export const swipeTimeLimit = 650;
 export const segmentLength = 20;
 export const playerSize = { w: 0.9, h: 1.4, d: 0.8 };
 export const coyoteTimeMs = 50;

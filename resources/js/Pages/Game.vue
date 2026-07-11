@@ -1075,7 +1075,6 @@ import {
   dropBoost,
   swipeThreshold,
   swipeThresholdX,
-  swipeTimeLimit,
   segmentLength,
   playerSize,
   coyoteTimeMs,
@@ -1840,6 +1839,10 @@ const currentPlayerHeight = () =>
     : isSliding
       ? playerSize.h * slideScale
       : playerSize.h;
+
+// While sliding the group center sits at slide height; the GLB root (feet
+// pivot) must rise by the difference so the shoes stay on the asphalt.
+const slideRootLift = (playerSize.h * (1 - slideScale)) / 2;
 const getGroundCenterForSurface = (surfaceY, playerHeight) => surfaceY + playerHeight / 2;
 const currentGroundHeight = () => currentGroundCenter;
 
@@ -2170,7 +2173,7 @@ const startGallery = () => {
   galleryCamPitch = 0.35;
   galleryCamPointerId = null;
   if (player) {
-    player.scale.y = 1;
+    player.scale.setScalar(1);
     player.rotation.set(0, galleryYaw, 0);
     player.position.set(0, playerSize.h / 2, 4);
     player.visible = true;
@@ -2545,7 +2548,7 @@ const resetRun = () => {
   lastGroundedAt = performance.now();
   if (player) {
     player.position.set(lanes[currentLane], currentGroundCenter, 2);
-    player.scale.y = 1;
+    player.scale.setScalar(1);
     player.rotation.z = 0;
     player.rotation.y = 0;
     player.visible = true;
@@ -2703,7 +2706,7 @@ const reviveRun = () => {
     currentLane = 1;
     laneOrigin = 1;
     isSliding = false;
-    player.scale.y = 1;
+    player.scale.setScalar(1);
     currentSurfaceY = 0;
     currentGroundCenter = getGroundCenterForSurface(0, currentPlayerHeight());
     player.position.set(lanes[1], currentGroundCenter, 2);
@@ -2953,18 +2956,27 @@ const requestSlide = () => {
   slideTimer = slideDuration;
   playerVelocityY = 0;
   sfx.slide();
-  player.scale.y = slideScale;
+  // The COLLISION box shrinks via currentPlayerHeight() and the group
+  // center drops with it — but the mesh is no longer scale-squashed.
+  // The visual slide is a real lying-back pose (driveCharacter /
+  // animateRunner); the GLB root gets lifted so the feet stay on the
+  // road despite the lowered group center.
   player.position.y = getGroundCenterForSurface(currentSurfaceY, currentPlayerHeight());
   currentGroundCenter = player.position.y;
+  if (activeCharacter) {
+    activeCharacter.root.position.y = activeCharacter.baseY + slideRootLift;
+  }
 };
 
 const stopSlide = () => {
   isSliding = false;
   slideTimer = 0;
   if (player) {
-    player.scale.y = 1;
     player.position.y = getGroundCenterForSurface(currentSurfaceY, currentPlayerHeight());
     currentGroundCenter = player.position.y;
+  }
+  if (activeCharacter) {
+    activeCharacter.root.position.y = activeCharacter.baseY;
   }
 };
 
@@ -3285,10 +3297,11 @@ const handleTouchEnd = (event) => {
   if (!touch) return;
   const dx = touch.clientX - touchStart.x;
   const dy = touch.clientY - touchStart.y;
-  const dt = performance.now() - touchStart.time;
   touchStart = null;
-
-  if (dt > swipeTimeLimit) return;
+  // No time limit: an extremely slow swipe is still a swipe. The only
+  // question is which axis crossed its threshold (checked live in
+  // handleTouchMove; this is the fallback for a fast flick whose last
+  // move event never fired).
   triggerSwipe(dx, dy);
 };
 
@@ -3311,9 +3324,9 @@ const handleTouchMove = (event) => {
   if (!touch) return;
   const dx = touch.clientX - touchStart.x;
   const dy = touch.clientY - touchStart.y;
-  const dt = performance.now() - touchStart.time;
 
-  if (dt > swipeTimeLimit) return;
+  // Fires the moment either axis first crosses its threshold — however
+  // long the finger took to get there (Subway-Surfers-like slow swipes).
   if (triggerSwipe(dx, dy)) {
     touchStart = null;
   }
@@ -4015,7 +4028,10 @@ const applyCharacter = (skin = null) => {
   proceduralParts.forEach((part) => {
     part.visible = false;
   });
-  activeCharacter = { key, root, mixer, actions, current: null };
+  activeCharacter = { key, root, mixer, actions, current: null, baseY: root.position.y };
+  if (isSliding) {
+    activeCharacter.root.position.y = activeCharacter.baseY + slideRootLift;
+  }
 };
 
 const setCharacterAction = (name) => {
@@ -4039,6 +4055,7 @@ const driveCharacter = (delta, running) => {
     setCharacterAction('idle');
     character.mixer.timeScale = 1;
     character.root.rotation.x = d(character.root.rotation.x, 0);
+    character.root.position.y = d(character.root.position.y, character.baseY, 22);
     player.rotation.z = d(player.rotation.z, 0, 6);
     character.mixer.update(delta);
     return;
@@ -4056,11 +4073,18 @@ const driveCharacter = (delta, running) => {
   character.mixer.timeScale = 0.35 + speed.value / 32;
   let lean = 0.12;
   if (isSliding) {
-    lean = 0.45;
+    // Real slide: the whole body reclines ~60° around the feet pivot
+    // (heel slide), instead of the old scale-squash pancake.
+    lean = -1.05;
   } else if (!grounded) {
     lean = -0.18;
   }
-  character.root.rotation.x = d(character.root.rotation.x, lean, 8);
+  character.root.rotation.x = d(character.root.rotation.x, lean, isSliding ? 18 : 8);
+  character.root.position.y = d(
+    character.root.position.y,
+    character.baseY + (isSliding ? slideRootLift : 0),
+    22,
+  );
   character.mixer.update(delta);
 };
 
@@ -4104,6 +4128,13 @@ const animateRunner = (delta) => {
     THREE.MathUtils.damp(current, target, speedFactor, delta);
 
   player.rotation.z = d(player.rotation.z, (player.position.x - lanes[currentLane]) * 0.18, 10);
+
+  // Fallback rig only: eased squash-and-stretch instead of the old instant
+  // snap (GLB characters recline via driveCharacter and never squash).
+  player.scale.y = d(player.scale.y, isSliding ? slideScale : 1, 20);
+  const stretch = d(player.scale.x, isSliding ? 1.12 : 1, 20);
+  player.scale.x = stretch;
+  player.scale.z = stretch;
 
   if (isSliding) {
     // Feet-first slide, head tucked back.
@@ -6896,7 +6927,7 @@ const startDriving = () => {
   currentGroundCenter = player.position.y;
   playerVelocityY = 0;
   isSliding = false;
-  player.scale.y = 1;
+  player.scale.setScalar(1);
   currentLane = 2;
   laneOrigin = 2;
   driveTargetSpeed = 24;
@@ -7007,7 +7038,7 @@ const ejectFromCar = () => {
 
   // The character reappears and tumbles toward the left curb.
   player.visible = true;
-  player.scale.y = 1;
+  player.scale.setScalar(1);
   if (activeCharacter) {
     activeCharacter.root.visible = true;
   } else {
