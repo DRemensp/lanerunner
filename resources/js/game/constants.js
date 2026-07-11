@@ -27,6 +27,12 @@ export const gravity = -28;
 export const jumpVelocity = 11.4;
 export const slideScale = 0.55;
 export const slideDuration = 0.6;
+// Double-tap dash: short forward burst (runner zone only). The speed bonus
+// MUST stay mirrored in RunnerController::DASH_BOOST — the server allows
+// maxSpeed up to expectedSpeed + margin + DASH_BOOST.
+export const dashBoost = 12;
+export const dashDuration = 0.85;
+export const dashCooldown = 5;
 export const dropBoost = 1.6;
 export const swipeThreshold = 40;
 // Sideways swiping (lane change) is the most common action and fires earlier

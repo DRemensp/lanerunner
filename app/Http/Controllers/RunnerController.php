@@ -41,6 +41,10 @@ class RunnerController extends Controller
 
     private const DRIVE_MAX_SPEED = 160.0;
 
+    // Mirror of constants.js dashBoost: the double-tap dash may push the
+    // runner's top speed this far above the acceleration curve.
+    private const DASH_BOOST = 12.0;
+
     // Endless unlocks: reach a stage in 5 different verified classic runs to
     // unlock its endless tile (stage 1 is always open). The client reports
     // the stage it reached; these distance floors clamp the claim so nobody
@@ -244,7 +248,7 @@ class RunnerController extends Controller
                 $cheatReasons[] = 'distance_over_cap';
                 $verified = false;
             }
-            if ($maxSpeed > $expectedSpeed + 2.5) {
+            if ($maxSpeed > $expectedSpeed + 2.5 + self::DASH_BOOST) {
                 $cheatReasons[] = 'speed_over_cap';
                 $verified = false;
             }

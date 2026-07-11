@@ -144,6 +144,25 @@
       </div>
     </div>
 
+    <!-- Dash cooldown ring, bottom corner per handedness. Refills as a
+         conic sweep; pulses once fully charged. -->
+    <div
+      v-if="state === 'running' && (finalePhase === 'none' || finalePhase === 'approach')"
+      class="dash-indicator"
+      :class="[handedness === 'left' ? 'dash-side-left' : 'dash-side-right', { ready: dashCooldownLeft <= 0 }]"
+      aria-hidden="true"
+    >
+      <span
+        class="dash-ring"
+        :style="{
+          background: `conic-gradient(rgba(75, 232, 255, 0.9) ${(1 - dashCooldownLeft / dashCooldown) * 360}deg, rgba(75, 232, 255, 0.14) 0deg)`,
+        }"
+      ></span>
+      <span class="dash-core">
+        <svg viewBox="0 0 24 24"><path d="M13.5 2.5L5 13.5h5l-1.5 8L18 10.5h-5l0.5-8z" fill="currentColor"/></svg>
+      </span>
+    </div>
+
     <div v-if="devRun && state !== 'menu'" class="dev-badge">
       {{ skippedRun ? 'Skipped — run not ranked' : 'Dev Run — not saved' }}
     </div>
@@ -1079,6 +1098,9 @@ import {
   jumpVelocity,
   slideScale,
   slideDuration,
+  dashBoost,
+  dashDuration,
+  dashCooldown,
   dropBoost,
   swipeThreshold,
   swipeThresholdX,
@@ -1765,6 +1787,12 @@ let playerVelocityY = 0;
 let currentLane = 1;
 let isSliding = false;
 let slideTimer = 0;
+
+// Double-tap dash: forward burst on a cooldown (runner zone only). The
+// cooldown is reactive because the corner indicator renders from it.
+let dashTimer = 0;
+const dashCooldownLeft = ref(0);
+let lastTap = null;
 let touchStart = null;
 let pendingSlide = false;
 let pointerUnlockHandler;
@@ -2574,6 +2602,9 @@ const resetRun = () => {
   isSliding = false;
   slideTimer = 0;
   pendingSlide = false;
+  dashTimer = 0;
+  dashCooldownLeft.value = 0;
+  lastTap = null;
   runPhase = 0;
   currentSurfaceY = 0;
   currentGroundCenter = getGroundCenterForSurface(currentSurfaceY, currentPlayerHeight());
@@ -2972,6 +3003,16 @@ const attemptJump = () => {
   }
 };
 
+const triggerDash = () => {
+  if (state.value !== 'running' || !player) return;
+  if (finalePhase.value !== 'none' && finalePhase.value !== 'approach') return;
+  if (dashCooldownLeft.value > 0) return;
+  dashTimer = dashDuration;
+  dashCooldownLeft.value = dashCooldown;
+  sfx.powerup();
+  vibrate(24);
+};
+
 const requestSlide = () => {
   if (state.value !== 'running' || !player) return;
   if (finalePhase.value !== 'none' && finalePhase.value !== 'approach') return;
@@ -3071,6 +3112,11 @@ const handleKeydown = (event) => {
 
   if (event.code === 'Escape') {
     pauseRun();
+    return;
+  }
+
+  if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+    triggerDash();
     return;
   }
 
@@ -3274,6 +3320,7 @@ const handleTouchStart = (event) => {
     x: touch.clientX,
     y: touch.clientY,
     time: performance.now(),
+    fired: false,
   };
 };
 
@@ -3335,7 +3382,27 @@ const handleTouchEnd = (event) => {
   if (!touch) return;
   const dx = touch.clientX - touchStart.x;
   const dy = touch.clientY - touchStart.y;
+  const start = touchStart;
   touchStart = null;
+
+  // Quick press-release without movement = a tap; two taps close together
+  // in time and space = dash.
+  const now = performance.now();
+  if (
+    !start.fired &&
+    now - start.time < 260 &&
+    Math.abs(dx) < 18 &&
+    Math.abs(dy) < 18
+  ) {
+    if (lastTap && now - lastTap.time < 340 && Math.hypot(touch.clientX - lastTap.x, touch.clientY - lastTap.y) < 80) {
+      lastTap = null;
+      triggerDash();
+    } else {
+      lastTap = { time: now, x: touch.clientX, y: touch.clientY };
+    }
+    return;
+  }
+
   // No time limit: an extremely slow swipe is still a swipe. The only
   // question is which axis crossed its threshold (checked live in
   // handleTouchMove; this is the fallback for a fast flick whose last
@@ -3371,6 +3438,7 @@ const handleTouchMove = (event) => {
   if (triggerSwipe(dx, dy)) {
     touchStart.x = touch.clientX;
     touchStart.y = touch.clientY;
+    touchStart.fired = true; // this touch swiped — it can never be a tap
   }
 };
 
@@ -9827,9 +9895,14 @@ const updateRunner = (delta) => {
     // curve the anti-cheat models server-side (minPlausibleDuration solves
     // d'(t) = 2.4·(base + d/2500·step); expectedSpeed mirrors min(3, …)).
     // Checkpoints/districts every 2500 remain as events.
+    // Dash burst rides on top of the curve; the server allows exactly
+    // dashBoost above expectedSpeed (RunnerController::DASH_BOOST).
+    const dashBonus = dashTimer > 0 ? dashBoost * Math.min(1, dashTimer / (dashDuration * 0.4)) : 0;
     const targetSpeed =
-      level.baseSpeed + Math.min(3, score.value / level.stepDistance) * level.speedStep;
-    speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, 4, delta);
+      level.baseSpeed +
+      Math.min(3, score.value / level.stepDistance) * level.speedStep +
+      dashBonus;
+    speed.value = THREE.MathUtils.damp(speed.value, targetSpeed, dashTimer > 0 ? 9 : 4, delta);
     // Endless mode never leaves its stage: the finale (zone 2 hand-off)
     // stays off and the run just keeps going.
     if (!finaleTriggered && runMode.value !== 'endless' && score.value >= FINALE_SCORE) {
@@ -9924,6 +9997,13 @@ const updateRunner = (delta) => {
       if (slideTimer <= 0) {
         stopSlide();
       }
+    }
+
+    if (dashTimer > 0) {
+      dashTimer = Math.max(0, dashTimer - delta);
+    }
+    if (dashCooldownLeft.value > 0) {
+      dashCooldownLeft.value = Math.max(0, dashCooldownLeft.value - delta);
     }
 
     animateRunner(delta);
@@ -13374,6 +13454,65 @@ onBeforeUnmount(() => {
 .shop-message {
   font-size: 0.8rem;
   color: rgba(255, 220, 150, 0.9);
+}
+
+/* --- Dash cooldown ring (bottom corner, side follows handedness). --- */
+.dash-indicator {
+  position: absolute;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  width: 52px;
+  height: 52px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.dash-side-right {
+  right: calc(20px + env(safe-area-inset-right));
+}
+
+.dash-side-left {
+  left: calc(20px + env(safe-area-inset-left));
+}
+
+.dash-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  /* conic-gradient fill set inline from the cooldown fraction */
+  -webkit-mask: radial-gradient(circle, transparent 58%, #000 60%);
+  mask: radial-gradient(circle, transparent 58%, #000 60%);
+}
+
+.dash-core {
+  position: absolute;
+  inset: 6px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(8, 12, 22, 0.75);
+  color: rgba(120, 180, 255, 0.5);
+  transition: color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.dash-core svg {
+  width: 22px;
+  height: 22px;
+}
+
+.dash-indicator.ready .dash-core {
+  color: #4be8ff;
+  box-shadow: 0 0 14px rgba(46, 229, 255, 0.5), inset 0 0 10px rgba(46, 229, 255, 0.25);
+  animation: dash-ready-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes dash-ready-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
 }
 
 /* --- Resume countdown: big neon number pulsing down 3-2-1. --- */
