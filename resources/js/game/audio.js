@@ -368,9 +368,10 @@ export function createAudioSystem({ state, speed }) {
     const list = getEnabledTracks();
     if (!list.length) return null;
     // Very first play ever (fresh device): open with the signature track
-    // instead of a random one. Shuffle takes over from track two on.
+    // instead of a random one. Shuffle takes over from track two on. The
+    // flag is set in setActiveTrack once playback truly starts — a rejected
+    // autoplay attempt must not burn the opener.
     if (!localStorage.getItem('runner_music_opened')) {
-      localStorage.setItem('runner_music_opened', '1');
       const opener = list.find((track) => track.id === 'best-friend');
       if (opener) {
         if (!shuffleQueue.length) {
@@ -419,6 +420,9 @@ export function createAudioSystem({ state, speed }) {
       nextAudio.pause();
       return;
     }
+
+    // Playback confirmed: the first-open flag flips here (see pickNextTrack).
+    localStorage.setItem('runner_music_opened', '1');
 
     // Track state flips IMMEDIATELY, not at the end of the 700ms fade.
     // Rapid skipping aborted fades before they got here, leaving a stale

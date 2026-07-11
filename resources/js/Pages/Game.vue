@@ -10761,6 +10761,10 @@ onMounted(() => {
   loadHandednessPref();
   loadDailyStats();
   initAudio();
+  // Try autoplay right away: the Capacitor WebView allows it outright, and
+  // Chrome allows it for returning players (media engagement). If the
+  // browser rejects the play(), the pointer listener below picks it up.
+  unlockAudio();
   // pointerUP, not down: on touch devices pointerdown does not count as a
   // user activation (Chrome grants it on pointerup/touchend), so play()
   // rejected on the very first tap. Permanent listener: every further tap
