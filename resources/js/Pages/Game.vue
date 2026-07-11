@@ -365,7 +365,7 @@
       <div v-if="multiTime > 0" class="power-chip multi">x2 Score {{ Math.ceil(multiTime) }}s</div>
     </div>
 
-    <div v-if="state === 'paused'" class="death-overlay">
+    <div v-if="state === 'paused' && !resumeCountdown" class="death-overlay">
       <div class="death-card">
         <div class="death-title">Paused</div>
         <div class="death-actions">
@@ -375,6 +375,12 @@
         </div>
         <div class="pause-hint">Esc or Enter to resume</div>
       </div>
+    </div>
+
+    <!-- Get-ready countdown between pause menu and live gameplay. -->
+    <div v-if="resumeCountdown > 0" class="resume-countdown" @click="cancelResumeCountdown">
+      <div :key="resumeCountdown" class="resume-count-num">{{ resumeCountdown }}</div>
+      <div class="resume-count-sub">Get ready</div>
     </div>
 
     <div v-if="state === 'menu' && !showAuthGate" class="menu-overlay">
@@ -2050,9 +2056,34 @@ const pauseRun = () => {
   state.value = 'paused';
 };
 
+// Resume runs through a 3-second countdown so the player can get their
+// fingers back in position; Escape during the countdown returns to the
+// pause menu, leaving the run frozen the whole time.
+const resumeCountdown = ref(0);
+let resumeTimer = null;
+const cancelResumeCountdown = () => {
+  if (resumeTimer) {
+    clearInterval(resumeTimer);
+    resumeTimer = null;
+  }
+  resumeCountdown.value = 0;
+};
+
 const resumeRun = () => {
-  if (state.value !== 'paused') return;
-  state.value = 'running';
+  if (state.value !== 'paused' || resumeCountdown.value) return;
+  resumeCountdown.value = 3;
+  resumeTimer = setInterval(() => {
+    // Quit/crash/hidden tab while counting: fall back to the pause menu.
+    if (state.value !== 'paused' || document.hidden) {
+      cancelResumeCountdown();
+      return;
+    }
+    resumeCountdown.value -= 1;
+    if (resumeCountdown.value <= 0) {
+      cancelResumeCountdown();
+      state.value = 'running';
+    }
+  }, 1000);
 };
 
 const quitRun = () => {
@@ -3018,6 +3049,12 @@ const handleKeydown = (event) => {
   }
 
   if (state.value === 'paused') {
+    if (resumeCountdown.value) {
+      if (event.code === 'Escape') {
+        cancelResumeCountdown();
+      }
+      return;
+    }
     if (event.code === 'Escape' || event.code === 'Enter') {
       resumeRun();
     }
@@ -10606,6 +10643,7 @@ onBeforeUnmount(() => {
     clearInterval(menuBgTimer);
     menuBgTimer = null;
   }
+  cancelResumeCountdown();
   if (pointerUnlockHandler) {
     window.removeEventListener('pointerdown', pointerUnlockHandler);
   }
@@ -13321,6 +13359,54 @@ onBeforeUnmount(() => {
 .shop-message {
   font-size: 0.8rem;
   color: rgba(255, 220, 150, 0.9);
+}
+
+/* --- Resume countdown: big neon number pulsing down 3-2-1. --- */
+.resume-countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+  background: rgba(4, 6, 13, 0.45);
+  animation: fadeIn 0.25s ease;
+}
+
+.resume-count-num {
+  font-family: var(--display);
+  font-size: clamp(5rem, 24vw, 9rem);
+  font-weight: 700;
+  line-height: 1;
+  color: #f6fbff;
+  text-shadow: 0 0 40px rgba(75, 232, 255, 0.65), 0 6px 30px rgba(0, 0, 0, 0.7);
+  animation: resume-count-pop 1s ease-out;
+}
+
+@keyframes resume-count-pop {
+  0% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+  22% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.94);
+    opacity: 0.9;
+  }
+}
+
+.resume-count-sub {
+  font-family: var(--display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.5em;
+  margin-left: 0.5em;
+  text-transform: uppercase;
+  color: rgba(160, 200, 245, 0.8);
 }
 
 /* Account row inside the settings screen. */
