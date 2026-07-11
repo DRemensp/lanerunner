@@ -9,13 +9,9 @@
       @pointercancel="galleryCamEnd"
     ></div>
 
-    <!-- Coin balance top-LEFT; on subscreens it drops below the back
-         button so it can never cover it. -->
-    <div
-      v-if="authUser && state === 'menu' && !showAuthGate"
-      class="coin-chip coin-hud"
-      :class="{ shifted: menuScreen !== 'main' }"
-    >
+    <!-- Coin balance top-LEFT: the top strip is reserved on every menu
+         screen — subscreens start their header below it instead. -->
+    <div v-if="authUser && state === 'menu' && !showAuthGate" class="coin-chip coin-hud">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
       <span>{{ totalCoins }}</span>
     </div>
@@ -11979,10 +11975,6 @@ onBeforeUnmount(() => {
   z-index: 6;
 }
 
-.coin-hud.shifted {
-  top: calc(72px + env(safe-area-inset-top));
-}
-
 .corner-hud.running {
   top: calc(92px + env(safe-area-inset-top));
 }
@@ -13208,7 +13200,9 @@ onBeforeUnmount(() => {
 .menu-screen {
   width: min(640px, 100%);
   height: 100%;
-  padding: calc(16px + env(safe-area-inset-top)) 18px calc(16px + env(safe-area-inset-bottom));
+  /* Top strip (coins + music pill) is reserved on every menu screen: the
+     back button + title start just below it. */
+  padding: calc(54px + env(safe-area-inset-top)) 18px calc(16px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 14px;
