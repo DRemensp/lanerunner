@@ -420,6 +420,17 @@ export function createAudioSystem({ state, speed }) {
       return;
     }
 
+    // Track state flips IMMEDIATELY, not at the end of the 700ms fade.
+    // Rapid skipping aborted fades before they got here, leaving a stale
+    // currentTrack — and the next cycle rebuild then reshuffled the track
+    // that was actually playing straight back into the pot (audible
+    // repeats within a few songs).
+    currentTrack = track;
+    if (recordHistory) {
+      rememberTrack(track);
+    }
+    triggerTrackToast(track);
+
     const prevAudio = activeAudio;
     const fadeStart = performance.now();
     const fadeDuration = 700;
@@ -440,19 +451,14 @@ export function createAudioSystem({ state, speed }) {
         }
         activeAudio = nextAudio;
         inactiveAudio = prevAudio;
-        currentTrack = track;
-        if (recordHistory) {
-          rememberTrack(track);
-        }
-        activeAudio.onended = () => {
+        nextAudio.onended = () => {
           if (!isPaused.value) {
             playNext(true);
           }
         };
         if (isPaused.value) {
-          activeAudio.pause();
+          nextAudio.pause();
         }
-        triggerTrackToast(track);
       }
     };
 
