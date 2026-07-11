@@ -3980,7 +3980,7 @@ const characterKeyForSkin = (skin) => {
 const removeActiveCharacter = () => {
   if (!activeCharacter) return;
   activeCharacter.mixer.stopAllAction();
-  player.remove(activeCharacter.root);
+  player.remove(activeCharacter.spinner);
   activeCharacter = null;
   proceduralParts.forEach((part) => {
     part.visible = true;
@@ -4024,11 +4024,16 @@ const applyCharacter = (skin = null) => {
     idle: idleClip ? mixer.clipAction(idleClip) : null,
   };
 
-  player.add(root);
+  // Spinner wrapper at the player-group origin (the body's center): the
+  // slide somersault rotates it, so the character rolls head-over-heels
+  // around their middle instead of sweeping around the feet.
+  const spinner = new THREE.Group();
+  spinner.add(root);
+  player.add(spinner);
   proceduralParts.forEach((part) => {
     part.visible = false;
   });
-  activeCharacter = { key, root, mixer, actions, current: null, baseY: root.position.y };
+  activeCharacter = { key, root, spinner, mixer, actions, current: null, baseY: root.position.y };
   if (isSliding) {
     activeCharacter.root.position.y = activeCharacter.baseY + slideRootLift;
   }
@@ -4056,6 +4061,7 @@ const driveCharacter = (delta, running) => {
     character.mixer.timeScale = 1;
     character.root.rotation.x = d(character.root.rotation.x, 0);
     character.root.position.y = d(character.root.position.y, character.baseY, 22);
+    settleSpinner(character, delta);
     player.rotation.z = d(player.rotation.z, 0, 6);
     character.mixer.update(delta);
     return;
@@ -4071,21 +4077,42 @@ const driveCharacter = (delta, running) => {
   // Halved (was 0.7 + speed/16): the stride frequency looked way too
   // frantic, especially at endgame speed.
   character.mixer.timeScale = 0.35 + speed.value / 32;
-  let lean = 0.12;
+
   if (isSliding) {
-    // Real slide: the whole body reclines ~60° around the feet pivot
-    // (heel slide), instead of the old scale-squash pancake.
-    lean = -1.05;
-  } else if (!grounded) {
-    lean = -0.18;
+    // Slide = forward somersault: driven off the slide timer so the roll
+    // always completes exactly within the slide. The body tucks (uniform
+    // scale, no squash) and lifts slightly while upside down, then the
+    // last quarter of the slide is a low crouch before standing back up.
+    const progress = 1 - Math.max(0, slideTimer) / slideDuration;
+    const rollPhase = Math.min(1, progress / 0.75);
+    const eased = 1 - Math.pow(1 - rollPhase, 2.2);
+    character.spinner.rotation.x = -eased * Math.PI * 2;
+    const tuck = Math.sin(rollPhase * Math.PI);
+    character.spinner.scale.setScalar(1 - 0.34 * tuck);
+    character.spinner.position.y = tuck * 0.16;
+    character.root.rotation.x = d(character.root.rotation.x, 0.22, 14);
+    character.root.position.y = character.baseY + slideRootLift;
+  } else {
+    const lean = grounded ? 0.12 : -0.18;
+    character.root.rotation.x = d(character.root.rotation.x, lean, 8);
+    character.root.position.y = d(character.root.position.y, character.baseY, 22);
+    settleSpinner(character, delta);
   }
-  character.root.rotation.x = d(character.root.rotation.x, lean, isSliding ? 18 : 8);
-  character.root.position.y = d(
-    character.root.position.y,
-    character.baseY + (isSliding ? slideRootLift : 0),
-    22,
-  );
   character.mixer.update(delta);
+};
+
+// Eases the somersault wrapper back to neutral. After a full slide the
+// rotation sits at exactly -2π (≡ upright); modulo-wrapping to the nearest
+// turn also finishes an aborted roll (jump out of a slide) the short way.
+const settleSpinner = (character, delta) => {
+  const spinner = character.spinner;
+  let r = spinner.rotation.x % (Math.PI * 2);
+  if (r < -Math.PI) r += Math.PI * 2;
+  if (r > Math.PI) r -= Math.PI * 2;
+  spinner.rotation.x = THREE.MathUtils.damp(r, 0, 16, delta);
+  const s = THREE.MathUtils.damp(spinner.scale.x, 1, 16, delta);
+  spinner.scale.setScalar(s);
+  spinner.position.y = THREE.MathUtils.damp(spinner.position.y, 0, 16, delta);
 };
 
 const loadCharacterModels = () => {
