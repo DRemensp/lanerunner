@@ -14103,8 +14103,11 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  /* Phones: the coin chip + music pill own the very top strip — the hero
+     starts below them, and the flex layout shortens the mode cards by the
+     same amount. */
   .menu-hero {
-    margin-top: 2vh;
+    margin-top: calc(48px + env(safe-area-inset-top));
   }
 
   .mode-card {
