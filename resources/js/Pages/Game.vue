@@ -1207,7 +1207,9 @@ watch(
 );
 const showLoginPrompt = ref(false);
 const showAuthGate = ref(false);
-const cameraZoom = ref(1);
+const cameraZoom = ref(
+  Math.min(1.4, Math.max(0.8, Number.parseFloat(localStorage.getItem('runner_zoom') || '1') || 1)),
+);
 // Handedness decides which side the gas/brake pedals sit on: the dominant
 // hand stays free for lane swipes, pedals go to the other thumb.
 const handedness = ref('right');
@@ -10727,6 +10729,7 @@ watch(state, () => {
 });
 
 watch(cameraZoom, () => {
+  localStorage.setItem('runner_zoom', String(cameraZoom.value));
   applyCameraZoom();
 });
 
@@ -13347,6 +13350,37 @@ onBeforeUnmount(() => {
 .menu-screen.skin-screen {
   justify-content: space-between;
   width: min(720px, 100%);
+}
+
+/* Landscape phones: the dock docks LEFT as a sidebar, the 3D preview owns
+   the right half of the screen (the camera centers the character there). */
+@media (orientation: landscape) and (max-height: 560px) {
+  .menu-screen.skin-screen {
+    width: 100%;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 12px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+  }
+
+  .menu-screen.skin-screen .menu-screen-head {
+    position: absolute;
+    top: calc(10px + env(safe-area-inset-top));
+    left: 18px;
+    z-index: 2;
+  }
+
+  .menu-screen.skin-screen .skin-dock {
+    width: min(52vw, 430px);
+    margin-top: 52px;
+    overflow-y: auto;
+    align-content: start;
+  }
+
+  .menu-screen.skin-screen .skin-grid {
+    max-height: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .skin-dock {
