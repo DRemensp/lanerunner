@@ -6,7 +6,8 @@
 // v6: purge cached audio — the five non-Uppbeat tracks lost their license
 // and must disappear from client caches too.
 // v7: new app/PWA icons (night-city runner art).
-const CACHE_NAME = 'lanerunner-v7';
+// v8: endless preview recrop (same filename, cache-first would pin the old one).
+const CACHE_NAME = 'lanerunner-v8';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
