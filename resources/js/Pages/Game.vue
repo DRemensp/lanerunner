@@ -10755,8 +10755,12 @@ onMounted(() => {
   loadHandednessPref();
   loadDailyStats();
   initAudio();
+  // pointerUP, not down: on touch devices pointerdown does not count as a
+  // user activation (Chrome grants it on pointerup/touchend), so play()
+  // rejected on the very first tap. Permanent listener: every further tap
+  // retries until music actually starts — a no-op afterwards.
   pointerUnlockHandler = () => unlockAudio();
-  window.addEventListener('pointerdown', pointerUnlockHandler, { once: true });
+  window.addEventListener('pointerup', pointerUnlockHandler);
   document.addEventListener('visibilitychange', handleVisibility);
   window.addEventListener('blur', handleWindowBlur);
   initScene();
@@ -10800,7 +10804,7 @@ onBeforeUnmount(() => {
   }
   cancelResumeCountdown();
   if (pointerUnlockHandler) {
-    window.removeEventListener('pointerdown', pointerUnlockHandler);
+    window.removeEventListener('pointerup', pointerUnlockHandler);
   }
   disposeAudio();
   document.removeEventListener('visibilitychange', handleVisibility);

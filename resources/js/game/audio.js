@@ -479,7 +479,10 @@ export function createAudioSystem({ state, speed }) {
   };
 
   const unlockAudio = () => {
-    if (audioUnlocked) return;
+    // No early return: if the first play() was rejected by the autoplay
+    // policy (e.g. a tap whose pointerdown didn't count as activation),
+    // every later gesture retries. syncPlaylist is a no-op once a track
+    // actually plays, so repeated calls are free.
     audioUnlocked = true;
     syncPlaylist(true);
   };
@@ -525,6 +528,13 @@ export function createAudioSystem({ state, speed }) {
       applyAudioVolume();
       persistAudioPrefs();
       return;
+    }
+    // Muted outside a run: the tap unmutes first — otherwise a mute set
+    // during a run leaves the menu with no way back to sound.
+    if (isMuted.value) {
+      isMuted.value = false;
+      applyAudioVolume();
+      persistAudioPrefs();
     }
     showPlaylist.value = !showPlaylist.value;
   };
