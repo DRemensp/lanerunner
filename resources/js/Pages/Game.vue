@@ -233,7 +233,7 @@
          after reaching zone 2 at least once AND 3 failed zone-1 runs in a row
          (see playerSkip). F9 stays the unrestricted dev cheat. -->
     <button
-      v-if="state === 'running' && finalePhase === 'none' && skipAvailable"
+      v-if="state === 'running' && finalePhase === 'none' && skipAvailable && runMode === 'classic'"
       class="cheat-skip"
       type="button"
       @pointerdown.prevent.stop="playerSkip"
