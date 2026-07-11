@@ -24,18 +24,19 @@ export function createAudioSystem({ state, speed }) {
   const showTrackToast = ref(false);
   const showPlaylist = ref(false);
 
+  // All tracks from Uppbeat (credits + license codes in Settings → Music).
   const tracks = ref([
-    buildTrack('new-school', 'The New School', 'Nick Petrov - The New School.mp3', 'png'),
-    buildTrack('golden', 'Golden', 'DEVMO - Golden.mp3', 'png'),
-    buildTrack('bring-it-back', 'Bring It Back', 'Notize - Bring It Back.mp3'),
-    buildTrack('soul-swingin', 'Soul Swingin', 'Richard Farrell - Soul Swingin.mp3', 'png'),
-    buildTrack('sugarsweet', 'Sugarsweet', 'Zach Sorgen - Sugarsweet.mp3'),
-    // Uppbeat tracks (credits in Settings → Music).
     buildTrack('stuzzy-fonk', 'Stuzzy Fonk', 'Hey Pluto - Stuzzy Fonk.mp3'),
     buildTrack('best-friend', 'Best Friend', 'Kasseo - Best Friend.mp3'),
     buildTrack('never-wanna-stop', 'Never Wanna Stop Loving You', 'All Good Folks - Never Wanna Stop Loving You.mp3'),
     buildTrack('magic', 'Magic', 'Mood Maze - Magic.mp3'),
     buildTrack('do-it', 'Do It', 'Aylex - Do It.mp3'),
+    buildTrack('superfly', 'Superfly Get Happy', 'Barry Dallas - Superfly Get Happy.mp3'),
+    buildTrack('always', 'Always', 'Distrxct - Always.mp3'),
+    buildTrack('come-down', 'Come Down', 'Kula - Come Down.mp3'),
+    buildTrack('come-on-lets-go', "Come On Let's Go", 'Ra - Come On Lets Go.mp3'),
+    buildTrack('sunshine', 'Sunshine', 'All Good Folks - Sunshine.mp3'),
+    buildTrack('dont-stop', "Don't Stop Regardless", 'Mazbou Q - Dont Stop Regardless.mp3'),
   ]);
 
   const playlistTracks = computed(() => tracks.value);

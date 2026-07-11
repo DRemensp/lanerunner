@@ -897,8 +897,26 @@
                     <li>
                       <a href="https://uppbeat.io/t/aylex/do-it" target="_blank" rel="noopener">Aylex — Do It</a>
                     </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/barry-dallas/superfly-get-happy" target="_blank" rel="noopener">Barry Dallas — Superfly Get Happy</a>
+                    </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/distrxct/always" target="_blank" rel="noopener">Distrxct — Always</a>
+                    </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/kula/come-down" target="_blank" rel="noopener">Kula — Come Down</a>
+                    </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/ra/come-on-lets-go" target="_blank" rel="noopener">Ra — Come On Let's Go</a>
+                    </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/all-good-folks/sunshine" target="_blank" rel="noopener">All Good Folks — Sunshine</a>
+                    </li>
+                    <li>
+                      <a href="https://uppbeat.io/t/mazbou-q/dont-stop-regardless" target="_blank" rel="noopener">Mazbou Q — Don't Stop Regardless</a>
+                    </li>
                   </ul>
-                  <div class="music-credits-license">License code: FLV0AQVIETOL403Y</div>
+                  <div class="music-credits-license">License codes: FLV0AQVIETOL403Y · ENLPJVREYJ9TFJGB</div>
                 </div>
               </div>
             </div>

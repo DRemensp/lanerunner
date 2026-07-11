@@ -3,7 +3,9 @@
 // v4: navigations are now cached as they load, so /game itself boots from
 // cache when offline (offline.html only remains for never-visited pages).
 // v5: /images (menu stage art) joins the cache-first static media.
-const CACHE_NAME = 'lanerunner-v5';
+// v6: purge cached audio — the five non-Uppbeat tracks lost their license
+// and must disappear from client caches too.
+const CACHE_NAME = 'lanerunner-v6';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
