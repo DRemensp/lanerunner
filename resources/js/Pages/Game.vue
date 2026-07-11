@@ -3320,7 +3320,6 @@ const handleTouchStart = (event) => {
     x: touch.clientX,
     y: touch.clientY,
     time: performance.now(),
-    fired: false,
   };
 };
 
@@ -3386,14 +3385,10 @@ const handleTouchEnd = (event) => {
   touchStart = null;
 
   // Quick press-release without movement = a tap; two taps close together
-  // in time and space = dash.
+  // in time and space = dash. (A touch that swiped never gets here — the
+  // move handler consumes it.)
   const now = performance.now();
-  if (
-    !start.fired &&
-    now - start.time < 260 &&
-    Math.abs(dx) < 18 &&
-    Math.abs(dy) < 18
-  ) {
+  if (now - start.time < 260 && Math.abs(dx) < 18 && Math.abs(dy) < 18) {
     if (lastTap && now - lastTap.time < 340 && Math.hypot(touch.clientX - lastTap.x, touch.clientY - lastTap.y) < 80) {
       lastTap = null;
       triggerDash();
@@ -3431,14 +3426,11 @@ const handleTouchMove = (event) => {
   const dy = touch.clientY - touchStart.y;
 
   // Fires the moment either axis first crosses its threshold — however
-  // long the finger took to get there (Subway-Surfers-like slow swipes).
-  // The gesture then CHAINS: instead of ending, the origin resets to the
-  // current finger position, so left→up→down in one continuous touch
-  // fires each move separately.
+  // long the finger took to get there (slow swipes still count). One
+  // touch = ONE move: after firing, the gesture is consumed and the
+  // finger must lift before the next swipe (classic lane-runner input).
   if (triggerSwipe(dx, dy)) {
-    touchStart.x = touch.clientX;
-    touchStart.y = touch.clientY;
-    touchStart.fired = true; // this touch swiped — it can never be a tap
+    touchStart = null;
   }
 };
 
