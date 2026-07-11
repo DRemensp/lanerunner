@@ -14107,7 +14107,7 @@ onBeforeUnmount(() => {
      starts below them, and the flex layout shortens the mode cards by the
      same amount. */
   .menu-hero {
-    margin-top: calc(48px + env(safe-area-inset-top));
+    margin-top: calc(32px + env(safe-area-inset-top));
   }
 
   .mode-card {
