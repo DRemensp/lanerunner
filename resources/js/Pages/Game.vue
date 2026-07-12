@@ -400,6 +400,48 @@
       </div>
     </div>
 
+    <!-- One-time Classic roadmap: the four stages and how to advance. -->
+    <div v-if="classicIntroOpen" class="classic-intro">
+      <div class="classic-intro-card">
+        <div class="classic-intro-title">The Road Ahead</div>
+        <div class="classic-intro-sub">
+          Classic is one long journey — finish each stage to unlock the next.
+        </div>
+        <div class="classic-intro-strip" data-allow-scroll>
+          <div class="classic-intro-stage">
+            <span class="classic-intro-img stage-bg stage-bg-1" aria-hidden="true"></span>
+            <div class="classic-intro-name">1 &middot; Night City</div>
+            <div class="classic-intro-goal">Run to 10,000</div>
+          </div>
+          <span class="classic-intro-arrow" aria-hidden="true">&rarr;</span>
+          <div class="classic-intro-stage">
+            <span class="classic-intro-img stage-bg stage-bg-2" aria-hidden="true"></span>
+            <div class="classic-intro-name">2 &middot; Neon Drive</div>
+            <div class="classic-intro-goal">Hit 20,000 at top speed</div>
+          </div>
+          <span class="classic-intro-arrow" aria-hidden="true">&rarr;</span>
+          <div class="classic-intro-stage">
+            <span class="classic-intro-img stage-bg stage-bg-3" aria-hidden="true"></span>
+            <div class="classic-intro-name">3 &middot; Sky Chase</div>
+            <div class="classic-intro-goal">Take down every enemy &mdash; then the boss</div>
+          </div>
+          <span class="classic-intro-arrow" aria-hidden="true">&rarr;</span>
+          <div class="classic-intro-stage">
+            <span class="classic-intro-img stage-bg stage-bg-4" aria-hidden="true"></span>
+            <div class="classic-intro-name">4 &middot; The Void</div>
+            <div class="classic-intro-goal">The endless void &mdash; update coming soon!</div>
+          </div>
+        </div>
+        <button class="primary-btn" @click="closeClassicIntro" type="button">Start Run</button>
+      </div>
+    </div>
+
+    <!-- First-run dash hint, pinned top center for the first ~200m. -->
+    <div v-if="dashTipVisible && state === 'running'" class="dash-tip">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2.5L5 13.5h5l-1.5 8L18 10.5h-5l0.5-8z" fill="currentColor"/></svg>
+      <span>Tip: {{ isTouchDevice ? 'Double-tap anywhere to dash' : 'Press Shift to dash' }}</span>
+    </div>
+
     <!-- Get-ready countdown between pause menu and live gameplay. -->
     <div v-if="resumeCountdown > 0" class="resume-countdown" @click="cancelResumeCountdown">
       <div :key="resumeCountdown" class="resume-count-num">{{ resumeCountdown }}</div>
@@ -2013,6 +2055,11 @@ const startRun = async () => {
   } else {
     // The swipe tutorial teaches zone-1 controls — pointless mid-flight.
     maybeShowTutorial();
+    // Very first run ever: point out the dash until ~200m in.
+    if (!localStorage.getItem('runner_dash_tip')) {
+      localStorage.setItem('runner_dash_tip', '1');
+      dashTipVisible.value = true;
+    }
   }
   if (authUser.value) {
     // Fire and forget: the run token arrives while the player is already
@@ -2021,10 +2068,28 @@ const startRun = async () => {
   }
 };
 
-// Menu Play (left half): always a classic run.
-const startClassicRun = () => {
+// Menu Play (left half): always a classic run. The very first Play opens
+// the one-time stage roadmap instead; its Start button launches the run.
+const classicIntroOpen = ref(false);
+const dashTipVisible = ref(false);
+
+const beginClassicRun = () => {
   runMode.value = 'classic';
   startRun();
+};
+
+const startClassicRun = () => {
+  if (!localStorage.getItem('runner_classic_intro')) {
+    localStorage.setItem('runner_classic_intro', '1');
+    classicIntroOpen.value = true;
+    return;
+  }
+  beginClassicRun();
+};
+
+const closeClassicIntro = () => {
+  classicIntroOpen.value = false;
+  beginClassicRun();
 };
 
 // Endless carousel: locked tiles explain their unlock; unlocked tiles start
@@ -10106,6 +10171,11 @@ const updateRunner = (delta) => {
       }
     }
 
+    // Dash tip fades once the first ~200m are behind the player.
+    if (dashTipVisible.value && score.value > 480) {
+      dashTipVisible.value = false;
+    }
+
     if (dashTimer > 0) {
       dashSweep = speed.value * delta;
       dashTimer = Math.max(0, dashTimer - delta);
@@ -10764,6 +10834,9 @@ watch(state, () => {
     menuScreen.value = 'main';
   }
   pauseSettingsOpen.value = false;
+  if (state.value !== 'running') {
+    dashTipVisible.value = false;
+  }
   syncPlaylist();
 });
 
@@ -13689,6 +13762,143 @@ onBeforeUnmount(() => {
   }
   50% {
     transform: scale(1.08);
+  }
+}
+
+/* --- One-time Classic roadmap overlay (first Play only). --- */
+.classic-intro {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(4, 6, 13, 0.72);
+  animation: fadeIn 0.3s ease;
+}
+
+.classic-intro-card {
+  width: min(760px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 22px 18px;
+  background: linear-gradient(180deg, rgba(13, 19, 36, 0.96), rgba(8, 12, 24, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(75, 232, 255, 0.35), 0 24px 60px rgba(0, 0, 0, 0.55);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+
+.classic-intro-title {
+  font-family: var(--display);
+  font-size: clamp(1.2rem, 4.5vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #f6fbff;
+  text-shadow: 0 0 24px rgba(75, 232, 255, 0.4);
+}
+
+.classic-intro-sub {
+  font-size: 0.82rem;
+  text-align: center;
+  color: rgba(200, 215, 245, 0.85);
+}
+
+/* Stage cards in a swipeable row, arrows between them. */
+.classic-intro-strip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 6px 2px 10px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.classic-intro-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.classic-intro-stage {
+  flex: none;
+  scroll-snap-align: center;
+  width: min(52vw, 200px);
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  text-align: center;
+}
+
+.classic-intro-img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  height: auto;
+  box-shadow: inset 0 0 0 1px rgba(75, 232, 255, 0.4), 0 0 14px rgba(46, 229, 255, 0.18);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.classic-intro-name {
+  font-family: var(--display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #eef6ff;
+}
+
+.classic-intro-goal {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: rgba(180, 200, 235, 0.85);
+}
+
+.classic-intro-arrow {
+  flex: none;
+  font-size: 1.6rem;
+  color: #4be8ff;
+  text-shadow: 0 0 12px rgba(46, 229, 255, 0.6);
+}
+
+/* --- First-run dash tip, pinned top center. --- */
+.dash-tip {
+  position: absolute;
+  top: calc(64px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  white-space: nowrap;
+  background: rgba(8, 12, 22, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(75, 232, 255, 0.55), 0 0 18px rgba(46, 229, 255, 0.3);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  font-family: var(--display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #eaf6ff;
+  animation: dash-tip-pulse 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.dash-tip svg {
+  width: 16px;
+  height: 16px;
+  color: #4be8ff;
+}
+
+@keyframes dash-tip-pulse {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.05);
   }
 }
 
