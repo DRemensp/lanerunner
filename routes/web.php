@@ -26,6 +26,9 @@ Route::get('/game', function () {
     return Inertia::render('Game');
 })->name('game');
 
+// Static privacy policy (linked from the Play Store listing).
+Route::view('/privacy', 'privacy')->name('privacy');
+
 Route::prefix('api/runner')->group(function () {
     Route::get('/profile', [RunnerController::class, 'profile']);
     Route::post('/run/start', [RunnerController::class, 'startRun']);
