@@ -17,19 +17,19 @@ Neon Rail Dash
 ## Short description — English (80 chars max)
 
 ```
-Neon endless runner: run, drive, fly through the night city. Secret stages!
+Endless runner in a neon city: run, drive and fly through four stages.
 ```
 
 ## Full description — English (4000 chars max)
 
 ```
-Neon Rail Dash is a fast neon endless runner — free to play, with four stages to conquer.
+Neon Rail Dash is a fast 3D endless runner set in a neon night city. You run, drive and fly through four connected stages, dodge traffic, collect coins and compete on an online leaderboard.
 
 RUN through the neon city at night: dodge traffic, barriers and construction sites, jump and slide at the last moment, and double-tap to DASH through the gaps. Chained near misses build combo bonuses — risky running pays off.
 
 DRIVE when the road opens up: reach the end of the line and the run turns into a high-speed chase behind the wheel.
 
-FLY even further: take to the sky, take down enemies and face the boss. And beyond that... the void is waiting (update coming soon!).
+FLY even further: take to the sky, shoot down drones and face the mothership boss. Survive it all and the run breaks into the void — an endless final stretch between the asteroids.
 
 TWO WAYS TO PLAY
 • Classic — one long journey through all stages: clear each one to reach the next
@@ -55,19 +55,19 @@ Play fully as a guest — an account (name, e-mail) is optional and only used fo
 ## Kurzbeschreibung — Deutsch (80 Zeichen max, für späteren DE-Eintrag)
 
 ```
-Neon-Endless-Runner: renne, fahre, fliege durch die Nacht. Geheime Stages!
+Endless Runner in der Neon-Stadt: renne, fahre und fliege durch vier Stages.
 ```
 
 ## Langbeschreibung — Deutsch (4000 Zeichen max)
 
 ```
-Neon Rail Dash ist ein rasanter Neon-Endless-Runner — kostenlos spielbar, mit vier Stages zum Erobern.
+Neon Rail Dash ist ein rasanter 3D-Endless-Runner in einer nächtlichen Neon-Stadt. Du rennst, fährst und fliegst durch vier verbundene Stages, weichst dem Verkehr aus, sammelst Coins und misst dich in einer Online-Bestenliste.
 
 RENNE durch die nächtliche Neon-Stadt: Weiche Verkehr, Barrieren und Baustellen aus, springe und rutsche im letzten Moment — und dashe per Doppeltipp durch die Lücken. Verkettete Beinahe-Kollisionen bringen Combo-Boni: Wer riskant läuft, wird belohnt.
 
 FAHRE, wenn die Straße sich öffnet: Erreiche das Ende der Strecke und der Lauf wird zur Hochgeschwindigkeitsjagd hinterm Steuer.
 
-FLIEGE noch weiter: Steig in den Himmel auf, schalte alle Gegner aus und stelle dich dem Boss. Und dahinter... wartet die Leere (Update kommt bald!).
+FLIEGE noch weiter: Steig in den Himmel auf, schieße Drohnen ab und stelle dich dem Mutterschiff-Boss. Überstehst du alles, führt der Lauf in die Leere — eine endlose Schlussetappe zwischen den Asteroiden.
 
 ZWEI SPIELARTEN
 • Classic — eine lange Reise durch alle Stages: Schließe jede ab, um die nächste zu erreichen
