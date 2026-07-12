@@ -58,6 +58,38 @@ Play fully as a guest — an account (name, e-mail) is optional and only used fo
 Neon-Endless-Runner: renne, fahre, fliege durch die Nacht. Geheime Stages!
 ```
 
+## Langbeschreibung — Deutsch (4000 Zeichen max)
+
+```
+Neon Rail Dash ist ein rasanter Neon-Endless-Runner — kostenlos spielbar, mit vier Stages zum Erobern.
+
+RENNE durch die nächtliche Neon-Stadt: Weiche Verkehr, Barrieren und Baustellen aus, springe und rutsche im letzten Moment — und dashe per Doppeltipp durch die Lücken. Verkettete Beinahe-Kollisionen bringen Combo-Boni: Wer riskant läuft, wird belohnt.
+
+FAHRE, wenn die Straße sich öffnet: Erreiche das Ende der Strecke und der Lauf wird zur Hochgeschwindigkeitsjagd hinterm Steuer.
+
+FLIEGE noch weiter: Steig in den Himmel auf, schalte alle Gegner aus und stelle dich dem Boss. Und dahinter... wartet die Leere (Update kommt bald!).
+
+ZWEI SPIELARTEN
+• Classic — eine lange Reise durch alle Stages: Schließe jede ab, um die nächste zu erreichen
+• Endless — wähle jede freigeschaltete Stage und jage deinen persönlichen Rekord
+
+FEATURES
+• Flüssiges Low-Poly-3D, optimiert für Mobilgeräte
+• Doppeltipp-Dash mit Cooldown — das Timing zählt
+• Zwei Schwierigkeitsgrade: City Rush (entspannt) und Night Run (schnell)
+• 10 freischaltbare Charaktere — verdiene Coins in Läufen und Tagesmissionen
+• Tagesmissionen, Combo-System, Events und Rekord-Feiern
+• Online-Bestenliste (optionaler Account) oder komplett als Gast spielbar
+• Playlist mit lizenzierten Tracks — stell dir deine Favoriten zusammen
+• Hoch- oder Querformat, Links-/Rechtshänder-Steuerung, Batteriespar-Modus
+
+KOSTENLOS SPIELBAR
+Neon Rail Dash ist kostenlos und enthält Werbung: gelegentlich eine kurze Anzeige zwischen den Läufen sowie eine optionale Bonus-Werbung, die dich mitten im Lauf wiederbelebt. Keine Paywalls, keine In-App-Käufe.
+
+DATENSCHUTZ
+Spiele vollständig als Gast — ein Account (Name, E-Mail) ist optional und dient nur für Fortschritt und Bestenliste. Dein Konto kannst du jederzeit in der App löschen. Datenschutzerklärung: https://lanerunner.on-forge.com/privacy
+```
+
 ## Sonstige Formularfelder
 
 | Feld | Wert |
