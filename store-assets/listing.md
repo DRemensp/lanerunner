@@ -1,79 +1,61 @@
-# Lane Runner — Play Store Listing
+# Neon Rail Dash — Play Store Listing
 
-Fertige Texte zum Kopieren in die Play Console.
-Assets: `feature-graphic.png` (1024×500) hier im Ordner, App-Icon 512×512 unter
-`public/icons/icon-512.png`. Screenshots bitte direkt am Handy aufnehmen
-(mind. 2, am besten 4–8: Zone 1 Nacht, Skin-Shop, Zone 2 God-Mode mit
-Feuerspur, Zone 3 Mothership-Kampf).
+Fertige Texte zum Kopieren in die Play Console (Standardsprache en-US).
+Assets hier im Ordner: `feature-graphic.png` (1024×500) und
+`screenshot-1…5.png` (1920×1080, 16:9 — für Telefon UND beide Tablet-Slots
+verwendbar). App-Icon 512×512: `public/icons/icon-512.png`.
+Optionale Sektionen (Video, Play Games on PC, Chromebook, XR) leer lassen.
 
 ---
 
 ## App-Name (30 Zeichen max)
 
 ```
-Lane Runner
-```
-
-## Kurzbeschreibung — Deutsch (80 Zeichen max)
-
-```
-Renne, fahre, fliege! Neon-Endless-Runner mit geheimen Zonen. Ohne Werbung.
+Neon Rail Dash
 ```
 
 ## Short description — English (80 chars max)
 
 ```
-Run, drive, fly! Neon endless runner with secret zones. Free, no ads.
-```
-
-## Langbeschreibung — Deutsch (4000 Zeichen max)
-
-```
-Lane Runner ist ein rasanter Neon-Endless-Runner — komplett kostenlos, ohne Werbung, ohne In-App-Käufe.
-
-RENNE durch die nächtliche Stadt: Weiche Autos, Barrieren und Lastwagen aus, springe und rutsche im letzten Moment, sammle Coins und Power-ups (Schild, Magnet, Punkte-Multiplikator). Verkettete Beinahe-Kollisionen geben Combo-Boni — wer riskant läuft, wird belohnt.
-
-EVENTS halten dich wach: Rush-Hour-Staus mit nur einer Lücke, Geisterfahrer in deiner Spur, Coin-Schlangen zum Hinterherjagen und Spurwechsler, die dich überraschen.
-
-UND DANN? Die Straße endet nicht einfach... Wer weit genug kommt, entdeckt, dass Lane Runner mehr als ein Runner ist. Mehr verraten wir nicht — nur so viel: Gas geben lohnt sich, und der Himmel ist nicht das Limit.
-
-FEATURES
-• Flüssiges 3D mit Low-Poly-Look, optimiert für Mobilgeräte
-• Zwei Schwierigkeitsgrade: City Rush (entspannter) und Night Run (schnell)
-• 10 freischaltbare Charaktere — vom Neon-Runner bis zum Alien
-• Fahrzeug- und Flugzeug-Garage für die geheimen Zonen
-• Combo-System, Events, Meilensteine und Rekord-Feiern
-• Online-Bestenliste (optionaler Account) oder komplett als Gast spielbar
-• Links- und Rechtshänder-Modus für die Touch-Steuerung
-• Batteriespar-Modus für längere Sessions
-
-DATENSCHUTZ
-Als Gast bleiben alle Daten auf deinem Gerät. Ein Account (Name, E-Mail) ist optional und dient nur für Fortschritt und Bestenliste. Keine Werbung, kein Tracking, keine Datenweitergabe. Konto jederzeit in der App löschbar.
+Neon endless runner: run, drive, fly through the night city. Secret stages!
 ```
 
 ## Full description — English (4000 chars max)
 
 ```
-Lane Runner is a fast neon endless runner — completely free, no ads, no in-app purchases.
+Neon Rail Dash is a fast neon endless runner — free to play, with four stages to conquer.
 
-RUN through the neon city at night: dodge cars, barriers and trucks, jump and slide at the last moment, collect coins and power-ups (shield, magnet, score multiplier). Chained near misses build combo bonuses — risky running pays off.
+RUN through the neon city at night: dodge traffic, barriers and construction sites, jump and slide at the last moment, and double-tap to DASH through the gaps. Chained near misses build combo bonuses — risky running pays off.
 
-EVENTS keep you on your toes: rush-hour traffic jams with a single gap, wrong-way drivers in your lane, coin trails to chase, and lane-drifting cars that catch you off guard.
+DRIVE when the road opens up: reach the end of the line and the run turns into a high-speed chase behind the wheel.
 
-AND THEN? The road doesn't just end... Run far enough and you'll discover Lane Runner is more than a runner. We won't spoil it — let's just say it pays to go fast, and the sky is not the limit.
+FLY even further: take to the sky, take down enemies and face the boss. And beyond that... the void is waiting (update coming soon!).
+
+TWO WAYS TO PLAY
+• Classic — one long journey through all stages: clear each one to reach the next
+• Endless — pick any stage you have unlocked and chase your personal best
 
 FEATURES
 • Smooth low-poly 3D, optimised for mobile
+• Double-tap dash with cooldown — time it right
 • Two difficulty modes: City Rush (relaxed) and Night Run (fast)
-• 10 unlockable characters — from neon runner to alien
-• A car and aircraft garage for the secret zones
-• Combo system, events, milestones and record celebrations
+• 10 unlockable characters — earn coins in runs and daily missions
+• Daily missions, combo system, events and record celebrations
 • Online leaderboard (optional account) or play fully as a guest
-• Left- and right-handed touch control modes
-• Battery-saver mode for longer sessions
+• Playlist of licensed tracks — pick your favourites
+• Portrait or landscape, left- and right-handed controls, battery-saver mode
+
+FREE TO PLAY
+Neon Rail Dash is free and contains ads: an occasional short ad between runs, and an optional rewarded ad that revives you mid-run. No paywalls, no in-app purchases.
 
 PRIVACY
-As a guest, all data stays on your device. An account (name, e-mail) is optional and only used for progress and the leaderboard. No ads, no tracking, no data sharing. Delete your account any time in the app.
+Play fully as a guest — an account (name, e-mail) is optional and only used for progress and the leaderboard. Delete your account any time in the app. Privacy policy: https://lanerunner.on-forge.com/privacy
+```
+
+## Kurzbeschreibung — Deutsch (80 Zeichen max, für späteren DE-Eintrag)
+
+```
+Neon-Endless-Runner: renne, fahre, fliege durch die Nacht. Geheime Stages!
 ```
 
 ## Sonstige Formularfelder
@@ -82,9 +64,10 @@ As a guest, all data stays on your device. An account (name, e-mail) is optional
 | --- | --- |
 | Kategorie | Spiele → Arcade |
 | E-Mail (Kontakt) | danielremensperger22@gmail.com |
-| Datenschutzerklärung | https://lanerunner.on-forge.com/privacy.html |
+| Datenschutzerklärung | https://lanerunner.on-forge.com/privacy |
 | Konto-Löschung (URL) | https://lanerunner.on-forge.com/profile |
-| Werbung | Enthält keine Werbung |
+| Werbung | Enthält Werbung: JA (AdMob — Interstitial + Rewarded Revive) |
 | Preis | Kostenlos |
-| Data Safety | Erhoben: Name, E-Mail, Spielstände — nur bei freiwilligem Konto; Zweck: App-Funktionalität; keine Weitergabe; Löschung möglich |
+| Zielgruppe | 13–15, 16–17, 18+ |
+| Data Safety | Erhoben: Name+E-Mail (optional, Konto), App-Interaktionen, Geräte-IDs; geteilt mit Google/AdMob (Werbung); Löschung über /profile |
 ```
