@@ -4007,29 +4007,65 @@ const clearCivilians = () => {
   civTimer = 0;
 };
 
-// Collapses a purely static group to ONE mesh per material: identical look,
-// ~90% fewer draw calls. A house was 20-35 tiny meshes (windows, balconies,
-// AC units…) — after the merge it is ~5-7. Only safe for groups that never
-// animate individual children; visibility toggles on the returned group
-// (syncCrossingHouses) keep working since it stays one node.
-const mergeStaticGroup = (group) => {
+// Collapses a purely static group to as FEW meshes as possible: identical
+// look, ~95% fewer draw calls. Plain-color Lambert/Basic materials of the
+// same type and flags are batched into ONE mesh by baking their color into a
+// vertex-color attribute (a whole house or terrain chunk becomes 1-3 calls).
+// Textured, transparent, or runtime-animated materials (pass those via
+// keepMaterials — e.g. edgeLineMaterial, whose color lerps per zone) keep
+// their material identity and only merge among themselves. Only safe for
+// groups that never animate individual children; visibility toggles on the
+// returned group (syncCrossingHouses) keep working since it stays one node.
+const mergedBatchMats = new Map();
+const mergeStaticGroup = (group, keepMaterials = []) => {
   group.updateMatrixWorld(true);
+  const keep = new Set(keepMaterials);
   const buckets = new Map();
   group.traverse((node) => {
     if (!node.isMesh) return;
+    const mat = node.material;
+    const bakeable =
+      !keep.has(mat) &&
+      !mat.map &&
+      !mat.emissiveMap &&
+      !mat.transparent &&
+      (mat.isMeshLambertMaterial || mat.isMeshBasicMaterial);
+    const key = bakeable ? `${mat.type}|${mat.side}|${mat.depthWrite}` : mat;
     // Bake the child transform relative to the group root, so the merged
     // group can still be positioned/hidden as one unit afterwards.
     const geo = node.geometry.clone().applyMatrix4(node.matrixWorld);
-    const list = buckets.get(node.material) || [];
-    list.push(geo.index ? geo.toNonIndexed() : geo);
-    buckets.set(node.material, list);
+    const nonIndexed = geo.index ? geo.toNonIndexed() : geo;
+    if (bakeable) {
+      const count = nonIndexed.attributes.position.count;
+      const colors = new Float32Array(count * 3);
+      for (let i = 0; i < count; i += 1) {
+        colors[i * 3] = mat.color.r;
+        colors[i * 3 + 1] = mat.color.g;
+        colors[i * 3 + 2] = mat.color.b;
+      }
+      nonIndexed.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    }
+    const entry = buckets.get(key) || { material: mat, bake: bakeable, geometries: [] };
+    entry.geometries.push(nonIndexed);
+    buckets.set(key, entry);
   });
   const merged = new THREE.Group();
-  buckets.forEach((geometries, material) => {
-    const combined = mergeGeometries(geometries, false);
-    if (combined) {
-      merged.add(new THREE.Mesh(combined, material));
+  buckets.forEach((entry, key) => {
+    const combined = mergeGeometries(entry.geometries, false);
+    if (!combined) return;
+    let material = entry.material;
+    if (entry.bake) {
+      // One shared white+vertexColors material per bucket type — every
+      // merged group in the scene reuses the same shader program/state.
+      material = mergedBatchMats.get(key);
+      if (!material) {
+        material = entry.material.clone();
+        material.color.set(0xffffff);
+        material.vertexColors = true;
+        mergedBatchMats.set(key, material);
+      }
     }
+    merged.add(new THREE.Mesh(combined, material));
   });
   return merged;
 };
@@ -5124,9 +5160,13 @@ const initScene = () => {
   // player can never see the floor end through the fog.
   for (let i = 0; i < 12; i += 1) {
     const segment = new THREE.Group();
+    // Everything static in the segment collects in `decor` and is merged to
+    // a handful of draw calls below; only the zone-mark groups (toggled per
+    // zone) and the houses (toggled per crossing) stay separate nodes.
+    const decor = new THREE.Group();
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, segmentLength), floorMaterial);
     floor.rotation.x = -Math.PI / 2;
-    segment.add(floor);
+    decor.add(floor);
 
     const zone1Marks = new THREE.Group();
     const zone2Marks = new THREE.Group();
@@ -5147,20 +5187,22 @@ const initScene = () => {
 
       const edgeLine = new THREE.Mesh(edgeLineGeometry, edgeLineMaterial);
       edgeLine.position.set(side * 3.15, 0.012, 0);
-      segment.add(edgeLine);
+      decor.add(edgeLine);
 
       const curb = new THREE.Mesh(curbGeometry, curbMaterial);
       curb.position.set(side * 3.45, 0.13, 0);
-      segment.add(curb);
+      decor.add(curb);
 
       const sidewalk = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
       sidewalk.position.set(side * 4.92, 0.13, 0);
-      segment.add(sidewalk);
+      decor.add(sidewalk);
     }
-    zone2Marks.visible = false;
-    segment.add(zone1Marks, zone2Marks);
-    segment.userData.zone1Marks = zone1Marks;
-    segment.userData.zone2Marks = zone2Marks;
+    const mergedZone1 = mergeStaticGroup(zone1Marks);
+    const mergedZone2 = mergeStaticGroup(zone2Marks);
+    mergedZone2.visible = false;
+    segment.add(mergedZone1, mergedZone2);
+    segment.userData.zone1Marks = mergedZone1;
+    segment.userData.zone2Marks = mergedZone2;
 
     segment.userData.houses = [];
     for (let side = -1; side <= 1; side += 2) {
@@ -5198,7 +5240,7 @@ const initScene = () => {
           0.26,
           -segmentLength / 2 + Math.random() * segmentLength,
         );
-        segment.add(streetSign);
+        decor.add(streetSign);
       }
     }
 
@@ -5227,8 +5269,14 @@ const initScene = () => {
       lamp.add(pool);
 
       lamp.position.set(side * 4.6, 0.26, -segmentLength / 2);
-      segment.add(lamp);
+      decor.add(lamp);
     }
+
+    // ~29 individual meshes collapse to ~6 (Lambert batch, Basic batch,
+    // edge lines, sign faces, lamp cones, lamp pools). edgeLineMaterial is
+    // color-lerped per zone, so it must keep its identity instead of being
+    // baked into vertex colors.
+    segment.add(mergeStaticGroup(decor, [edgeLineMaterial]));
 
     segment.position.z = -(i - 1) * segmentLength;
     scene.add(segment);
@@ -5946,6 +5994,56 @@ const addConstructionDressing = (group, size) => {
   });
 };
 
+// Collapse a GLB vehicle's static body meshes into one mesh per material —
+// the wheels keep their own nodes and pivots (they spin via userData.wheels
+// while driving). Kenney models use a single atlas material, so a ~6-mesh
+// car drops to wheels + 1 body call, on every clone pulled from the pool.
+const mergeTemplateBody = (root) => {
+  root.updateMatrixWorld(true);
+  const rootInv = root.matrixWorld.clone().invert();
+  const isWheelPart = (node) => {
+    for (let n = node; n && n !== root; n = n.parent) {
+      if (n.name && n.name.startsWith('wheel')) return true;
+    }
+    return false;
+  };
+  const bodies = [];
+  root.traverse((node) => {
+    if (
+      node.isMesh &&
+      node.children.length === 0 &&
+      !Array.isArray(node.material) &&
+      !isWheelPart(node)
+    ) {
+      bodies.push(node);
+    }
+  });
+  if (bodies.length < 2) return;
+  const buckets = new Map();
+  bodies.forEach((node) => {
+    // Bake relative to the root so its fit-scale/rotation stay in effect.
+    const rel = new THREE.Matrix4().multiplyMatrices(rootInv, node.matrixWorld);
+    const geo = node.geometry.clone().applyMatrix4(rel);
+    const list = buckets.get(node.material) || [];
+    list.push(geo.index ? geo.toNonIndexed() : geo);
+    buckets.set(node.material, list);
+  });
+  const mergedMeshes = [];
+  let ok = true;
+  buckets.forEach((geometries, material) => {
+    const combined = mergeGeometries(geometries, false);
+    if (combined) {
+      mergedMeshes.push(new THREE.Mesh(combined, material));
+    } else {
+      ok = false;
+    }
+  });
+  // Attribute mismatch inside a bucket → keep the model untouched.
+  if (!ok) return;
+  bodies.forEach((node) => node.parent.remove(node));
+  mergedMeshes.forEach((mesh) => root.add(mesh));
+};
+
 const registerVehicleModel = (def, model) => {
   // Neon pass: let Kenney textures glow slightly — in the dark night scene
   // the models drown in blue-black otherwise.
@@ -5980,6 +6078,7 @@ const registerVehicleModel = (def, model) => {
   model.position.sub(box.getCenter(new THREE.Vector3()));
   const dims = box.getSize(new THREE.Vector3());
   const size = { w: dims.x, h: dims.y, d: dims.z };
+  mergeTemplateBody(model);
   glbTemplates[def.key] = { model, size };
 
   obstacleBuilders[def.key] = () => {
@@ -7977,7 +8076,9 @@ const buildOcean = () => {
   scene.add(oceanGroup);
 
   for (let i = 0; i < 7; i += 1) {
-    const chunk = buildTerrainChunk();
+    // ~50 meshes (trees, fields, mountains…) collapse to a single call —
+    // everything in a chunk is plain-color Lambert.
+    const chunk = mergeStaticGroup(buildTerrainChunk());
     chunk.position.set(0, -1.4, -340 + i * 62);
     terrainChunks.push(chunk);
     scene.add(chunk);
@@ -8512,8 +8613,14 @@ const disposeZone3 = () => {
   });
   ramp = null;
   oceanGroup = null;
-  // Terrain chunks only use shared assets — removing them is enough.
-  terrainChunks.forEach((chunk) => scene.remove(chunk));
+  // Merged terrain geometry is unique per chunk — free it. The batch
+  // materials are shared scene-wide (mergedBatchMats) and must survive.
+  terrainChunks.forEach((chunk) => {
+    scene.remove(chunk);
+    chunk.traverse((node) => {
+      if (node.isMesh) node.geometry.dispose();
+    });
+  });
   terrainChunks = [];
   clearClouds();
 };
