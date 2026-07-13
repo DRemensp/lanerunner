@@ -230,6 +230,8 @@
 
     <div v-if="damageFlash && state === 'running'" class="damage-flash"></div>
 
+    <div v-if="perfHudVisible" class="perf-hud">{{ perfHudText || 'measuring…' }}</div>
+
     <div v-if="whiteFlash > 0" class="void-flash" :style="{ opacity: whiteFlash }"></div>
 
     <!-- Stage-skip offer: after 3 failed zone-1 runs in a row, the next
@@ -1185,6 +1187,7 @@ import '@fontsource/chakra-petch/600.css';
 import '@fontsource/chakra-petch/700.css';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
   cameraBase,
@@ -3304,6 +3307,14 @@ const handleKeydown = (event) => {
     return;
   }
 
+  if (event.code === 'F10') {
+    // Dev overlay: fps / draw calls / render scale (see measurePerf).
+    event.preventDefault();
+    perfHudVisible.value = !perfHudVisible.value;
+    perfHudText.value = '';
+    return;
+  }
+
   if (event.code === 'F8') {
     // Dev cheat: force the Rettungsgasse event (6% in the wild — untestable
     // otherwise). Marks the run as dev, so it is never persisted.
@@ -3652,14 +3663,73 @@ const setOrientation = (pref) => {
 
 // Battery Saver renders at a lower pixel ratio — a big win on hot phones.
 const renderQuality = ref(localStorage.getItem('runner_quality') || 'full');
+// Phones/tablets get a lower resolution ceiling by default: mobile GPUs are
+// almost always fragment-bound, and past ~1.6x the extra pixels are invisible
+// on a 6" screen — they only cost frame time and battery.
+const isCoarsePointer =
+  typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)')?.matches;
+const basePixelCap = () => {
+  if (renderQuality.value === 'battery') return 1.15;
+  return isCoarsePointer ? 1.6 : 2;
+};
+// Dynamic resolution: perfScale steps down while frames run long and creeps
+// back up when there is headroom (governor in animate) — every device settles
+// at the sharpest resolution it can hold near 60fps. Session-only on purpose:
+// thermals differ between a cold start and a hot phone.
+let perfScale = 1;
+// Decorative sidewalk civilians are skinned meshes with their own animation
+// mixers — disproportionately expensive on mobile GPUs. Cap them by device
+// class; nobody counts pedestrians at 40 km/h.
+const civilianCap = () =>
+  renderQuality.value === 'battery' ? 3 : isCoarsePointer ? 6 : 10;
 const currentPixelRatio = () =>
-  Math.min(window.devicePixelRatio || 1, renderQuality.value === 'battery' ? 1.3 : 2);
+  Math.max(0.75, Math.min(window.devicePixelRatio || 1, basePixelCap()) * perfScale);
+const applyRenderScale = () => {
+  if (!renderer) return;
+  renderer.setPixelRatio(currentPixelRatio());
+  handleResize();
+};
 const setRenderQuality = (quality) => {
   renderQuality.value = quality;
   localStorage.setItem('runner_quality', quality);
-  if (renderer) {
-    renderer.setPixelRatio(currentPixelRatio());
-    handleResize();
+  perfScale = 1;
+  applyRenderScale();
+};
+
+// Hidden perf HUD (F10): fps, draw calls, current render scale — for
+// verifying the dynamic-resolution governor on real devices.
+const perfHudVisible = ref(false);
+const perfHudText = ref('');
+let perfAccum = 0;
+let perfFrames = 0;
+let perfGoodWindows = 0;
+
+const measurePerf = (delta) => {
+  perfAccum += delta;
+  perfFrames += 1;
+  if (perfAccum < 2) return;
+  const fps = perfFrames / perfAccum;
+  perfAccum = 0;
+  perfFrames = 0;
+  if (perfHudVisible.value && renderer) {
+    perfHudText.value =
+      `${fps.toFixed(0)} fps · ${renderer.info.render.calls} calls · ` +
+      `${renderer.info.render.triangles} tris · ratio ${renderer.getPixelRatio().toFixed(2)}`;
+  }
+  // The governor only acts mid-run — menus and cutscenes may idle at any fps.
+  if (state.value !== 'running') return;
+  if (fps < 48 && perfScale > 0.62) {
+    perfScale = Math.max(0.6, perfScale - 0.15);
+    perfGoodWindows = 0;
+    applyRenderScale();
+  } else if (fps > 57 && perfScale < 1) {
+    // Only step back up after ~6s of sustained headroom — avoids ping-pong.
+    perfGoodWindows += 1;
+    if (perfGoodWindows >= 3) {
+      perfGoodWindows = 0;
+      perfScale = Math.min(1, perfScale + 0.1);
+      applyRenderScale();
+    }
   }
 };
 
@@ -3730,8 +3800,15 @@ const ensureWindStreaks = () => {
 };
 
 const updateWindStreaks = (delta) => {
+  // Battery mode: additive transparent planes are pure overdraw — the one
+  // effect a struggling GPU should never pay for.
+  if (renderQuality.value === 'battery') {
+    if (windStreaks) windStreaks.visible = false;
+    return;
+  }
   ensureWindStreaks();
   if (!windStreaks) return;
+  windStreaks.visible = true;
   const strength = THREE.MathUtils.clamp((speed.value - 15) / 30, 0, 1);
   windStreakMat.opacity = strength * 0.45;
   if (strength <= 0) return;
@@ -3880,10 +3957,10 @@ const updateCivilians = (delta) => {
     finalePhase.value === 'drive';
   if (spawnable) {
     civTimer -= delta;
-    if (civTimer <= 0 && civilians.length < 10) {
+    if (civTimer <= 0 && civilians.length < civilianCap()) {
       spawnCivilian();
       // Occasionally a couple walking side by side.
-      if (Math.random() < 0.25 && civilians.length < 10) {
+      if (Math.random() < 0.25 && civilians.length < civilianCap()) {
         const first = civilians[civilians.length - 1];
         spawnCivilian();
         const second = civilians[civilians.length - 1];
@@ -3928,6 +4005,33 @@ const clearCivilians = () => {
   });
   civilians = [];
   civTimer = 0;
+};
+
+// Collapses a purely static group to ONE mesh per material: identical look,
+// ~90% fewer draw calls. A house was 20-35 tiny meshes (windows, balconies,
+// AC units…) — after the merge it is ~5-7. Only safe for groups that never
+// animate individual children; visibility toggles on the returned group
+// (syncCrossingHouses) keep working since it stays one node.
+const mergeStaticGroup = (group) => {
+  group.updateMatrixWorld(true);
+  const buckets = new Map();
+  group.traverse((node) => {
+    if (!node.isMesh) return;
+    // Bake the child transform relative to the group root, so the merged
+    // group can still be positioned/hidden as one unit afterwards.
+    const geo = node.geometry.clone().applyMatrix4(node.matrixWorld);
+    const list = buckets.get(node.material) || [];
+    list.push(geo.index ? geo.toNonIndexed() : geo);
+    buckets.set(node.material, list);
+  });
+  const merged = new THREE.Group();
+  buckets.forEach((geometries, material) => {
+    const combined = mergeGeometries(geometries, false);
+    if (combined) {
+      merged.add(new THREE.Mesh(combined, material));
+    }
+  });
+  return merged;
 };
 
 const buildHouse = (side) => {
@@ -5061,7 +5165,9 @@ const initScene = () => {
     segment.userData.houses = [];
     for (let side = -1; side <= 1; side += 2) {
       for (let b = 0; b < 2; b += 1) {
-        const house = buildHouse(side);
+        // Merge while the group still sits at the origin — the bake is then
+        // relative to the house root and the position below applies cleanly.
+        const house = mergeStaticGroup(buildHouse(side));
         house.position.set(
           side * (7.5 + Math.random() * 3),
           0,
@@ -10702,6 +10808,8 @@ const animate = (time) => {
   const delta = Math.min(0.05, Math.max(0, (time - lastTime) / 1000 || 0));
   lastTime = time;
 
+  measurePerf(delta);
+
   // Offline-cooldown bookkeeping: while a run is live, re-stamp "run ended"
   // every few seconds. A force-closed app fires no events at all — the last
   // stamp then dates the kill to within ~8s, so the 5-minute offline window
@@ -11778,6 +11886,22 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 14px;
   z-index: 5;
+}
+
+/* Dev perf HUD (F10). */
+.perf-hud {
+  position: absolute;
+  top: calc(6px + env(safe-area-inset-top));
+  left: calc(8px + env(safe-area-inset-left));
+  z-index: 30;
+  padding: 3px 8px;
+  font-family: monospace;
+  font-size: 11px;
+  color: #6dffb8;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* Stage-skip offer: reuses the classic-intro overlay, just a smaller card. */
