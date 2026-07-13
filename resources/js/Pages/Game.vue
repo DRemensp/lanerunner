@@ -120,7 +120,7 @@
       <div class="hud-side">
         <div class="hud-pill hud-coins">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
-          <span>{{ runCoins }}</span>
+          <span>{{ runCoins + runStageBonus }}</span>
         </div>
       </div>
       <div class="hud-score">
@@ -232,17 +232,29 @@
 
     <div v-if="whiteFlash > 0" class="void-flash" :style="{ opacity: whiteFlash }"></div>
 
-    <!-- Player-facing stage skip, zone 1 → 2 only. Earned, not free: unlocks
-         after reaching zone 2 at least once AND 3 failed zone-1 runs in a row
-         (see playerSkip). F9 stays the unrestricted dev cheat. -->
-    <button
-      v-if="state === 'running' && finalePhase === 'none' && skipAvailable && runMode === 'classic'"
-      class="cheat-skip"
-      type="button"
-      @pointerdown.prevent.stop="playerSkip"
+    <!-- Stage-skip offer: after 3 failed zone-1 runs in a row, the next
+         classic start asks whether to skip ahead to stage 2. Skipped runs
+         reuse the dev-run path and are never persisted (see playerSkip).
+         F9 stays the unrestricted dev cheat. -->
+    <div
+      v-if="skipPromptVisible && state === 'running' && finalePhase === 'none' && runMode === 'classic'"
+      class="classic-intro skip-prompt"
     >
-      Skip &raquo;
-    </button>
+      <div class="classic-intro-card skip-prompt-card">
+        <div class="classic-intro-title">Struggling?</div>
+        <div class="classic-intro-sub">
+          You seem to struggle &mdash; wanna skip this time and see what's beyond Stage&nbsp;1?
+        </div>
+        <div class="skip-prompt-actions">
+          <button class="primary-btn" type="button" @pointerdown.prevent.stop="acceptSkipPrompt">
+            Skip &raquo;
+          </button>
+          <button class="ghost-btn" type="button" @pointerdown.prevent.stop="dismissSkipPrompt">
+            Keep playing
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Floating joystick: the first touch anywhere on the screen becomes the
          joystick center, the ring appears there and follows the finger. -->
@@ -1003,7 +1015,7 @@
         </div>
         <div class="death-stats">
           <div class="death-stat"><span>Best</span><strong>{{ Math.floor(runMode === 'endless' ? endlessBests[endlessStage] || 0 : bestScore).toLocaleString() }}</strong></div>
-          <div class="death-stat gold"><span>Coins</span><strong>+{{ runCoins }}</strong></div>
+          <div class="death-stat gold"><span>Coins</span><strong>+{{ runCoins + runStageBonus }}</strong></div>
           <div class="death-stat"><span>Top speed</span><strong>{{ Math.round(runTopSpeed) }}</strong></div>
           <div class="death-stat"><span>Near misses</span><strong>{{ runNearMisses }}</strong></div>
         </div>
@@ -1494,8 +1506,19 @@ const stageUnlocked = (stage) =>
 // Highest stage (zone) the CURRENT run has reached; bumped by the zone
 // transitions, consumed once in finalizeRun and sent with run/end.
 let runMaxStage = 1;
+// Flat coin bonus per stage reached in one classic run (stage 2+3+4 = 3000).
+// Client-side this is display only (toast + counters) — the server computes
+// the same bonus authoritatively from the reported stage, clamped by the
+// STAGE_MIN_DISTANCE floors (RunnerController), and pays it out there.
+const STAGE_COIN_BONUS = 1000;
+const runStageBonus = ref(0);
 const markRunStage = (stage) => {
-  runMaxStage = Math.max(runMaxStage, stage);
+  if (stage <= runMaxStage) return;
+  runMaxStage = stage;
+  if (stage >= 2 && runMode.value === 'classic' && !devRun.value) {
+    runStageBonus.value += STAGE_COIN_BONUS;
+    showEventToast(`Stage ${stage} reached!`, `+${STAGE_COIN_BONUS} coins`, 2600);
+  }
 };
 
 // Mode of the next/current run. Menu Play starts classic, the endless tiles
@@ -1695,10 +1718,12 @@ const devSkip = () => {
 };
 
 // --- Player-facing stage skip (zone 1 → 2 only) ---
-// Unlock rules: the player must have reached zone 2 at least once (zone2Seen)
-// AND failed 3 zone-1 runs IN A ROW — reaching zone 2 resets the streak, and
-// using the skip consumes it. Skipped runs reuse the dev-run path, so they are
-// never persisted (a 10k jump would trip the server anti-cheat as impossible).
+// Unlock rule: 3 failed zone-1 runs IN A ROW — stage 1 is the hardest stage,
+// and without the skip a struggling player would never see anything beyond
+// it. Reaching zone 2 resets the streak, using the skip consumes it. The
+// offer appears as a centered prompt right at the start of the next classic
+// run. Skipped runs reuse the dev-run path, so they are never persisted
+// (a 10k jump would trip the server anti-cheat as impossible).
 const zone1Fails = ref(
   Number.parseInt(localStorage.getItem('runner_zone1_fails') || '0', 10) || 0,
 );
@@ -1707,7 +1732,8 @@ const setZone1Fails = (count) => {
   localStorage.setItem('runner_zone1_fails', String(count));
 };
 const skippedRun = ref(false); // switches the dev badge to player wording
-const skipAvailable = computed(() => zone2Seen.value && zone1Fails.value >= 3);
+const skipAvailable = computed(() => zone1Fails.value >= 3);
+const skipPromptVisible = ref(false);
 
 const playerSkip = () => {
   if (!skipAvailable.value) return;
@@ -1716,6 +1742,15 @@ const playerSkip = () => {
   setZone1Fails(0);
   skippedRun.value = true;
   devSkip();
+};
+
+const acceptSkipPrompt = () => {
+  skipPromptVisible.value = false;
+  playerSkip();
+};
+
+const dismissSkipPrompt = () => {
+  skipPromptVisible.value = false;
 };
 
 // --- Offline run cooldown (native app only) ---
@@ -2050,6 +2085,11 @@ const startRun = async () => {
   reviving.value = false;
   skippedRun.value = false;
   state.value = 'running';
+  // Struggling on stage 1? Offer the skip right at the start of the run —
+  // the overlay swallows touch input, so the choice comes before the first
+  // obstacles arrive; keyboard players who just keep running dismiss it by
+  // passing ~100m (see updateRunner).
+  skipPromptVisible.value = runMode.value === 'classic' && skipAvailable.value;
   if (runMode.value === 'endless' && endlessStage.value > 1) {
     bootEndlessStage(endlessStage.value);
   } else {
@@ -2716,6 +2756,7 @@ const resetRun = () => {
   devRun.value = false;
   score.value = 0;
   runCoins.value = 0;
+  runStageBonus.value = 0;
   runMaxStage = 1;
   speed.value = currentLevel.value.baseSpeed;
   spawnTimer = 0.7;
@@ -3448,7 +3489,7 @@ const handleKeyup = (event) => {
 
 const handleTouchStart = (event) => {
   if (state.value !== 'running') return;
-  if (event.target?.closest?.('.joystick, .joy-capture, .pedals, .cheat-skip')) return;
+  if (event.target?.closest?.('.joystick, .joy-capture, .pedals, .skip-prompt')) return;
   // Track exactly one swipe finger by identifier so a thumb resting on the
   // pedals (or joystick) never hijacks or cancels the swipe gesture.
   if (touchStart) return;
@@ -3555,7 +3596,7 @@ const handleTouchMove = (event) => {
   if (event.cancelable) {
     event.preventDefault();
   }
-  if (target?.closest?.('.joystick, .joy-capture, .pedals, .cheat-skip')) return;
+  if (target?.closest?.('.joystick, .joy-capture, .pedals, .skip-prompt')) return;
 
   if (state.value !== 'running' || !touchStart) return;
   const touch = findTrackedTouch(event);
@@ -10176,6 +10217,12 @@ const updateRunner = (delta) => {
       dashTipVisible.value = false;
     }
 
+    // Skip offer: keyboard players can run straight past the overlay —
+    // treat that as "Keep playing".
+    if (skipPromptVisible.value && score.value > 250) {
+      skipPromptVisible.value = false;
+    }
+
     if (dashTimer > 0) {
       dashSweep = speed.value * delta;
       dashTimer = Math.max(0, dashTimer - delta);
@@ -11733,25 +11780,16 @@ onBeforeUnmount(() => {
   z-index: 5;
 }
 
-.cheat-skip {
-  position: absolute;
-  top: calc(14px + env(safe-area-inset-top));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 6;
-  padding: 8px 18px;
-  border-radius: 999px;
-  border: 1px dashed rgba(255, 200, 80, 0.7);
-  background: rgba(40, 30, 8, 0.65);
-  color: #ffc850;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  cursor: pointer;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
+/* Stage-skip offer: reuses the classic-intro overlay, just a smaller card. */
+.skip-prompt-card {
+  width: min(430px, 100%);
+}
+
+.skip-prompt-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .pedals-left {

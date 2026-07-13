@@ -51,6 +51,10 @@ class RunnerController extends Controller
 
     private const STAGE_UNLOCK_RUNS = 5;
 
+    // Flat coin bonus per stage reached in one classic run (2+3+4 = 3000).
+    // Must stay in sync with STAGE_COIN_BONUS in Game.vue (display side).
+    private const STAGE_COIN_BONUS = 1000;
+
     // Past FINALE_DISTANCE the run leaves the runner speed curve entirely:
     // zone 2 driving pays 2.4 * speed (client-capped at 80), zones 3+ stack
     // flat kill bonuses on top (drones +600, motherships +2500) plus
@@ -264,6 +268,7 @@ class RunnerController extends Controller
         $profile->last_run_at = now();
 
         $coinsEarned = 0;
+        $stageBonus = 0;
 
         if ($verified) {
             // Endless runs never touch records or the world ranking — they
@@ -290,6 +295,11 @@ class RunnerController extends Controller
                     if ($claimedStage >= $stage && $distance >= $minDistance) {
                         $column = "stage{$stage}_reaches";
                         $profile->{$column} += 1;
+                        // Every stage reached in one run pays a flat bonus —
+                        // the same distance floors keep short runs from
+                        // farming it (classic only, skips are dev runs and
+                        // never reach this point).
+                        $stageBonus += self::STAGE_COIN_BONUS;
                     }
                 }
             }
@@ -297,7 +307,7 @@ class RunnerController extends Controller
             // Coins spawn as trails of up to ~8 per row plus jump arcs and
             // jam-roof lines; a perfect line hugger stays under distance/2.
             $coinsCap = (int) floor($distance / 2) + 25;
-            $coinsEarned = min((int) ($validated['coins'] ?? 0), $coinsCap);
+            $coinsEarned = min((int) ($validated['coins'] ?? 0), $coinsCap) + $stageBonus;
             $profile->coins += $coinsEarned;
         }
 
