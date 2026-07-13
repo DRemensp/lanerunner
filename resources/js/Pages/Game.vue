@@ -934,6 +934,20 @@
                 </div>
               </div>
               <div class="menu-field">
+                <label>FPS Limit</label>
+                <div class="difficulty-toggle fps-toggle">
+                  <button
+                    v-for="cap in fpsCapChoices"
+                    :key="cap"
+                    :class="{ active: fpsCap === cap }"
+                    @click="setFpsCap(cap)"
+                    type="button"
+                  >
+                    {{ cap === 0 ? 'Auto' : cap }}
+                  </button>
+                </div>
+              </div>
+              <div class="menu-field">
                 <label for="settings-zoom">Zoom</label>
                 <input
                   id="settings-zoom"
@@ -3218,11 +3232,18 @@ const requestSlide = () => {
 };
 
 const stopSlide = () => {
+  // Grow the box back around the FEET instead of snapping to
+  // currentSurfaceY: crossing a jam-roof seam the surface probe loses
+  // support for a few frames (currentSurfaceY falls back to 0), and a slide
+  // ending right then teleported the player from the roof down to street
+  // level — where the next car's nose is a ground-level frontal kill that
+  // neither step-up nor the jam safety net covers.
+  const feetY = player ? player.position.y - currentPlayerHeight() / 2 : 0;
   isSliding = false;
   slideTimer = 0;
   if (player) {
-    player.position.y = getGroundCenterForSurface(currentSurfaceY, currentPlayerHeight());
-    currentGroundCenter = player.position.y;
+    player.position.y = feetY + currentPlayerHeight() / 2;
+    currentGroundCenter = getGroundCenterForSurface(currentSurfaceY, currentPlayerHeight());
   }
   if (activeCharacter) {
     activeCharacter.root.position.y = activeCharacter.baseY;
@@ -3696,6 +3717,19 @@ const setRenderQuality = (quality) => {
   applyRenderScale();
 };
 
+// Optional FPS cap (Settings): 0 = Auto (display refresh). A lower cap
+// trades smoothness for battery/heat — the main lever on 90–144 Hz phones
+// and tablets, where uncapped rAF renders 1.5–2.4x the frames of a 60 Hz
+// display for the same game.
+const fpsCapChoices = [0, 30, 40, 60, 90, 120, 240];
+const fpsCap = ref(parseInt(localStorage.getItem('runner_fps_cap') || '0', 10) || 0);
+let lastCapTick = 0;
+const setFpsCap = (cap) => {
+  fpsCap.value = cap;
+  localStorage.setItem('runner_fps_cap', String(cap));
+  lastCapTick = 0;
+};
+
 // Hidden perf HUD (F10): fps, draw calls, current render scale — for
 // verifying the dynamic-resolution governor on real devices.
 const perfHudVisible = ref(false);
@@ -3718,11 +3752,15 @@ const measurePerf = (delta) => {
   }
   // The governor only acts mid-run — menus and cutscenes may idle at any fps.
   if (state.value !== 'running') return;
-  if (fps < 48 && perfScale > 0.62) {
+  // Govern relative to the FPS cap (a chosen 30-cap is not a struggling
+  // device); caps above 60 still only guard the 60-line — the resolution
+  // trade for 90+ isn't worth it. Uncapped: 48/57, same as before.
+  const target = fpsCap.value > 0 ? Math.min(fpsCap.value, 60) : 60;
+  if (fps < target * 0.8 && perfScale > 0.62) {
     perfScale = Math.max(0.6, perfScale - 0.15);
     perfGoodWindows = 0;
     applyRenderScale();
-  } else if (fps > 57 && perfScale < 1) {
+  } else if (fps > target * 0.95 && perfScale < 1) {
     // Only step back up after ~6s of sustained headroom — avoids ping-pong.
     perfGoodWindows += 1;
     if (perfGoodWindows >= 3) {
@@ -10909,6 +10947,15 @@ const startCrash = () => {
 
 const animate = (time) => {
   animationId = requestAnimationFrame(animate);
+  // FPS cap: rAF keeps firing at display refresh, surplus ticks return
+  // early. lastTime is untouched on a skipped tick, so the next executed
+  // frame sees the full accumulated delta — game logic is delta-based and
+  // doesn't care. The -1ms slack absorbs vsync timestamp jitter.
+  if (fpsCap.value > 0) {
+    const interval = 1000 / fpsCap.value;
+    if (time - lastCapTick < interval - 1) return;
+    lastCapTick = time - ((time - lastCapTick) % interval);
+  }
   // Clamp in BOTH directions: the first rAF timestamp can lie behind
   // lastTime (different time origin) — a negative delta makes damp()
   // extrapolate backwards (e.g. music duck below 0 → volume exception).
@@ -12843,6 +12890,10 @@ onBeforeUnmount(() => {
   transition: background 0.2s ease, color 0.2s ease;
 }
 
+/* Seven small buttons (Auto…240) — allow a second row on narrow screens. */
+.fps-toggle {
+  flex-wrap: wrap;
+}
 .difficulty-toggle button.active {
   background: linear-gradient(115deg, #39f9c0, #25a6ff);
   color: #041018;
