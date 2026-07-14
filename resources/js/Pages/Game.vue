@@ -6249,6 +6249,8 @@ const registerVehicleModel = (def, model) => {
     obstacleVariants.low.push(def.key);
   }
 
+  scheduleObstacleWarmup();
+
   // Showroom open while a model finishes loading? Rebuild right away so
   // that truly ALL obstacles are on display.
   if (state.value === 'gallery') {
@@ -7056,6 +7058,88 @@ const spawnRescueRow = () => {
   } else {
     rescueLane.rowTimer = (3.4 + Math.random() * 0.5) / speed.value;
   }
+};
+
+// ---- Event-start warmup. The crossing and Rettungsgasse events hitched
+// hard on their first trigger: the one-off groups (cross-street asphalt,
+// warning sign) were built mid-run, and the first police/ambulance/fire
+// clones plus their GPU buffer uploads and shader compiles all landed in a
+// single frame. Instead: build one instance of everything while in the
+// menu, park it a few frames beyond the fog wall (rendered → uploaded &
+// compiled, but invisible), then stash it in the obstacle pools so the
+// event later just pops warm objects.
+let warmupGroup = null;
+let warmupFramesLeft = 0;
+let warmupTimer = null;
+const warmedKeys = new Set();
+
+const releaseObstacleWarmup = () => {
+  if (!warmupGroup) return;
+  [...warmupGroup.children].forEach((mesh) => {
+    warmupGroup.remove(mesh);
+    if (mesh.userData.poolKey) {
+      (obstaclePools[mesh.userData.poolKey] ||= []).push(mesh);
+    }
+  });
+  scene.remove(warmupGroup);
+  warmupGroup = null;
+};
+
+const runObstacleWarmup = () => {
+  if (!scene || !renderer) return;
+  if (state.value === 'running' || warmupGroup) {
+    // Mid-run is exactly when this must NOT happen — retry on the menu.
+    warmupTimer = setTimeout(runObstacleWarmup, 4000);
+    return;
+  }
+  // One-off event props (reused forever after).
+  if (!crossingGroup) crossingGroup = buildCrossingGroup();
+  if (!rescueSignGroup) rescueSignGroup = buildRescueSign();
+  const pairs = [
+    ...glbTraffic.car.map((key) => ['low', key]),
+    ...glbTraffic.drive.map((key) => ['low', key]),
+    ...glbTraffic.tall.map((key) => ['tall', key]),
+    ['low', 'low-barrel'],
+    ['low', 'low-manhole'],
+    ['tall', 'tall-stack'],
+    ['tall', 'tall-scaffold'],
+    ['tall', 'tall-kiosk'],
+    ['over', 'over-barrier'],
+    ['over', 'over-homeless'],
+    ['tall', 'sign-highway'],
+    ['tall', 'cone'],
+    ['tall', 'construction-light'],
+    ['tall', 'resource-planks'],
+    ['tall', 'structure-metal'],
+  ];
+  warmupGroup = new THREE.Group();
+  let placed = 0;
+  pairs.forEach(([type, key]) => {
+    if (warmedKeys.has(key) || !obstacleBuilders[key] || obstaclePools[key]?.length) return;
+    warmedKeys.add(key);
+    const mesh = getObstacle(type, key);
+    mesh.position.set(
+      ((placed % 6) - 2.5) * 5,
+      mesh.userData.size.h / 2,
+      -320 - Math.floor(placed / 6) * 10,
+    );
+    warmupGroup.add(mesh);
+    placed += 1;
+  });
+  warmupGroup.add(crossingGroup, rescueSignGroup);
+  crossingGroup.position.set(0, 0, -340);
+  rescueSignGroup.position.set(0, 1.7, -340);
+  scene.add(warmupGroup);
+  // A couple of rendered frames are enough for uploads; the release in
+  // animate() detaches everything into the pools.
+  warmupFramesLeft = 3;
+};
+
+const scheduleObstacleWarmup = () => {
+  clearTimeout(warmupTimer);
+  // Debounced: the GLB models register one by one as they load — collapse
+  // the burst into one warmup pass shortly after the last arrival.
+  warmupTimer = setTimeout(runObstacleWarmup, 400);
 };
 
 // Emergency vehicle overtaking through the free middle lane: spawns behind
@@ -11053,6 +11137,15 @@ const animate = (time) => {
   // freeze as a smooth-looking 20fps frame in the 1% low.
   measurePerf(rawDelta);
 
+  // Obstacle warmup parked beyond the fog: after a few rendered frames the
+  // GPU has everything — stash the instances into the pools.
+  if (warmupGroup) {
+    warmupFramesLeft -= 1;
+    if (warmupFramesLeft <= 0) {
+      releaseObstacleWarmup();
+    }
+  }
+
   // Offline-cooldown bookkeeping: while a run is live, re-stamp "run ended"
   // every few seconds. A force-closed app fires no events at all — the last
   // stamp then dates the kill to within ~8s, so the 5-minute offline window
@@ -11297,6 +11390,8 @@ onMounted(() => {
   // the "single hard stutter" sources on mobile.
   getObstacleAssets();
   getGantryAdTextures();
+  // Covers the procedural obstacles right away; each loaded GLB reschedules.
+  scheduleObstacleWarmup();
   handleResize();
   checkAuthGate();
   loadProfile();
@@ -11323,7 +11418,7 @@ onBeforeUnmount(() => {
   if (animationId) {
     cancelAnimationFrame(animationId);
   }
-  [nearMissTimer, bumpToastTimer, finaleToastTimer, driveHintTimer].forEach((timer) => {
+  [nearMissTimer, bumpToastTimer, finaleToastTimer, driveHintTimer, warmupTimer].forEach((timer) => {
     if (timer) {
       clearTimeout(timer);
     }
