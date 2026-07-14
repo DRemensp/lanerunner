@@ -185,6 +185,13 @@ class RunnerController extends Controller
 
         $user = $request->user();
         if (! $user) {
+            // Guests still leave a trace: per-IP run counter + last 5 scores.
+            \App\Models\Guest::recordRun(
+                $request->ip(),
+                $validated['device_id'] ?? null,
+                (int) $validated['distance'],
+            );
+
             return response([
                 'guest' => true,
                 'accepted' => false,

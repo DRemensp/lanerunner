@@ -3079,6 +3079,18 @@ const persistRun = async () => {
   }
   statTotalRuns.value += 1;
   localStorage.setItem('runner_total_runs', String(statTotalRuns.value));
+
+  // Server-side guest telemetry: the guests table keeps one row per IP with
+  // the run counter and the last five scores. Fire-and-forget — an offline
+  // guest simply leaves no trace.
+  axios
+    .post('/api/runner/run/end', {
+      distance,
+      max_speed: maxSpeed,
+      device_id: deviceId,
+      stage: reachedStage,
+    })
+    .catch(() => {});
 };
 
 const clearObstacles = () => {
