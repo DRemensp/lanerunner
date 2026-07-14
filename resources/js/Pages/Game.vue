@@ -916,21 +916,39 @@
               </div>
               <div class="menu-field">
                 <label>Render Quality</label>
-                <div class="difficulty-toggle">
+                <div class="difficulty-toggle fps-toggle">
                   <button
-                    :class="{ active: renderQuality === 'full' }"
-                    @click="setRenderQuality('full')"
+                    :class="{ active: renderQuality === 'auto' }"
+                    @click="setRenderQuality('auto')"
                     type="button"
                   >
-                    Full
+                    Auto
                   </button>
                   <button
-                    :class="{ active: renderQuality === 'battery' }"
-                    @click="setRenderQuality('battery')"
+                    :class="{ active: renderQuality === 'high' }"
+                    @click="setRenderQuality('high')"
                     type="button"
                   >
-                    Battery Saver
+                    High
                   </button>
+                  <button
+                    :class="{ active: renderQuality === 'medium' }"
+                    @click="setRenderQuality('medium')"
+                    type="button"
+                  >
+                    Medium
+                  </button>
+                  <button
+                    :class="{ active: renderQuality === 'low' }"
+                    @click="setRenderQuality('low')"
+                    type="button"
+                  >
+                    Low
+                  </button>
+                </div>
+                <div class="menu-hint">
+                  Auto adjusts resolution dynamically to hold the framerate — the fixed
+                  steps render exactly that quality
                 </div>
               </div>
               <div class="menu-field">
@@ -3693,27 +3711,56 @@ const setOrientation = (pref) => {
   applyOrientation();
 };
 
-// Battery Saver renders at a lower pixel ratio — a big win on hot phones.
-const renderQuality = ref(localStorage.getItem('runner_quality') || 'full');
-// Phones/tablets get a lower resolution ceiling by default: mobile GPUs are
+// Render Quality presets, game-style:
+//   auto   — dynamic resolution: renders as sharp as the device can hold
+//            near the target framerate and steps down only as far as needed
+//            (governor in measurePerf); decor density picked by device class
+//   high   — fixed max resolution, full decor (accepts frame drops)
+//   medium — fixed 1.3x, reduced decor
+//   low    — fixed 1.0x, minimal decor, no wind streaks (battery/heat saver)
+// Old stored values map onto the new scale.
+const qualityMigration = { full: 'auto', battery: 'low' };
+const storedQuality = localStorage.getItem('runner_quality') || 'auto';
+const renderQuality = ref(qualityMigration[storedQuality] || storedQuality);
+// Phones/tablets get a lower resolution ceiling in auto: mobile GPUs are
 // almost always fragment-bound, and past ~1.6x the extra pixels are invisible
 // on a 6" screen — they only cost frame time and battery.
 const isCoarsePointer =
   typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)')?.matches;
 const basePixelCap = () => {
-  if (renderQuality.value === 'battery') return 1.15;
-  return isCoarsePointer ? 1.6 : 2;
+  switch (renderQuality.value) {
+    case 'high':
+      return 2;
+    case 'medium':
+      return 1.3;
+    case 'low':
+      return 1;
+    default:
+      return isCoarsePointer ? 1.6 : 2;
+  }
 };
-// Dynamic resolution: perfScale steps down while frames run long and creeps
-// back up when there is headroom (governor in animate) — every device settles
-// at the sharpest resolution it can hold near 60fps. Session-only on purpose:
-// thermals differ between a cold start and a hot phone.
+// Dynamic resolution (auto preset only): perfScale steps down while frames
+// run long and creeps back up when there is headroom (governor in
+// measurePerf) — every device settles at the sharpest resolution it can
+// hold near the target fps. Session-only on purpose: thermals differ
+// between a cold start and a hot phone. The fixed presets pin perfScale
+// at 1 and render exactly what they promise.
 let perfScale = 1;
 // Decorative sidewalk civilians are skinned meshes with their own animation
-// mixers — disproportionately expensive on mobile GPUs. Cap them by device
-// class; nobody counts pedestrians at 40 km/h.
-const civilianCap = () =>
-  renderQuality.value === 'battery' ? 3 : isCoarsePointer ? 6 : 10;
+// mixers — disproportionately expensive on mobile GPUs. Cap them by preset
+// (auto: by device class); nobody counts pedestrians at 40 km/h.
+const civilianCap = () => {
+  switch (renderQuality.value) {
+    case 'high':
+      return 10;
+    case 'medium':
+      return 6;
+    case 'low':
+      return 3;
+    default:
+      return isCoarsePointer ? 6 : 10;
+  }
+};
 const currentPixelRatio = () =>
   Math.max(0.75, Math.min(window.devicePixelRatio || 1, basePixelCap()) * perfScale);
 const applyRenderScale = () => {
@@ -3767,8 +3814,10 @@ const measurePerf = (delta) => {
       `${fps.toFixed(0)} fps · ${renderer.info.render.calls} calls · ` +
       `${renderer.info.render.triangles} tris · ratio ${renderer.getPixelRatio().toFixed(2)}`;
   }
-  // The governor only acts mid-run — menus and cutscenes may idle at any fps.
-  if (state.value !== 'running') return;
+  // The governor only acts mid-run — menus and cutscenes may idle at any
+  // fps — and only in the auto preset: the fixed quality steps render at
+  // exactly the resolution they promise.
+  if (state.value !== 'running' || renderQuality.value !== 'auto') return;
   // Govern relative to the FPS cap (a chosen 30-cap is not a struggling
   // device); caps above 60 still only guard the 60-line — the resolution
   // trade for 90+ isn't worth it. Uncapped: 48/57, same as before.
@@ -3855,9 +3904,9 @@ const ensureWindStreaks = () => {
 };
 
 const updateWindStreaks = (delta) => {
-  // Battery mode: additive transparent planes are pure overdraw — the one
+  // Low preset: additive transparent planes are pure overdraw — the one
   // effect a struggling GPU should never pay for.
-  if (renderQuality.value === 'battery') {
+  if (renderQuality.value === 'low') {
     if (windStreaks) windStreaks.visible = false;
     return;
   }
