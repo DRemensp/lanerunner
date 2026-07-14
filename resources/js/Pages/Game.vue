@@ -948,6 +948,18 @@
                 </div>
               </div>
               <div class="menu-field">
+                <label class="perf-check">
+                  <input
+                    type="checkbox"
+                    :checked="perfHudVisible"
+                    @change="setPerfHud($event.target.checked)"
+                  />
+                  <span class="perf-check-box" aria-hidden="true"></span>
+                  Show Performance
+                </label>
+                <div class="menu-hint">FPS, draw calls &amp; render scale overlay (F10)</div>
+              </div>
+              <div class="menu-field">
                 <label for="settings-zoom">Zoom</label>
                 <input
                   id="settings-zoom"
@@ -3329,10 +3341,9 @@ const handleKeydown = (event) => {
   }
 
   if (event.code === 'F10') {
-    // Dev overlay: fps / draw calls / render scale (see measurePerf).
+    // Shortcut for the "Show Performance" setting (see measurePerf).
     event.preventDefault();
-    perfHudVisible.value = !perfHudVisible.value;
-    perfHudText.value = '';
+    setPerfHud(!perfHudVisible.value);
     return;
   }
 
@@ -3730,10 +3741,16 @@ const setFpsCap = (cap) => {
   lastCapTick = 0;
 };
 
-// Hidden perf HUD (F10): fps, draw calls, current render scale — for
-// verifying the dynamic-resolution governor on real devices.
-const perfHudVisible = ref(false);
+// Perf HUD: fps, draw calls, current render scale — for verifying the
+// dynamic-resolution governor on real devices. Toggle via the settings
+// checkbox ("Show Performance") or F10; both share the persisted state.
+const perfHudVisible = ref(localStorage.getItem('runner_show_perf') === '1');
 const perfHudText = ref('');
+const setPerfHud = (visible) => {
+  perfHudVisible.value = visible;
+  localStorage.setItem('runner_show_perf', visible ? '1' : '0');
+  perfHudText.value = '';
+};
 let perfAccum = 0;
 let perfFrames = 0;
 let perfGoodWindows = 0;
@@ -13758,6 +13775,43 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   letter-spacing: 0.2em;
   color: rgba(180, 200, 255, 0.7);
+}
+
+/* "Show Performance" checkbox: native input stays for a11y, the visual is
+   the neon square that gets a checkmark when active. */
+.perf-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.perf-check input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.perf-check-box {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 16, 30, 0.9);
+  border: 1px solid rgba(90, 140, 255, 0.4);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  color: #2ee5ff;
+}
+.perf-check input:checked + .perf-check-box::after {
+  content: '✔';
+}
+.menu-hint {
+  font-size: 0.75rem;
+  color: rgba(180, 200, 255, 0.45);
 }
 
 .menu-field select {
