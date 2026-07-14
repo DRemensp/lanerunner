@@ -11003,8 +11003,35 @@ const updateRunner = (delta) => {
         const carSpeed = -obstacle.userData.vz;
         const brakedSpeed = carSpeed * 0.75;
         obstacle.userData.vz = -brakedSpeed;
-        speed.value = Math.min(speed.value, brakedSpeed * 0.9);
-        driveTargetSpeed = Math.min(driveTargetSpeed, brakedSpeed * 0.9);
+        // Floor at 8: repeated bumps must never grind the world to a halt.
+        const shedSpeed = Math.max(8, brakedSpeed * 0.9);
+        speed.value = Math.min(speed.value, shedSpeed);
+        driveTargetSpeed = Math.min(driveTargetSpeed, shedSpeed);
+        // The honked car pulls over to the neighbouring lane afterwards.
+        // Without this, gassing into the same car again braked BOTH cars by
+        // 25% every 900ms — a decay spiral toward standstill where the gas
+        // pedal seemed dead (only a lane change escaped it, and right after
+        // the carjack restart at speed 2 it was easy to fall into).
+        if (obstacle.userData.driftTo === undefined) {
+          let laneIdx = 0;
+          carLanes.forEach((x, idx) => {
+            if (Math.abs(x - obstacle.position.x) < Math.abs(carLanes[laneIdx] - obstacle.position.x)) {
+              laneIdx = idx;
+            }
+          });
+          const options = [laneIdx - 1, laneIdx + 1].filter(
+            (idx) => idx >= 0 && idx < carLanes.length,
+          );
+          // Prefer the escape lane farther away from the player.
+          options.sort(
+            (a, b) =>
+              Math.abs(carLanes[b] - player.position.x) -
+              Math.abs(carLanes[a] - player.position.x),
+          );
+          obstacle.userData.driftTo = carLanes[options[0]];
+          obstacle.userData.driftAt = obstacle.position.z - 1;
+          obstacle.userData.driftHonked = true;
+        }
         bumpProtectUntil = now + 900;
         bumpShakeTimer = 0.25;
         sfx.horn();
@@ -14056,6 +14083,20 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Four tabs + coin balance overflow narrow screens — wrap instead of
+     getting clipped by the dock's clip-path. */
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.shop-balance {
+  margin-left: auto;
+}
+@media (max-width: 480px) {
+  .skin-tab {
+    padding: 6px 11px;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+  }
 }
 
 .skin-tab {
