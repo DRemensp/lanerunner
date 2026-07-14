@@ -3802,7 +3802,18 @@ let perfAccum = 0;
 let perfFrames = 0;
 let perfGoodWindows = 0;
 
+// Ring buffer of the last ~600 raw frame times (10s at 60fps) for the 1%
+// low: single hard hitches vanish in a 2s average (55 fps can contain a
+// 200ms freeze) — the mean of the worst 1% of frames is the number that
+// matches how a stutter actually feels.
+const frameTimes = new Float32Array(600);
+let frameTimeIdx = 0;
+let frameTimeCount = 0;
+
 const measurePerf = (delta) => {
+  frameTimes[frameTimeIdx] = delta;
+  frameTimeIdx = (frameTimeIdx + 1) % frameTimes.length;
+  frameTimeCount = Math.min(frameTimeCount + 1, frameTimes.length);
   perfAccum += delta;
   perfFrames += 1;
   if (perfAccum < 2) return;
@@ -3810,8 +3821,17 @@ const measurePerf = (delta) => {
   perfAccum = 0;
   perfFrames = 0;
   if (perfHudVisible.value && renderer) {
+    const worst = Array.from(frameTimes.subarray(0, frameTimeCount)).sort((a, b) => b - a);
+    const lowCount = Math.max(1, Math.floor(frameTimeCount / 100));
+    let lowSum = 0;
+    for (let i = 0; i < lowCount; i += 1) {
+      lowSum += worst[i];
+    }
+    const onePercentLow = lowCount / lowSum;
     perfHudText.value =
-      `${fps.toFixed(0)} fps · ${renderer.info.render.calls} calls · ` +
+      `${fps.toFixed(0)} fps · 1% low ${onePercentLow.toFixed(0)} · ` +
+      `spike ${(worst[0] * 1000).toFixed(0)}ms\n` +
+      `${renderer.info.render.calls} calls · ` +
       `${renderer.info.render.triangles} tris · ratio ${renderer.getPixelRatio().toFixed(2)}`;
   }
   // The governor only acts mid-run — menus and cutscenes may idle at any
@@ -11025,10 +11045,13 @@ const animate = (time) => {
   // Clamp in BOTH directions: the first rAF timestamp can lie behind
   // lastTime (different time origin) — a negative delta makes damp()
   // extrapolate backwards (e.g. music duck below 0 → volume exception).
-  const delta = Math.min(0.05, Math.max(0, (time - lastTime) / 1000 || 0));
+  const rawDelta = Math.max(0, (time - lastTime) / 1000 || 0);
+  const delta = Math.min(0.05, rawDelta);
   lastTime = time;
 
-  measurePerf(delta);
+  // Perf stats get the UNCLAMPED time: the 0.05 cap would disguise a 200ms
+  // freeze as a smooth-looking 20fps frame in the 1% low.
+  measurePerf(rawDelta);
 
   // Offline-cooldown bookkeeping: while a run is live, re-stamp "run ended"
   // every few seconds. A force-closed app fires no events at all — the last
@@ -11268,6 +11291,12 @@ onMounted(() => {
   loadVehicleModels();
   loadCharacterModels();
   loadPlaneModel();
+  // Prewarm lazily-built assets in the menu instead of mid-run: obstacle
+  // materials/geometries and the gantry ad canvases otherwise get created
+  // (and GPU-uploaded) in the frame their first spawn scrolls in — one of
+  // the "single hard stutter" sources on mobile.
+  getObstacleAssets();
+  getGantryAdTextures();
   handleResize();
   checkAuthGate();
   loadProfile();
@@ -12121,7 +12150,7 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.55);
   border-radius: 4px;
   pointer-events: none;
-  white-space: nowrap;
+  white-space: pre;
 }
 
 /* Stage-skip offer: reuses the classic-intro overlay, just a smaller card. */
