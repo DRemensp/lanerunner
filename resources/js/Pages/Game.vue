@@ -10,7 +10,7 @@
     ></div>
 
     <!-- Coin balance top-LEFT: the top strip is reserved on every menu
-         screen — subscreens start their header below it instead. -->
+         screen - subscreens start their header below it instead. -->
     <div v-if="authUser && state === 'menu' && !showAuthGate" class="coin-chip coin-hud">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>
       <span>{{ totalCoins }}</span>
@@ -467,7 +467,7 @@
       class="menu-overlay"
     >
       <!-- Menu backdrop: slow Ken-Burns slideshow of the stage shots
-           instead of the raw live game scene — on every menu screen except
+           instead of the raw live game scene - on every menu screen except
            the store, where the live 3D skin preview must stay visible. -->
       <div v-if="menuScreen !== 'level'" class="menu-backdrop" aria-hidden="true">
         <div
@@ -1103,7 +1103,7 @@
           <button class="primary-btn" @click="nextRun" type="button">Run Again</button>
           <button class="ghost-btn" @click="shareScore" type="button">{{ shareLabel }}</button>
           <!-- menuFromCrash finalizes the run first, then quitRun cleans up the
-               world (obstacles, zone, player position) — otherwise the skin
+               world (obstacles, zone, player position) - otherwise the skin
                preview ends up standing inside a leftover barricade. -->
           <button class="ghost-btn" @click="menuFromCrash" type="button">Return to Menu</button>
         </div>
@@ -1150,7 +1150,7 @@
 
     <!-- Ban lock: replaces the game entirely for banned devices/accounts.
          Sits at gate level (z 8) so the bug-report modal (z 9) can open on
-         top of it for appeals. No close button — this screen IS the game now. -->
+         top of it for appeals. No close button - this screen IS the game now. -->
     <div v-if="playerBanned" class="gate-overlay">
       <div class="gate-card">
         <div class="gate-title">Access Suspended</div>
@@ -1377,7 +1377,7 @@ let crossing = null; // { group, carTimer }
 let crossingGroup = null; // cached geometry, only ever repositioned
 let crossingDistIn = 320;
 let trafficWave = null;
-let ghostWave = null; // { carsLeft, timer } — staggered wrong-way pack
+let ghostWave = null; // { carsLeft, timer } - staggered wrong-way pack
 // German Rettungsgasse: both outer lanes fill with cars pulled ~30° to the
 // side (jam roofs), the middle stays free for an emergency convoy that
 // overtakes from behind with lights on. { rowsLeft, rowTimer, headZ, endZ,
@@ -1385,7 +1385,7 @@ let ghostWave = null; // { carsLeft, timer } — staggered wrong-way pack
 let rescueLane = null;
 let rescueSignGroup = null; // cached warning-sign geometry, only repositioned
 let nextMilestone = 2500;
-// Checkpoint events only fire once the breather has cleared the road —
+// Checkpoint events only fire once the breather has cleared the road -
 // never mid-traffic. checkpointPending is the breather state machine.
 let checkpointPending = null;
 let lastRowFull = false;
@@ -1395,7 +1395,7 @@ let driveEventTimer = 10;
 
 const selectedLevel = ref(levelOptions[0].id);
 
-// Audio subsystem (music playlist, SFX synth, engine drone) — see game/audio.js.
+// Audio subsystem (music playlist, SFX synth, engine drone) - see game/audio.js.
 const {
   audioVolume,
   isMuted,
@@ -1424,7 +1424,7 @@ const {
   disposeAudio,
 } = createAudioSystem({ state, speed });
 
-// Daily missions + local daily stats — see game/missions.js.
+// Daily missions + local daily stats - see game/missions.js.
 const {
   dailyMissions,
   claimedMissions,
@@ -1500,7 +1500,7 @@ const planeSkinOptions = computed(() =>
 );
 
 // Zone 2/3 skin sections stay hidden as "???" until the player has actually
-// reached that section once — the finale stays a secret.
+// reached that section once - the finale stays a secret.
 const zone2Seen = ref(localStorage.getItem('runner_zone2_seen') === '1');
 const zone3Seen = ref(localStorage.getItem('runner_zone3_seen') === '1');
 const markZoneSeen = (zone) => {
@@ -1554,7 +1554,7 @@ const stageUnlocked = (stage) =>
 // transitions, consumed once in finalizeRun and sent with run/end.
 let runMaxStage = 1;
 // Flat coin bonus per stage reached in one classic run (stage 2+3+4 = 3000).
-// Client-side this is display only (toast + counters) — the server computes
+// Client-side this is display only (toast + counters) - the server computes
 // the same bonus authoritatively from the reported stage, clamped by the
 // STAGE_MIN_DISTANCE floors (RunnerController), and pays it out there.
 const STAGE_COIN_BONUS = 1000;
@@ -1571,7 +1571,7 @@ const markRunStage = (stage) => {
 // Mode of the next/current run. Menu Play starts classic, the endless tiles
 // set 'endless'; crash-screen "Run Again" reuses whatever is active.
 const runMode = ref('classic');
-// Which stage an endless run plays (and stays in — forever).
+// Which stage an endless run plays (and stays in - forever).
 const endlessStage = ref(1);
 
 // Personal endless bests per stage, shown on the tiles. Guests/offline keep
@@ -1628,7 +1628,7 @@ let joyVec = { x: 0, y: 0 };
 const joyBase = ref(null);
 let joyPointerId = null;
 // Gallery showroom joystick: only visible while browsing the free-roam
-// showroom. Steers the character the same way WASD/arrows do there — it's a
+// showroom. Steers the character the same way WASD/arrows do there - it's a
 // separate stick from the runner/finale ones above since it needs its own
 // pointer id and never overlaps with them (different `state`).
 const galleryJoyKnob = ref({ x: 0, y: 0 });
@@ -1666,7 +1666,7 @@ let enemyAssets = null;
 // Zone 4 (the void): after a mothership kill the wreck detonates, collapses
 // into a black hole and drags the plane through a wormhole into a deep-space
 // asteroid field. finalePhase: 'collapse' (cinematic, controls locked) then
-// 'void' (asteroid gameplay — shoot the rocks or weave through).
+// 'void' (asteroid gameplay - shoot the rocks or weave through).
 let collapseTimer = 0;
 let blackHole = null;
 let shockRings = [];
@@ -1698,13 +1698,13 @@ const devRun = ref(false);
 const reviveAvailable = ref(false); // show the "watch ad to revive" button?
 const reviveUsed = ref(false); // one revive per run
 const reviving = ref(false); // rewarded ad is currently playing
-// The run is persisted exactly once, at the TRUE end (see finalizeRun) — a
+// The run is persisted exactly once, at the TRUE end (see finalizeRun) - a
 // revive must defer it, or the longer continued score is rejected as unranked
 // because the server consumes the run token on run/end.
 let runFinalized = false;
 // Interstitial cadence lives in localStorage, NOT in memory: every 3rd
 // finished run creates an "ad debt" that survives app kills. The debt is only
-// paid once an ad was really shown and closed (see startRun) — force-closing
+// paid once an ad was really shown and closed (see startRun) - force-closing
 // the app before or during the ad just moves it to the next run start.
 const adDebt = () => localStorage.getItem('runner_ad_debt') === '1';
 const setAdDebt = (owed) => {
@@ -1712,13 +1712,13 @@ const setAdDebt = (owed) => {
 };
 let startingRun = false; // re-entry guard while the pre-run ad is up
 // In-flight run/end request: run/start must WAIT for it (see startRunSession).
-// Pause-menu Restart finalizes + starts in one tick — if run/start overtook
+// Pause-menu Restart finalizes + starts in one tick - if run/start overtook
 // run/end on the server, the old token would mismatch and flag an honest
 // player as suspicious.
 let pendingRunEnd = null;
 
 // Stable per-device id, guests included: generated once, sent with telemetry,
-// bug reports and run/end — lets the server correlate (and ban) devices even
+// bug reports and run/end - lets the server correlate (and ban) devices even
 // without an account.
 const deviceId = (() => {
   let id = localStorage.getItem('runner_device_id');
@@ -1735,7 +1735,7 @@ const logAdEvent = (type) => {
 };
 
 // Banned players (manual DB entry: runner_profiles.banned_at or a row in
-// banned_devices) are locked out of playing entirely — a full-screen
+// banned_devices) are locked out of playing entirely - a full-screen
 // suspension overlay replaces the game. The flag is cached locally so the
 // lock also holds while offline; every successful profile load refreshes it,
 // so an unban lifts the lock on the next online start.
@@ -1747,7 +1747,7 @@ const applyBanFlag = (banned) => {
 // Shared by the F9 key and the mobile cheat button.
 const devSkip = () => {
   if (state.value !== 'running') return;
-  // Endless is locked to its stage — no zone jumping, not even for devs.
+  // Endless is locked to its stage - no zone jumping, not even for devs.
   if (runMode.value === 'endless') return;
   if (!finaleTriggered && finalePhase.value === 'none') {
     devRun.value = true;
@@ -1765,7 +1765,7 @@ const devSkip = () => {
 };
 
 // --- Player-facing stage skip (zone 1 → 2 only) ---
-// Unlock rule: 3 failed zone-1 runs IN A ROW — stage 1 is the hardest stage,
+// Unlock rule: 3 failed zone-1 runs IN A ROW - stage 1 is the hardest stage,
 // and without the skip a struggling player would never see anything beyond
 // it. Reaching zone 2 resets the streak, using the skip consumes it. The
 // offer appears as a centered prompt right at the start of the next classic
@@ -1803,13 +1803,13 @@ const dismissSkipPrompt = () => {
 // --- Offline run cooldown (native app only) ---
 // Playing offline skips the ads that fund the game (classic ad-avoidance
 // move: flip on airplane mode). Offline runs are therefore rate-limited to
-// one per 5 minutes — fair for genuinely offline players, but going online
+// one per 5 minutes - fair for genuinely offline players, but going online
 // (one short ad every 3rd run) is always the better deal. The window counts
 // from the END of the last run; while a run is live we keep re-stamping the
 // timestamp (animate loop + pagehide), so force-closing the app mid-run
 // starts the cooldown from the kill moment, not from the run's start.
 const OFFLINE_RUN_COOLDOWN_MS = 5 * 60 * 1000;
-// Runs that die before 1000 points never arm the cooldown — a 20-second
+// Runs that die before 1000 points never arm the cooldown - a 20-second
 // death is punishment enough, offline or not.
 const OFFLINE_COOLDOWN_MIN_SCORE = 1000;
 const showOfflineNotice = ref(false);
@@ -2012,7 +2012,7 @@ let obstacleAssets = null;
 // Shared material for blinking construction lamps (pulsed in animate()).
 let hazardBlinkMat = null;
 // Emergency-light pair for response vehicles: two materials pulsed in
-// animate() in counter-phase — all visible beacons alternate in sync.
+// animate() in counter-phase - all visible beacons alternate in sync.
 let beaconMatA = null;
 let beaconMatB = null;
 
@@ -2101,16 +2101,16 @@ const startRun = async () => {
     openOfflineNotice();
     return;
   }
-  // Pause-menu "Restart" abandons a live run — it still counts: finalize it
+  // Pause-menu "Restart" abandons a live run - it still counts: finalize it
   // here (after the early-return guards, so a blocked start never half-ends
   // a run). If this finalize arms the 3rd-run ad debt, the very next check
-  // collects it — Esc→Restart can't outrun the cadence.
+  // collects it - Esc→Restart can't outrun the cadence.
   if (state.value === 'running' || state.value === 'paused') {
     finalizeRun();
   }
   // Ad debt from the 3rd-run cadence: pay it BEFORE the run starts, no matter
   // which button got us here (Run Again, menu Play, cold app start). The debt
-  // only clears when an ad was truly shown and closed — if none could be
+  // only clears when an ad was truly shown and closed - if none could be
   // displayed (offline/no fill), the run still starts and the debt survives:
   // gameplay is never hard-blocked on ad availability.
   if (adDebt()) {
@@ -2132,7 +2132,7 @@ const startRun = async () => {
   reviving.value = false;
   skippedRun.value = false;
   state.value = 'running';
-  // Struggling on stage 1? Offer the skip right at the start of the run —
+  // Struggling on stage 1? Offer the skip right at the start of the run -
   // the overlay swallows touch input, so the choice comes before the first
   // obstacles arrive; keyboard players who just keep running dismiss it by
   // passing ~100m (see updateRunner).
@@ -2140,7 +2140,7 @@ const startRun = async () => {
   if (runMode.value === 'endless' && endlessStage.value > 1) {
     bootEndlessStage(endlessStage.value);
   } else {
-    // The swipe tutorial teaches zone-1 controls — pointless mid-flight.
+    // The swipe tutorial teaches zone-1 controls - pointless mid-flight.
     maybeShowTutorial();
     // Very first run ever: point out the dash until ~200m in.
     if (!localStorage.getItem('runner_dash_tip')) {
@@ -2180,7 +2180,7 @@ const closeClassicIntro = () => {
 };
 
 // Endless carousel: locked tiles explain their unlock; unlocked tiles start
-// the endless run directly in their stage (and it never leaves — every
+// the endless run directly in their stage (and it never leaves - every
 // next-stage trigger is disabled in endless mode).
 const endlessNotice = ref('');
 const tapEndlessStage = (stage) => {
@@ -2274,7 +2274,7 @@ const shareScore = async () => {
       shareLabel.value = 'Share';
     }, 1600);
   } catch (error) {
-    // Share sheet dismissed — nothing to do.
+    // Share sheet dismissed - nothing to do.
   }
 };
 
@@ -2338,7 +2338,7 @@ const quitRun = () => {
 };
 
 // Crash-screen "Return to Menu": the run is over, so finalize (persist) it
-// before leaving — unlike the pause-menu quitRun, which abandons a live run.
+// before leaving - unlike the pause-menu quitRun, which abandons a live run.
 const menuFromCrash = () => {
   finalizeRun();
   quitRun();
@@ -2347,7 +2347,7 @@ const menuFromCrash = () => {
 // --- Android hardware back button (native app only) ---
 // One step back per press, innermost layer first; on the bare main menu it
 // asks for confirmation instead of killing the app. Registered in onMounted
-// via the @capacitor/app plugin — registering a listener disables Capacitor's
+// via the @capacitor/app plugin - registering a listener disables Capacitor's
 // default back behavior (which would close the app).
 const showExitConfirm = ref(false);
 
@@ -2370,7 +2370,7 @@ const handleNativeBack = () => {
     return;
   }
   if (playerBanned.value) {
-    // Nothing to navigate on the ban screen — back means leave.
+    // Nothing to navigate on the ban screen - back means leave.
     showExitConfirm.value = true;
     return;
   }
@@ -2678,7 +2678,7 @@ const purchaseSkin = async (skin) => {
   }
 };
 
-// Tapping a chip only previews (and selects when already owned/free) — buying
+// Tapping a chip only previews (and selects when already owned/free) - buying
 // happens exclusively via the explicit Buy button.
 const skinTab = ref('runner');
 const previewSkin = ref(null);
@@ -2773,7 +2773,7 @@ let runSessionSeq = 0;
 const startRunSession = async () => {
   const seq = ++runSessionSeq;
   // Serialize against the previous run's run/end: both fire in the same tick
-  // on a pause-menu Restart, and the server consumes/validates the token —
+  // on a pause-menu Restart, and the server consumes/validates the token -
   // run/start arriving first would turn the old run/end into a false cheat
   // flag (run_id_mismatch).
   if (pendingRunEnd) {
@@ -2898,19 +2898,19 @@ const endRun = () => {
 };
 
 // Persists the run exactly once and arms the interstitial cadence. Called at
-// the real end of a run — after a revive is declined/unavailable, or when the
+// the real end of a run - after a revive is declined/unavailable, or when the
 // player leaves the crash screen.
 const finalizeRun = () => {
   if (runFinalized) return;
   runFinalized = true;
   reviveAvailable.value = false;
   stampRunEnd();
-  // Stage-skip unlock: only a real CRASH in zone 1 extends the fail streak —
+  // Stage-skip unlock: only a real CRASH in zone 1 extends the fail streak -
   // state is 'crashed' then. Self-abandoned runs (pause-menu Quit/Restart
   // finalize while running/paused) count for the ad cadence but are no
   // "failed attempt": you earn the skip by dying, not by quitting. Reaching
   // zone 2 resets the streak (see startDriving).
-  // Endless stage 1 also runs with finalePhase 'none' — those deaths must
+  // Endless stage 1 also runs with finalePhase 'none' - those deaths must
   // NOT feed the classic stage-skip streak, only real classic zone-1 crashes.
   if (
     !devRun.value &&
@@ -2997,7 +2997,7 @@ const reviveRun = () => {
   spawnBurst(player.position.clone(), ['gold', 'flame'], 20, 8);
 };
 
-// Crash-screen "Run Again": finalize the old run, then start fresh — startRun
+// Crash-screen "Run Again": finalize the old run, then start fresh - startRun
 // itself collects any pending ad debt first.
 const nextRun = () => {
   finalizeRun();
@@ -3061,7 +3061,7 @@ const persistRun = async () => {
   }
 
   // Guest records are classic-only, mirroring the server: endless scores
-  // never touch best distance/speed (the ranking is a classic ranking) —
+  // never touch best distance/speed (the ranking is a classic ranking) -
   // they go to the per-stage endless bests instead.
   if (runMode.value === 'classic') {
     const storedBest = Number.parseInt(localStorage.getItem('runner_best_distance') || '0', 10);
@@ -3081,7 +3081,7 @@ const persistRun = async () => {
   localStorage.setItem('runner_total_runs', String(statTotalRuns.value));
 
   // Server-side guest telemetry: the guests table keeps one row per IP with
-  // the run counter and the last five scores. Fire-and-forget — an offline
+  // the run counter and the last five scores. Fire-and-forget - an offline
   // guest simply leaves no trace.
   axios
     .post('/api/runner/run/end', {
@@ -3262,7 +3262,7 @@ const requestSlide = () => {
   playerVelocityY = 0;
   sfx.slide();
   // The COLLISION box shrinks via currentPlayerHeight() and the group
-  // center drops with it — but the mesh is no longer scale-squashed.
+  // center drops with it - but the mesh is no longer scale-squashed.
   // The visual slide is a real lying-back pose (driveCharacter /
   // animateRunner); the GLB root gets lifted so the feet stay on the
   // road despite the lowered group center.
@@ -3278,7 +3278,7 @@ const stopSlide = () => {
   // currentSurfaceY: crossing a jam-roof seam the surface probe loses
   // support for a few frames (currentSurfaceY falls back to 0), and a slide
   // ending right then teleported the player from the roof down to street
-  // level — where the next car's nose is a ground-level frontal kill that
+  // level - where the next car's nose is a ground-level frontal kill that
   // neither step-up nor the jam safety net covers.
   const feetY = player ? player.position.y - currentPlayerHeight() / 2 : 0;
   isSliding = false;
@@ -3378,7 +3378,7 @@ const handleKeydown = (event) => {
   }
 
   if (event.code === 'F8') {
-    // Dev cheat: force the Rettungsgasse event (6% in the wild — untestable
+    // Dev cheat: force the Rettungsgasse event (6% in the wild - untestable
     // otherwise). Marks the run as dev, so it is never persisted.
     if (
       state.value === 'running' &&
@@ -3487,7 +3487,7 @@ const handleKeydown = (event) => {
 
 const pedalGasDown = (event) => {
   // Capture keeps the pointer bound to the pedal even when the thumb
-  // drifts off the button — pointerup always reaches us.
+  // drifts off the button - pointerup always reaches us.
   event?.currentTarget?.setPointerCapture?.(event.pointerId);
   if (!accelHeld) {
     sfx.rev();
@@ -3585,7 +3585,7 @@ const findTrackedTouch = (event) => {
 
 const triggerSwipe = (dx, dy) => {
   // Each axis has its OWN threshold and must dominate before firing.
-  // Previously the gesture fired as soon as any axis passed 40px — a
+  // Previously the gesture fired as soon as any axis passed 40px - a
   // sideways swipe with a natural arc was read as jump/slide whenever the
   // vertical axis happened to cross its threshold first. Horizontal also
   // gets the tie-break (factor 0.85) because a lane change is the more
@@ -3615,7 +3615,7 @@ const triggerSwipe = (dx, dy) => {
   }
 
   if (finalePhase.value === 'drive' || finalePhase.value === 'ramp') {
-    // Vertical swipes do nothing in the car — speed is on the pedals.
+    // Vertical swipes do nothing in the car - speed is on the pedals.
     return true;
   }
 
@@ -3637,7 +3637,7 @@ const handleTouchEnd = (event) => {
   touchStart = null;
 
   // Quick press-release without movement = a tap; two taps close together
-  // in time and space = dash. (A touch that swiped never gets here — the
+  // in time and space = dash. (A touch that swiped never gets here - the
   // move handler consumes it.)
   const now = performance.now();
   if (now - start.time < 260 && Math.abs(dx) < 18 && Math.abs(dy) < 18) {
@@ -3677,7 +3677,7 @@ const handleTouchMove = (event) => {
   const dx = touch.clientX - touchStart.x;
   const dy = touch.clientY - touchStart.y;
 
-  // Fires the moment either axis first crosses its threshold — however
+  // Fires the moment either axis first crosses its threshold - however
   // long the finger took to get there (slow swipes still count). One
   // touch = ONE move: after firing, the gesture is consumed and the
   // finger must lift before the next swipe (classic lane-runner input).
@@ -3705,7 +3705,7 @@ const vibrate = (ms) => {
 
 // Orientation is an explicit choice (portrait or landscape, never auto).
 // Native app: the ScreenOrientation plugin locks the activity. Browser:
-// screen.orientation.lock only works in fullscreen — attempted, then
+// screen.orientation.lock only works in fullscreen - attempted, then
 // silently ignored (the PWA manifest pins portrait as install default).
 const orientationPref = ref(localStorage.getItem('runner_orientation') || 'portrait');
 const applyOrientation = () => {
@@ -3724,19 +3724,19 @@ const setOrientation = (pref) => {
 };
 
 // Render Quality presets, game-style:
-//   auto   — dynamic resolution: renders as sharp as the device can hold
+//   auto   - dynamic resolution: renders as sharp as the device can hold
 //            near the target framerate and steps down only as far as needed
 //            (governor in measurePerf); decor density picked by device class
-//   high   — fixed max resolution, full decor (accepts frame drops)
-//   medium — fixed 1.3x, reduced decor
-//   low    — fixed 1.0x, minimal decor, no wind streaks (battery/heat saver)
+//   high   - fixed max resolution, full decor (accepts frame drops)
+//   medium - fixed 1.3x, reduced decor
+//   low    - fixed 1.0x, minimal decor, no wind streaks (battery/heat saver)
 // Old stored values map onto the new scale.
 const qualityMigration = { full: 'auto', battery: 'low' };
 const storedQuality = localStorage.getItem('runner_quality') || 'auto';
 const renderQuality = ref(qualityMigration[storedQuality] || storedQuality);
 // Phones/tablets get a lower resolution ceiling in auto: mobile GPUs are
 // almost always fragment-bound, and past ~1.6x the extra pixels are invisible
-// on a 6" screen — they only cost frame time and battery.
+// on a 6" screen - they only cost frame time and battery.
 const isCoarsePointer =
   typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)')?.matches;
 const basePixelCap = () => {
@@ -3753,13 +3753,13 @@ const basePixelCap = () => {
 };
 // Dynamic resolution (auto preset only): perfScale steps down while frames
 // run long and creeps back up when there is headroom (governor in
-// measurePerf) — every device settles at the sharpest resolution it can
+// measurePerf) - every device settles at the sharpest resolution it can
 // hold near the target fps. Session-only on purpose: thermals differ
 // between a cold start and a hot phone. The fixed presets pin perfScale
 // at 1 and render exactly what they promise.
 let perfScale = 1;
 // Decorative sidewalk civilians are skinned meshes with their own animation
-// mixers — disproportionately expensive on mobile GPUs. Cap them by preset
+// mixers - disproportionately expensive on mobile GPUs. Cap them by preset
 // (auto: by device class); nobody counts pedestrians at 40 km/h.
 const civilianCap = () => {
   switch (renderQuality.value) {
@@ -3788,7 +3788,7 @@ const setRenderQuality = (quality) => {
 };
 
 // Optional FPS cap (Settings): 0 = Auto (display refresh). A lower cap
-// trades smoothness for battery/heat — the main lever on 90–144 Hz phones
+// trades smoothness for battery/heat - the main lever on 90–144 Hz phones
 // and tablets, where uncapped rAF renders 1.5–2.4x the frames of a 60 Hz
 // display for the same game.
 const fpsCapChoices = [0, 30, 40, 60, 90, 120, 240];
@@ -3800,7 +3800,7 @@ const setFpsCap = (cap) => {
   lastCapTick = 0;
 };
 
-// Perf HUD: fps, draw calls, current render scale — for verifying the
+// Perf HUD: fps, draw calls, current render scale - for verifying the
 // dynamic-resolution governor on real devices. Toggle via the settings
 // checkbox ("Show Performance") or F10; both share the persisted state.
 const perfHudVisible = ref(localStorage.getItem('runner_show_perf') === '1');
@@ -3816,7 +3816,7 @@ let perfGoodWindows = 0;
 
 // Ring buffer of the last ~600 raw frame times (10s at 60fps) for the 1%
 // low: single hard hitches vanish in a 2s average (55 fps can contain a
-// 200ms freeze) — the mean of the worst 1% of frames is the number that
+// 200ms freeze) - the mean of the worst 1% of frames is the number that
 // matches how a stutter actually feels.
 const frameTimes = new Float32Array(600);
 let frameTimeIdx = 0;
@@ -3846,12 +3846,12 @@ const measurePerf = (delta) => {
       `${renderer.info.render.calls} calls · ` +
       `${renderer.info.render.triangles} tris · ratio ${renderer.getPixelRatio().toFixed(2)}`;
   }
-  // The governor only acts mid-run — menus and cutscenes may idle at any
-  // fps — and only in the auto preset: the fixed quality steps render at
+  // The governor only acts mid-run - menus and cutscenes may idle at any
+  // fps - and only in the auto preset: the fixed quality steps render at
   // exactly the resolution they promise.
   if (state.value !== 'running' || renderQuality.value !== 'auto') return;
   // Govern relative to the FPS cap (a chosen 30-cap is not a struggling
-  // device); caps above 60 still only guard the 60-line — the resolution
+  // device); caps above 60 still only guard the 60-line - the resolution
   // trade for 90+ isn't worth it. Uncapped: 48/57, same as before.
   const target = fpsCap.value > 0 ? Math.min(fpsCap.value, 60) : 60;
   if (fps < target * 0.8 && perfScale > 0.62) {
@@ -3859,7 +3859,7 @@ const measurePerf = (delta) => {
     perfGoodWindows = 0;
     applyRenderScale();
   } else if (fps > target * 0.95 && perfScale < 1) {
-    // Only step back up after ~6s of sustained headroom — avoids ping-pong.
+    // Only step back up after ~6s of sustained headroom - avoids ping-pong.
     perfGoodWindows += 1;
     if (perfGoodWindows >= 3) {
       perfGoodWindows = 0;
@@ -3898,11 +3898,11 @@ const handleResize = () => {
 let houseAssets = null;
 
 // Wind streaks: thin additive light strokes beside the track that scroll
-// faster than the world — they make the speed visible. Opacity grows with
+// faster than the world - they make the speed visible. Opacity grows with
 // speed (invisible below ~15), one shared material for all streaks.
 let windStreaks = null;
 let windStreakMat = null;
-// Shared material of the neon road edges — color shifts per district.
+// Shared material of the neon road edges - color shifts per district.
 let edgeLineMaterial = null;
 
 const resetWindStreak = (streak, anywhere = false) => {
@@ -3936,7 +3936,7 @@ const ensureWindStreaks = () => {
 };
 
 const updateWindStreaks = (delta) => {
-  // Low preset: additive transparent planes are pure overdraw — the one
+  // Low preset: additive transparent planes are pure overdraw - the one
   // effect a struggling GPU should never pay for.
   if (renderQuality.value === 'low') {
     if (windStreaks) windStreaks.visible = false;
@@ -3990,7 +3990,7 @@ const getCivAssets = () => {
   return civAssets;
 };
 
-// Only the human characters serve as civis — Alien/Astro/Robot/Ninja stay
+// Only the human characters serve as civis - Alien/Astro/Robot/Ninja stay
 // player skins and would break immersion as passers-by.
 const civHumanKeys = [
   'character-a',
@@ -4053,7 +4053,7 @@ const buildCivilian = () => {
   const armR = new THREE.Mesh(a.armGeo, cloth);
   armR.position.set(0.23, 0.95, 0);
   civ.add(armR);
-  // Some of the people walk staring at a glowing phone — night city.
+  // Some of the people walk staring at a glowing phone - night city.
   const phoneUser = Math.random() < 0.3;
   if (phoneUser) {
     armR.rotation.x = -1.15;
@@ -4070,7 +4070,7 @@ const buildCivilian = () => {
 const spawnCivilian = () => {
   const civ = civilianPool.pop() || buildCivilian();
   const side = Math.random() < 0.5 ? -1 : 1;
-  // Sidewalk: center ±4.92, 2.6 wide — clear of curb and buildings.
+  // Sidewalk: center ±4.92, 2.6 wide - clear of curb and buildings.
   civ.position.set(
     side * (4.2 + Math.random() * 1.3),
     0.26,
@@ -4148,7 +4148,7 @@ const clearCivilians = () => {
 // same type and flags are batched into ONE mesh by baking their color into a
 // vertex-color attribute (a whole house or terrain chunk becomes 1-3 calls).
 // Textured, transparent, or runtime-animated materials (pass those via
-// keepMaterials — e.g. edgeLineMaterial, whose color lerps per zone) keep
+// keepMaterials - e.g. edgeLineMaterial, whose color lerps per zone) keep
 // their material identity and only merge among themselves. Only safe for
 // groups that never animate individual children; visibility toggles on the
 // returned group (syncCrossingHouses) keep working since it stays one node.
@@ -4191,7 +4191,7 @@ const mergeStaticGroup = (group, keepMaterials = []) => {
     if (!combined) return;
     let material = entry.material;
     if (entry.bake) {
-      // One shared white+vertexColors material per bucket type — every
+      // One shared white+vertexColors material per bucket type - every
       // merged group in the scene reuses the same shader program/state.
       material = mergedBatchMats.get(key);
       if (!material) {
@@ -4236,7 +4236,7 @@ const buildHouse = (side) => {
       (Math.random() - 0.5) * d * 0.4,
     );
     group.add(antenna);
-    // Red aviation warning light at the tip — tiny detail, big impact on
+    // Red aviation warning light at the tip - tiny detail, big impact on
     // the skyline silhouette.
     const blink = new THREE.Mesh(houseAssets.blinkGeo, houseAssets.blinkMat);
     blink.position.set(antenna.position.x, h + 2.45, antenna.position.z);
@@ -4287,7 +4287,7 @@ const buildHouse = (side) => {
     group.add(billboard);
   }
   // Facade style: tall buildings sometimes become a glass tower (continuous
-  // light bands instead of a window grid) — breaks the repetitive facade.
+  // light bands instead of a window grid) - breaks the repetitive facade.
   const glassTower = h >= 9 && Math.random() < 0.22;
   if (glassTower) {
     const stripCount = d > 5.5 ? 3 : 2;
@@ -4303,7 +4303,7 @@ const buildHouse = (side) => {
     }
   } else {
     const rows = Math.max(1, Math.min(6, Math.floor((h - 2.4) / 1.9)));
-    // Column count follows the building depth instead of a fixed 3 — wide
+    // Column count follows the building depth instead of a fixed 3 - wide
     // blocks look empty otherwise, narrow ones overcrowded.
     const cols = Math.max(2, Math.min(4, Math.round(d / 1.8)));
     const colSpread = (d * 0.72) / cols;
@@ -4338,7 +4338,7 @@ const buildHouse = (side) => {
       }
     }
     // Penthouse: the top floor of tall buildings gets a wide panorama
-    // window — the skyline no longer reads as a black wall at the top.
+    // window - the skyline no longer reads as a black wall at the top.
     if (h >= 9 && Math.random() < 0.5) {
       const pent = new THREE.Mesh(houseAssets.penthouseGeo, houseAssets.windowLit);
       pent.position.set(faceX, h - 1.1, 0);
@@ -4347,7 +4347,7 @@ const buildHouse = (side) => {
     }
   }
 
-  // Neon roof edge along the street front — THE night-city signal.
+  // Neon roof edge along the street front - THE night-city signal.
   if (Math.random() < 0.45) {
     const edge = new THREE.Mesh(
       houseAssets.roofEdgeGeo,
@@ -4377,7 +4377,7 @@ const buildHouse = (side) => {
     group.add(sign);
   }
 
-  // Ground floor: a good half of the buildings become shops — glowing
+  // Ground floor: a good half of the buildings become shops - glowing
   // storefront, awning, sometimes a sign above the door. Street level is
   // the zone you actually SEE while playing.
   if (Math.random() < 0.55) {
@@ -4519,7 +4519,7 @@ const buildRunner = () => {
 };
 
 // Animated low-poly runners from Kenney's CC0 Blocky Characters pack. Each
-// GLB ships node-based clips (idle/sprint/...) — no skinning, so plain
+// GLB ships node-based clips (idle/sprint/...) - no skinning, so plain
 // AnimationMixer on the scene works. The procedural rig stays as fallback.
 const characterSkinMap = {
   neon: 'character-a',
@@ -4741,7 +4741,6 @@ const animateRunner = (delta) => {
   player.scale.z = stretch;
 
   if (isSliding) {
-    // Feet-first slide, head tucked back.
     legL.hip.rotation.x = d(legL.hip.rotation.x, 1.25);
     legR.hip.rotation.x = d(legR.hip.rotation.x, 1.0);
     legL.knee.rotation.x = d(legL.knee.rotation.x, -0.45);
@@ -4756,7 +4755,6 @@ const animateRunner = (delta) => {
   }
 
   if (!grounded) {
-    // Hero jump: front leg reaching, back leg tucked, arms thrown up.
     legL.hip.rotation.x = d(legL.hip.rotation.x, 0.95, 12);
     legR.hip.rotation.x = d(legR.hip.rotation.x, -0.5, 12);
     legL.knee.rotation.x = d(legL.knee.rotation.x, -0.25, 12);
@@ -4857,7 +4855,7 @@ const updateGallery = (delta) => {
     // the character) while the player is NOT actively dragging the camera.
     // Camera forward is (sin(yaw), -cos(yaw)), so the yaw that looks along
     // (moveX, moveZ) is atan2(moveX, -moveZ). Skip when running toward the
-    // camera — otherwise it would flip 180° and you could never run into
+    // camera - otherwise it would flip 180° and you could never run into
     // the view.
     if (galleryCamPointerId === null) {
       const camTargetYaw = Math.atan2(moveX, -moveZ);
@@ -5083,7 +5081,7 @@ const triggerNearMiss = () => {
 };
 
 // Zone-3 graze: an enemy bolt slipping past close by pays out like a road
-// near miss — shares the toast/combo machinery, tracks its own mission stat.
+// near miss - shares the toast/combo machinery, tracks its own mission stat.
 const triggerGraze = () => {
   const now = performance.now();
   nearMissCombo.value =
@@ -5292,7 +5290,7 @@ const initScene = () => {
     (color) => new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }),
   );
 
-  // 12 segments = road down to z≈-210, comfortably past the fog wall — the
+  // 12 segments = road down to z≈-210, comfortably past the fog wall - the
   // player can never see the floor end through the fog.
   for (let i = 0; i < 12; i += 1) {
     const segment = new THREE.Group();
@@ -5343,7 +5341,7 @@ const initScene = () => {
     segment.userData.houses = [];
     for (let side = -1; side <= 1; side += 2) {
       for (let b = 0; b < 2; b += 1) {
-        // Merge while the group still sits at the origin — the bake is then
+        // Merge while the group still sits at the origin - the bake is then
         // relative to the house root and the position below applies cleanly.
         const house = mergeStaticGroup(buildHouse(side));
         house.position.set(
@@ -5574,7 +5572,7 @@ const getObstacleAssets = () => {
     shabby: lambert(0x4a4436),
     skin: lambert(0xc9a184),
   };
-  // Shared blink material: animate() toggles the color on the beat — ALL
+  // Shared blink material: animate() toggles the color on the beat - ALL
   // construction lamps in the scene blink in sync, for free.
   hazardBlinkMat = track(new THREE.MeshBasicMaterial({ color: 0xffb023 }));
   obstacleAssets.hazardBlink = hazardBlinkMat;
@@ -5607,7 +5605,7 @@ const getObstacleAssets = () => {
 
 // Blue "pass either side" sign (↔, like the German VZ 222 road sign) as a
 // topper for the tall static obstacles: makes it clear at a glance that you
-// do NOT jump over these — you go around.
+// do NOT jump over these - you go around.
 let passSignMat = null;
 const getPassSignMat = () => {
   if (passSignMat) return passSignMat;
@@ -5624,7 +5622,6 @@ const getPassSignMat = () => {
   ctx.beginPath();
   ctx.arc(64, 64, 54, 0, Math.PI * 2);
   ctx.stroke();
-  // Doppelpfeil ↔
   ctx.fillStyle = '#f2f6ff';
   ctx.fillRect(36, 58, 56, 12);
   ctx.beginPath();
@@ -5670,7 +5667,7 @@ const passSignExtra = (signTop, h) => signTop - h / 2;
 // (position = center, userData.size = box extents) keeps working.
 const obstacleBuilders = {
   // Oil drum: slightly conical body with color variants, bead rings, lid
-  // with bung hole and grime rim at the bottom — instead of a bare cylinder.
+  // with bung hole and grime rim at the bottom - instead of a bare cylinder.
   'low-barrel': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -5697,7 +5694,7 @@ const obstacleBuilders = {
   },
   // Blinking construction beacon: black-and-yellow striped base, mast,
   // compact disc with a lamp blinking in sync (hazardBlink is pulsed in
-  // animate()) — replaces the colorless Kenney GLB.
+  // animate()) - replaces the colorless Kenney GLB.
   'construction-light': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -5724,7 +5721,7 @@ const obstacleBuilders = {
   },
   // Homeless man at the sidewalk edge holding a cardboard sign sideways
   // into the outer lane. Hitbox = ONLY the sign (jump over it or slide
-  // under); the figure stands at local +x (sidewalk) — for the left side of
+  // under); the figure stands at local +x (sidewalk) - for the left side of
   // the street spawnRow rotates the whole thing 180°, which is why the sign
   // carries its text on BOTH sides.
   'over-homeless': () => {
@@ -5809,7 +5806,7 @@ const obstacleBuilders = {
     return { mesh: g, size: { w: 1.5, h: 1.1, d: 2.6 } };
   },
   // Container stack instead of the three bare crates: two colorful steel
-  // containers with corrugation, corner posts and warning stripes — fits a
+  // containers with corrugation, corner posts and warning stripes - fits a
   // city roadside (utility boxes / construction containers).
   'tall-stack': () => {
     const a = getObstacleAssets();
@@ -5848,7 +5845,7 @@ const obstacleBuilders = {
     return { mesh: g, size: { w: 1.4, h: 2.8, d: 1.3, topExtra: passSignExtra(signTop, 2.8), solidTop: true } };
   },
   // Scaffold tower: four poles, two plank levels, orange safety net facing
-  // the road plus a warning bar — tall obstacle no. 3.
+  // the road plus a warning bar - tall obstacle no. 3.
   'tall-scaffold': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -5877,7 +5874,7 @@ const obstacleBuilders = {
     return { mesh: g, size: { w: 1.35, h: 2.85, d: 1.0, topExtra: passSignExtra(signTop, 2.85), solidTop: true } };
   },
   // Night kiosk: booth with a glowing service window, awning and neon
-  // sign — tall obstacle no. 4, fits the neon city.
+  // sign - tall obstacle no. 4, fits the neon city.
   'tall-kiosk': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -5903,7 +5900,7 @@ const obstacleBuilders = {
     const signTop = addPassSign(g, 1.26);
     return { mesh: g, size: { w: 1.55, h: 2.75, d: 1.2, topExtra: passSignExtra(signTop, 2.75), solidTop: true } };
   },
-  // Roadwork barrier: striped beam on two legs, open underneath — slide
+  // Roadwork barrier: striped beam on two legs, open underneath - slide
   // under it or jump over it. Collision box covers only the beam.
   'over-barrier': () => {
     const a = getObstacleAssets();
@@ -5935,7 +5932,7 @@ const obstacleBuilders = {
     return { mesh: g, size: { w: 1.6, h: 0.7, d: 1.2 } };
   },
   // Open manhole: black hole with a grey rim, the lid leaning against the
-  // barrier square that fences it in — low, one lane wide, jumpable.
+  // barrier square that fences it in - low, one lane wide, jumpable.
   'low-manhole': () => {
     const a = getObstacleAssets();
     const g = new THREE.Group();
@@ -5948,12 +5945,10 @@ const obstacleBuilders = {
     hole.rotation.x = -Math.PI / 2;
     hole.position.y = groundY + 0.065;
     g.add(hole);
-    // Lid leaning against one of the rails.
     const lid = new THREE.Mesh(track(new THREE.CylinderGeometry(0.4, 0.4, 0.05, 18)), a.ring);
     lid.rotation.x = -1.15;
     lid.position.set(0.32, groundY + 0.34, -0.52);
     g.add(lid);
-    // Red-white striped rails on all four sides plus corner posts.
     const postGeo = track(new THREE.BoxGeometry(0.07, 0.55, 0.07));
     [[-0.62, -0.62], [0.62, -0.62], [-0.62, 0.62], [0.62, 0.62]].forEach(([x, z]) => {
       const post = new THREE.Mesh(postGeo, a.frame);
@@ -5987,7 +5982,7 @@ const obstacleBuilders = {
 // vehicles ('tall-any' twice = 50% vehicles). 'over-homeless' only spawns
 // deliberately on outer lanes (spawnRow), never from the pool.
 const obstacleVariants = {
-  // 'car-any' twice: the barrel was every second low obstacle — one in
+  // 'car-any' twice: the barrel was every second low obstacle - one in
   // three reads much less monotonous.
   low: ['low-barrel', 'low-manhole', 'car-any', 'car-any'],
   tall: ['tall-any', 'tall-any', 'tall-stack', 'tall-scaffold', 'tall-kiosk'],
@@ -6003,7 +5998,7 @@ const glbVehicleDefs = [
   { key: 'sedan', kind: 'car', fitLength: 2.7 },
   { key: 'sedan-sports', kind: 'car', fitLength: 2.9 },
   { key: 'hatchback-sports', kind: 'car', fitLength: 2.65, scaleY: 1.15 },
-  // 'drive-car': zone-2 traffic only. The F1's roof is ankle-high (~0.8) —
+  // 'drive-car': zone-2 traffic only. The F1's roof is ankle-high (~0.8) -
   // useless for the zone-1 roof run, and specials never join formations
   // anyway. As a player skin (car-race) it still works via glbTemplates.
   { key: 'race', kind: 'drive-car', fitLength: 2.75 },
@@ -6026,7 +6021,7 @@ const glbVehicleDefs = [
   // 'prop' = low static obstacle (jumpable),
   // 'set-piece' = never spawns alone, only in the construction set (spawnConstructionSet),
   // 'decor' = pure decoration without collision (sign gantry over the road).
-  // rotateY 90°: orients the barrier CORRECTLY — striped front across the
+  // rotateY 90°: orients the barrier CORRECTLY - striped front across the
   // road, facing the player (the Kenney model lies lengthwise).
   { key: 'construction-barrier', kind: 'prop', fitHeight: 1.1, rotateY: Math.PI / 2, dir: 'obstacles/roads' },
   { key: 'resource-planks', kind: 'set-piece', fitHeight: 0.6, dir: 'obstacles/survival' },
@@ -6039,7 +6034,7 @@ const glbTemplates = {};
 const glbTraffic = { car: [], tall: [], drive: [] };
 
 // Light bar for police/ambulance/fire: two lamps on the roof blinking in
-// counter-phase (materials pulsed by animate()). Invisible by default —
+// counter-phase (materials pulsed by animate()). Invisible by default -
 // only emergency convoys at crossings switch it on.
 const addEmergencyBeacon = (group, size) => {
   getObstacleAssets();
@@ -6080,7 +6075,7 @@ const addVehicleLights = (group, size) => {
 };
 
 // Construction-zone dressing for the scaffold: small red-white barrier
-// beacons left and right plus a stop sign at the front. Purely decorative —
+// beacons left and right plus a stop sign at the front. Purely decorative -
 // the hitbox stays the scaffold's own bounding box.
 const addConstructionDressing = (group, size) => {
   const a = getObstacleAssets();
@@ -6130,7 +6125,7 @@ const addConstructionDressing = (group, size) => {
   });
 };
 
-// Collapse a GLB vehicle's static body meshes into one mesh per material —
+// Collapse a GLB vehicle's static body meshes into one mesh per material -
 // the wheels keep their own nodes and pivots (they spin via userData.wheels
 // while driving). Kenney models use a single atlas material, so a ~6-mesh
 // car drops to wheels + 1 body call, on every clone pulled from the pool.
@@ -6181,7 +6176,7 @@ const mergeTemplateBody = (root) => {
 };
 
 const registerVehicleModel = (def, model) => {
-  // Neon pass: let Kenney textures glow slightly — in the dark night scene
+  // Neon pass: let Kenney textures glow slightly - in the dark night scene
   // the models drown in blue-black otherwise.
   model.traverse((node) => {
     if (node.isMesh && node.material && 'emissive' in node.material) {
@@ -6207,7 +6202,7 @@ const registerVehicleModel = (def, model) => {
     model.scale.x *= def.scaleX;
   }
   if (def.scaleY) {
-    // Taller only (Y) — width and depth stay as fitted.
+    // Taller only (Y) - width and depth stay as fitted.
     model.scale.y *= def.scaleY;
   }
   const box = new THREE.Box3().setFromObject(model);
@@ -6339,7 +6334,7 @@ const getObstacle = (type, forcedKey = null) => {
 };
 
 // Hand-built obstacle sets: small mini-scenes in ONE lane, ordered from the
-// player's view (z 0 = nearest). rotY tilts a piece decoratively — the
+// player's view (z 0 = nearest). rotY tilts a piece decoratively - the
 // hitbox stays the axis-aligned box of the template.
 const obstacleSetDefs = [
   {
@@ -6379,7 +6374,7 @@ const spawnObstacleSet = (laneIndex, baseZ) => {
   return true;
 };
 
-// Truck convoy: one car as the "staircase", two box trucks behind it — the
+// Truck convoy: one car as the "staircase", two box trucks behind it - the
 // high roof-run route. The box truck roof (~1.5) is jumpable even straight
 // from the ground (apex ~2.3); the car in front just makes the entry easy.
 const spawnTruckConvoy = (laneIndex, baseZ) => {
@@ -6400,7 +6395,7 @@ const spawnTruckConvoy = (laneIndex, baseZ) => {
 };
 
 // Mini traffic jam: three cars bumper to bumper with trampoline roofs (like
-// rush hour) — makes roof hopping a normal route instead of a special event.
+// rush hour) - makes roof hopping a normal route instead of a special event.
 const spawnJamSet = (laneIndex, baseZ) => {
   for (let i = 0; i < 3; i += 1) {
     const vehicle = getObstacle('low', 'car-any');
@@ -6415,7 +6410,7 @@ const spawnJamSet = (laneIndex, baseZ) => {
 
 // Billboard art for the gantry boards: the two big yellow panels are baked
 // into one mesh, so separate planes hover just in front of them showing
-// stage art or a neon house ad — re-rolled on every spawn for variety.
+// stage art or a neon house ad - re-rolled on every spawn for variety.
 let gantryAdTextures = null;
 const makeAdTexture = (top, bottom, accent) => {
   // 512x348 matches the boards' measured 1.47:1 face.
@@ -6489,7 +6484,7 @@ const addGantryBillboards = (group) => {
   group.userData.billboardMats = mats;
 };
 
-// Sign gantry: spans the whole road at the center, no collision — the
+// Sign gantry: spans the whole road at the center, no collision - the
 // scroll loop moves and recycles it like any other obstacle.
 const spawnSignGantry = (z) => {
   const gantry = getObstacle('tall', 'sign-highway');
@@ -6508,7 +6503,7 @@ const spawnSignGantry = (z) => {
 // ---- Side-street crossing. Built once, then recycled:
 // cross-street asphalt in three height strips (below the main road, ABOVE
 // the sidewalks, low again through the building strip), stop lines, dashed
-// center lines. Buildings that would be in the way get hidden — the gap in
+// center lines. Buildings that would be in the way get hidden - the gap in
 // the building row IS the visible street mouth.
 const buildCrossingGroup = () => {
   const group = new THREE.Group();
@@ -6551,7 +6546,7 @@ const buildCrossingGroup = () => {
 };
 
 // Check a segment's buildings against the crossing mouth: both scroll at
-// the same speed, so the relative distance stays constant — checking once
+// the same speed, so the relative distance stays constant - checking once
 // at spawn (and per segment wrap) is enough.
 const syncCrossingHouses = (segment) => {
   (segment.userData.houses || []).forEach((house) => {
@@ -6571,7 +6566,7 @@ const spawnCrossing = () => {
   crossingGroup.position.z = -(150 + Math.min(45, speed.value));
   scene.add(crossingGroup);
   // 1/4 of the crossings: emergency convoy. Normal cross traffic pauses
-  // briefly, then police cars with flashing lights chase a fugitive — or a
+  // briefly, then police cars with flashing lights chase a fugitive - or a
   // 112 convoy (ambulance + fire engine) rolls through. Only if the
   // required models are already loaded.
   let convoy = null;
@@ -6676,7 +6671,7 @@ const updateCrossing = (delta) => {
     spawnCrossingConvoy();
     crossing.carTimer = 4.5;
   }
-  // Resupply only while the crossing is far enough away — anything closer
+  // Resupply only while the crossing is far enough away - anything closer
   // is long since visible and can be dodged fairly.
   if (z > -145 && z < -32) {
     crossing.carTimer -= delta;
@@ -6694,10 +6689,10 @@ const updateCrossing = (delta) => {
 // Lane reservation (standard endless-runner technique): every moving
 // vehicle owns its lane exclusively for its whole approach. Static rows
 // never spawn into a reserved lane, and moving vehicles never spawn into a
-// lane that has static obstacles ahead — nothing can clip through anything.
+// lane that has static obstacles ahead - nothing can clip through anything.
 // behindZ: only movers still DEEPER than this plane block their lane. A
 // mover already past the spawn plane pulls away from any newly spawned row
-// and can never touch it — without the filter a single slow ghost driver
+// and can never touch it - without the filter a single slow ghost driver
 // used to empty the whole road for its entire lifetime.
 const movingBlockedLanes = (behindZ = Infinity) => {
   const blocked = new Set();
@@ -6773,13 +6768,13 @@ const spawnOncoming = () => {
 const rowSpawnZ = () => -(100 + Math.min(55, speed.value));
 
 const spawnRow = () => {
-  // Occasionally oncoming traffic instead of a row — far less often than
+  // Occasionally oncoming traffic instead of a row - far less often than
   // before, and only when a fully clear lane exists for it.
   if (Math.random() < 0.12 && spawnOncoming()) {
     return;
   }
 
-  // Standalone set row — the ONLY thing allowed to occupy a row alone:
+  // Standalone set row - the ONLY thing allowed to occupy a row alone:
   // a themed mini-scene (convoy/jam/construction/accident) that fills
   // 6–9 m of road by itself. Single loose obstacles never spawn alone
   // (rowPatterns has no single-slot entries).
@@ -6804,7 +6799,7 @@ const spawnRow = () => {
         lastRowFull = false;
         return;
       }
-      // No set assets loaded yet — fall through to a normal row.
+      // No set assets loaded yet - fall through to a normal row.
     }
   }
 
@@ -6817,7 +6812,7 @@ const spawnRow = () => {
   }
   // Spawn farther out the faster we go, so there is always time to react.
   const baseZ = rowSpawnZ();
-  // Lanes owned by moving vehicles stay empty in static rows — but only
+  // Lanes owned by moving vehicles stay empty in static rows - but only
   // while the mover is still behind the spawn plane (see movingBlockedLanes).
   const blocked = movingBlockedLanes(baseZ + 6);
   if (blocked.size) {
@@ -6826,7 +6821,7 @@ const spawnRow = () => {
   // While a Rettungsgasse siren car can still be racing up the middle from
   // behind, never let a row force the player INTO the middle: clear the
   // middle lane and keep at least one outer lane open as a safe escape. Only
-  // matters in the brief overlap after the jam tail — normally a no-op.
+  // matters in the brief overlap after the jam tail - normally a no-op.
   if (rescueLaneActive()) {
     pattern[1] = 'none';
     if (pattern[0] !== 'none' && pattern[2] !== 'none') {
@@ -6835,7 +6830,7 @@ const spawnRow = () => {
   }
   lastRowFull = !pattern.includes('none');
 
-  // Occasionally a big sign gantry as pure decoration over the road —
+  // Occasionally a big sign gantry as pure decoration over the road -
   // spans all lanes, blocks nothing.
   if (obstacleBuilders['sign-highway'] && Math.random() < 0.06) {
     spawnSignGantry(baseZ - 16);
@@ -6868,7 +6863,7 @@ const spawnRow = () => {
     // Overhead slot on an outer lane: sometimes a homeless man holds his
     // cardboard sign into the lane from the sidewalk (figure stands outside
     // the map, only the sign collides). Mirrored on the left side.
-    // 0.12: a rare sight — at 0.35 one seemed to stand at every corner.
+    // 0.12: a rare sight - at 0.35 one seemed to stand at every corner.
     const homeless = type === 'over' && laneIndex !== 1 && Math.random() < 0.12;
     const obstacle = getObstacle(type, homeless ? 'over-homeless' : null);
     const size = obstacle.userData.size;
@@ -6882,7 +6877,7 @@ const spawnRow = () => {
   const freeLanes = pattern
     .map((type, laneIndex) => (type === 'none' ? laneIndex : -1))
     .filter((laneIndex) => laneIndex >= 0);
-  // Coin placement removed entirely (it led players to their death) — only
+  // Coin placement removed entirely (it led players to their death) - only
   // comes back once a system GUARANTEES its safety instead of guessing at
   // spawn time.
   const powerupLanes = freeLanes;
@@ -6902,12 +6897,12 @@ const showEventToast = (title, sub, duration = 1900) => {
 };
 
 // Rush hour: a solid, tightly packed jam filling ALL three lanes. There is
-// no gap — the only way through is jumping onto the roofs and bouncing car
+// no gap - the only way through is jumping onto the roofs and bouncing car
 // to car. The first row is low cars so the entry jump always works from the
 // ground; taller trucks appear deeper in.
 // FORMATION RULE: multi-vehicle formations (rush hour, crash set, parked
 // jam, truck convoy) only ever combine normal cars, box truck and
-// ambulance — realistic city traffic. Specials (fire engine, garbage truck,
+// ambulance - realistic city traffic. Specials (fire engine, garbage truck,
 // tractors, flatbed, F1) never join a formation; they only appear as single
 // obstacles ('tall-any'), scripted crossing convoys or the Rettungsgasse
 // emergency convoy.
@@ -6916,7 +6911,7 @@ const jamTallKeys = ['truck', 'ambulance'];
 const spawnWaveRow = () => {
   // -(78+…) instead of -(95+…): rush hour always fires onto a drained road
   // (checkpoint breather), so the jam can start just behind the normal row
-  // plane — kills the huge empty stretch that used to sit in front of it.
+  // plane - kills the huge empty stretch that used to sit in front of it.
   const baseZ = -(78 + Math.min(45, speed.value));
   const tallChoices = jamTallKeys.filter((key) => obstacleBuilders[key]);
   for (let laneIndex = 0; laneIndex < 3; laneIndex += 1) {
@@ -6943,7 +6938,7 @@ const spawnWaveRow = () => {
     trafficWave.endZ = baseZ;
   } else {
     // 3.2–3.8 instead of 2.8: small bumper gaps that read as a jam instead
-    // of a sheet-metal carpet. They can't kill — jam vehicles fling the
+    // of a sheet-metal carpet. They can't kill - jam vehicles fling the
     // player up on any near-roof contact (see collision loop).
     trafficWave.rowTimer = (3.2 + Math.random() * 0.6) / speed.value;
   }
@@ -6962,8 +6957,8 @@ const startTrafficWave = () => {
 };
 
 // ---- German Rettungsgasse (separate event, NOT rush hour): both outer
-// lanes fill with cars pulled ~30° toward the roadside — trampoline roofs
-// like any jam — while the middle lane stays completely free. A floating
+// lanes fill with cars pulled ~30° toward the roadside - trampoline roofs
+// like any jam - while the middle lane stays completely free. A floating
 // warning sign flashes in the middle lane for ~2s, then an emergency convoy
 // (mixed police/ambulance/fire, lights on) overtakes from behind through
 // the free middle: standing there is fatal, riding the roofs is the route.
@@ -7100,7 +7095,7 @@ const releaseObstacleWarmup = () => {
 const runObstacleWarmup = () => {
   if (!scene || !renderer) return;
   if (state.value === 'running' || warmupGroup) {
-    // Mid-run is exactly when this must NOT happen — retry on the menu.
+    // Mid-run is exactly when this must NOT happen - retry on the menu.
     warmupTimer = setTimeout(runObstacleWarmup, 4000);
     return;
   }
@@ -7149,14 +7144,14 @@ const runObstacleWarmup = () => {
 
 const scheduleObstacleWarmup = () => {
   clearTimeout(warmupTimer);
-  // Debounced: the GLB models register one by one as they load — collapse
+  // Debounced: the GLB models register one by one as they load - collapse
   // the burst into one warmup pass shortly after the last arrival.
   warmupTimer = setTimeout(runObstacleWarmup, 400);
 };
 
 // Emergency vehicle overtaking through the free middle lane: spawns behind
 // the player, own speed beats the scroll so it screams past and pulls away
-// toward the horizon. Deadly — the middle lane is for THEM, not for us.
+// toward the horizon. Deadly - the middle lane is for THEM, not for us.
 const spawnRescueVehicle = (key) => {
   const vehicle = getObstacle(key === 'police' ? 'low' : 'tall', key);
   vehicle.userData.rescue = true;
@@ -7193,7 +7188,7 @@ const startRescueLane = () => {
 
 // Ghost-driver wave: not one lonely wrong-way car but a whole pack of 5–8.
 // Half of them crawl, the other half scream past at absurd closing speeds.
-// The wave runs IN PARALLEL to normal rows (no spawn hold — that used to
+// The wave runs IN PARALLEL to normal rows (no spawn hold - that used to
 // leave the road empty), staggered one car at a time so lanes stay readable.
 const startWrongWayDriver = () => {
   ghostWave = {
@@ -7213,7 +7208,7 @@ const spawnGhostDriver = () => {
     vehicle.userData.beams.visible = true;
   }
   vehicle.rotation.y = 0;
-  // Prefer lanes without another mover; if all are taken, any lane goes —
+  // Prefer lanes without another mover; if all are taken, any lane goes -
   // the pack is supposed to feel chaotic.
   const blocked = movingBlockedLanes();
   const laneChoices = [0, 1, 2].filter((lane) => !blocked.has(lane));
@@ -7260,7 +7255,7 @@ const startDriftCar = () => {
 };
 
 const startRandomEvent = () => {
-  // Rettungsgasse rolls first, separately from the classic events — a 10%
+  // Rettungsgasse rolls first, separately from the classic events - a 10%
   // treat. Rush hour & friends split the remaining 90%.
   if (Math.random() < 0.1 && canStartRescueLane()) {
     startRescueLane();
@@ -7293,7 +7288,7 @@ const eventSpawnHoldActive = () => {
   ) {
     return true;
   }
-  // Rettungsgasse holds rows just like rush hour — only while the jam tail
+  // Rettungsgasse holds rows just like rush hour - only while the jam tail
   // is still deeper than the spawn plane. Rows resume tight behind the tail
   // (no long empty stretch). The trap of a barrier forcing the player into
   // the siren middle is prevented in spawnRow instead (rescueLaneActive),
@@ -7307,7 +7302,7 @@ const eventSpawnHoldActive = () => {
   }
   // A crossing only blocks rows that would land ON the junction itself:
   // rows and the crossing scroll at the same speed, so their spacing at
-  // spawn time is frozen forever. Footprint ±9 plus set depth (~9) deeper —
+  // spawn time is frozen forever. Footprint ±9 plus set depth (~9) deeper -
   // everything outside packs in tight before and after the crossing, like
   // around any other obstacle element.
   if (crossing) {
@@ -7350,7 +7345,7 @@ const updateZoneEvents = (delta) => {
     }
     return;
   }
-  // Ghost-driver pack ticks alongside normal spawns — never holds them.
+  // Ghost-driver pack ticks alongside normal spawns - never holds them.
   if (ghostWave) {
     ghostWave.timer -= delta;
     if (ghostWave.timer <= 0) {
@@ -7382,7 +7377,7 @@ const updateZoneEvents = (delta) => {
     return;
   }
   if (rescueLane) {
-    // Warning sign: pulses in the free middle lane, gone after ~2s — well
+    // Warning sign: pulses in the free middle lane, gone after ~2s - well
     // before the player reaches the parted jam.
     if (rescueLane.sign) {
       rescueLane.signTimer -= delta;
@@ -7405,7 +7400,7 @@ const updateZoneEvents = (delta) => {
       rescueLane.headZ += speed.value * delta;
       // Hold the convoy until the player has actually reached the FIRST jam
       // car (its front edge draws level with the player), so the first siren
-      // appears once they're up in the Gasse — not while it's still approaching.
+      // appears once they're up in the Gasse - not while it's still approaching.
       if (
         !rescueLane.convoyStarted &&
         rescueLane.headZ > player.position.z - 2
@@ -7417,10 +7412,10 @@ const updateZoneEvents = (delta) => {
     if (rescueLane.convoyStarted) {
       // Sirens keep coming for as long as the player is still inside the jam
       // zone (at low speed the jam is long, so a fixed burst would clear
-      // before the halfway point — the queue refills with a fresh mixed
+      // before the halfway point - the queue refills with a fresh mixed
       // batch whenever it empties). But the MOMENT the jam tail nears the
-      // player — i.e. the player is about to exit the event zone and go back
-      // to dodging normal barricades — the convoy STOPS DEAD: the pending
+      // player - i.e. the player is about to exit the event zone and go back
+      // to dodging normal barricades - the convoy STOPS DEAD: the pending
       // queue is dropped so nothing new ever spawns behind them out there.
       const tailNear =
         rescueLane.endZ !== null &&
@@ -7435,7 +7430,7 @@ const updateZoneEvents = (delta) => {
         if (rescueLane.convoyTimer <= 0) {
           spawnRescueVehicle(rescueLane.queue.shift());
           rescueLane.convoyTimer = 0.6 + Math.random() * 0.4;
-          // Only every other car retriggers the Martinshorn — otherwise the
+          // Only every other car retriggers the Martinshorn - otherwise the
           // ~1.7s jingle stacks on itself at this cadence.
           if (Math.random() < 0.5) {
             sfx.siren();
@@ -7446,7 +7441,7 @@ const updateZoneEvents = (delta) => {
     if (rescueLane.endZ !== null) {
       rescueLane.endZ += speed.value * delta;
       // Only clear once the jam tail has passed AND no emergency vehicle is
-      // still queued or behind the player — that guard is what stops a siren
+      // still queued or behind the player - that guard is what stops a siren
       // car from killing after the event. rescueLaneActive covers both.
       if (rescueLane.endZ > player.position.z + 2 && !rescueLaneActive()) {
         const bonus = 200 * (multiTime.value > 0 ? 2 : 1);
@@ -7468,7 +7463,7 @@ const checkCollision = (obstacle, playerHeight) => {
 
   // Dash sweep: at burst speed an obstacle can hop clear past the player
   // between two frames. Stretch the depth check backward (only toward the
-  // already-passed side) by this frame's dash travel — no tunneling, and
+  // already-passed side) by this frame's dash travel - no tunneling, and
   // nothing dies early to an obstacle still in front.
   const passedSweep = dashSweep > 0 && obstacle.position.z > player.position.z ? dashSweep : 0;
   if (dx >= (box.w + oSize.w) / 2 || dz >= (box.d + oSize.d) / 2 + passedSweep) {
@@ -7476,7 +7471,7 @@ const checkCollision = (obstacle, playerHeight) => {
   }
 
   // topExtra stretches the box UP only (sign topper / tall barrier wall),
-  // leaving the ground-level bottom where it is — so slide clearance and
+  // leaving the ground-level bottom where it is - so slide clearance and
   // placement stay untouched.
   const obstacleBottom = obstacle.position.y - oSize.h / 2;
   const obstacleTop = obstacle.position.y + oSize.h / 2 + (oSize.topExtra || 0);
@@ -7504,7 +7499,7 @@ const triggerBumpToast = () => {
 };
 
 // Swiping into a lane that is already blocked bounces the player back instead
-// of killing them — but a second bump within the window is fatal.
+// of killing them - but a second bump within the window is fatal.
 const handleSideBump = (obstacle) => {
   const now = performance.now();
   currentLane = laneOrigin;
@@ -7604,7 +7599,7 @@ const buildPlaza = () => {
     plaza.add(post);
   }
 
-  // The getaway car, waiting with its lights on — the player's chosen ride.
+  // The getaway car, waiting with its lights on - the player's chosen ride.
   const chosenKey = (selectedCarSlug.value || '').replace(/^car-/, '');
   const template =
     glbTemplates[chosenKey] ||
@@ -7630,7 +7625,7 @@ const buildPlaza = () => {
 const disposePlaza = () => {
   if (!plaza) return;
   if (plazaCar && plazaCar.parent === plaza) {
-    // The car clone shares geometry/materials with the GLB templates —
+    // The car clone shares geometry/materials with the GLB templates -
     // detach it so the traversal below never disposes shared resources.
     plaza.remove(plazaCar);
   }
@@ -7756,7 +7751,7 @@ const updateFinaleWalk = (delta) => {
 };
 
 const buildParkedCar = () => {
-  // ONLY real cars can be stolen — glbTemplates also contains cones,
+  // ONLY real cars can be stolen - glbTemplates also contains cones,
   // barriers and signs, and exactly those occasionally stood at the curb as
   // the "getaway car". The drive pool (race) is allowed in.
   const keys = [...glbTraffic.car, ...glbTraffic.drive];
@@ -7818,7 +7813,7 @@ const ejectFromCar = () => {
   carjackFrom.copy(player.position);
   carjackLand.set(carLanes[0] - 1.6, currentGroundCenter, player.position.z + 1.2);
 
-  // The getaway ride: parked ON the road at the left road edge — x -7.2
+  // The getaway ride: parked ON the road at the left road edge - x -7.2
   // used to sit in the middle of the building strip.
   carjackCar = buildParkedCar();
   carjackCar.position.set(-3.6, carjackCar.userData.restY, player.position.z - 9);
@@ -8296,7 +8291,7 @@ const buildOcean = () => {
   scene.add(oceanGroup);
 
   for (let i = 0; i < 7; i += 1) {
-    // ~50 meshes (trees, fields, mountains…) collapse to a single call —
+    // ~50 meshes (trees, fields, mountains…) collapse to a single call -
     // everything in a chunk is plain-color Lambert.
     const chunk = mergeStaticGroup(buildTerrainChunk());
     chunk.position.set(0, -1.4, -340 + i * 62);
@@ -8437,7 +8432,6 @@ const spawnEnemy = () => {
     const eye = new THREE.Mesh(assets.eyeGeo, assets.eyeMat);
     eye.position.z = 1.0;
     enemy.add(eye);
-    // Twin gun pods under the ring.
     [-1.3, 1.3].forEach((x) => {
       const pod = new THREE.Mesh(assets.podGeo, assets.ringMat);
       pod.position.set(x, -0.7, 0.5);
@@ -8471,7 +8465,7 @@ const spawnEnemy = () => {
   scene.add(enemy);
 };
 
-// The mothership: a proper alien saucer — hull discs, glass dome, rotating
+// The mothership: a proper alien saucer - hull discs, glass dome, rotating
 // rim lights, gun pods, tractor emitter, antennae, and a shield bubble.
 const buildMothershipModel = () => {
   const lambert = (color, glow = 0) =>
@@ -8658,7 +8652,7 @@ const fireEnemyBolt = (enemy, targetPoint = null, opts = {}) => {
   bolt.userData.huge = huge;
   bolt.userData.grazed = false;
   // Ultra-mode orbs (the mothership's huge balls, only fired at ≤10% HP)
-  // hit for half the player's max health — 50 of 100.
+  // hit for half the player's max health - 50 of 100.
   bolt.userData.dmg = huge ? 50 : isMother ? 20 : 18;
   bolt.lookAt(target);
   enemyBolts.push(bolt);
@@ -8717,7 +8711,7 @@ const removeEnemy = (index) => {
   const enemy = enemies[index];
   scene.remove(enemy);
   if (enemy.userData.kind !== 'mother') {
-    // The mothership is a singleton template — never pool it as a drone.
+    // The mothership is a singleton template - never pool it as a drone.
     enemyPool.push(enemy);
   }
   enemies.splice(index, 1);
@@ -8833,7 +8827,7 @@ const disposeZone3 = () => {
   });
   ramp = null;
   oceanGroup = null;
-  // Merged terrain geometry is unique per chunk — free it. The batch
+  // Merged terrain geometry is unique per chunk - free it. The batch
   // materials are shared scene-wide (mergedBatchMats) and must survive.
   terrainChunks.forEach((chunk) => {
     scene.remove(chunk);
@@ -8990,7 +8984,7 @@ const updateLaunch = (delta) => {
   launchTimer += delta;
   score.value += speed.value * delta * 2.4;
 
-  // The road keeps sliding past below but never wraps back in — it ends.
+  // The road keeps sliding past below but never wraps back in - it ends.
   floorSegments.forEach((segment) => {
     if (!segment.visible) return;
     segment.position.z += speed.value * delta;
@@ -9165,9 +9159,9 @@ const updateSkyPickups = (delta) => {
 };
 
 // ---------------------------------------------------------------------------
-// Zone 4 — the void. The dying mothership detonates in slow motion, its wreck
+// Zone 4 - the void. The dying mothership detonates in slow motion, its wreck
 // collapses into a black hole and the plane is dragged through the wormhole
-// into a deep-space asteroid field: indestructible rocks — dodge or die.
+// into a deep-space asteroid field: indestructible rocks - dodge or die.
 // ---------------------------------------------------------------------------
 
 const spawnShockRing = (position, color, grow) => {
@@ -9340,7 +9334,6 @@ const updateCollapse = (delta) => {
     whiteFlash.value = Math.min(1, whiteFlash.value + delta * 2.6);
   }
 
-  // Secondary detonations while the wreck breaks apart.
   if (t < 1.1 && blackHole && Math.random() < 0.4) {
     spawnBurst(
       new THREE.Vector3(
@@ -9367,7 +9360,6 @@ const updateCollapse = (delta) => {
     }
   }
 
-  // Debris flies free, then spirals into the growing hole.
   const sucking = t > 1.5 && blackHole;
   for (let i = wreckDebris.length - 1; i >= 0; i -= 1) {
     const chunk = wreckDebris[i];
@@ -9438,7 +9430,7 @@ const enterVoid = () => {
   clearVoidObjects();
   finalePhase.value = 'void';
   markRunStage(4);
-  // There is no sky left in the void — cloud deck goes away.
+  // There is no sky left in the void - cloud deck goes away.
   if (cloudCeiling) {
     scene.remove(cloudCeiling);
   }
@@ -9463,7 +9455,7 @@ const enterVoid = () => {
   planeVelX = 0;
   planeVelY = 0;
   asteroidSpawnTimer = 1.2;
-  // Pre-seed the belt so the zone doesn't open with empty space — push the
+  // Pre-seed the belt so the zone doesn't open with empty space - push the
   // seeded rocks deeper out so the player still gets a beat to orient.
   for (let i = 0; i < 14; i += 1) {
     spawnAsteroid();
@@ -9479,7 +9471,7 @@ const enterVoid = () => {
 };
 
 // A real belt: lots of small debris, mid rocks and rare colossal boulders.
-// Every rock is pure terrain — immune to weapons fire. Bolts spark off the
+// Every rock is pure terrain - immune to weapons fire. Bolts spark off the
 // surface without effect; weaving through is the only way past.
 const asteroidTiers = [
   { radius: 0.9, dmg: 12 },
@@ -9519,7 +9511,7 @@ const spawnAsteroid = () => {
     (Math.random() - 0.5) * 1.6,
     (Math.random() - 0.5) * 1.6,
   );
-  // Big rocks fly straight and predictable — dodging them stays fair; the
+  // Big rocks fly straight and predictable - dodging them stays fair; the
   // small debris is what tumbles and drifts around.
   const driftScale = Math.min(1, 2.2 / size);
   ud.driftX = (Math.random() - 0.5) * 3 * driftScale;
@@ -9599,7 +9591,7 @@ const updateVoid = (delta) => {
     fireTimer = rapidFireTime > 0 ? 0.09 : 0.18;
   }
 
-  // Straight shots only — there are no lock-on targets out here.
+  // Straight shots only - there are no lock-on targets out here.
   for (let i = projectiles.length - 1; i >= 0; i -= 1) {
     const bolt = projectiles[i];
     bolt.position.z -= 150 * delta;
@@ -9654,7 +9646,7 @@ const updateVoid = (delta) => {
       }
     }
 
-    // Collision hurts — big rocks hit like a truck.
+    // Collision hurts - big rocks hit like a truck.
     const px = rock.position.x - player.position.x;
     const py = rock.position.y - player.position.y;
     const pz = rock.position.z - player.position.z;
@@ -9788,7 +9780,7 @@ const updatePlane = (delta) => {
     enemySpawnTimer -= delta;
     if (enemySpawnTimer <= 0) {
       // Endless stage 3 never advances: the mothership (whose death opens
-      // the void) stays away — boss drones keep coming forever instead.
+      // the void) stays away - boss drones keep coming forever instead.
       if (killsSinceMother >= 5 && runMode.value !== 'endless') {
         spawnMothership();
       } else {
@@ -9863,7 +9855,7 @@ const updatePlane = (delta) => {
       if (ud.stage === 3 && ud.invulnTimer > 0) {
         // Final-phase telegraph: 10s untouchable while it charges, the shield
         // bubble pulses blood-red under the darkening eclipse. It already
-        // lobs the huge orbs through the shield — slower cadence than the
+        // lobs the huge orbs through the shield - slower cadence than the
         // full barrage, but the dodging starts immediately.
         ud.invulnTimer -= delta;
         ud.shieldMesh.visible = true;
@@ -9972,7 +9964,7 @@ const updatePlane = (delta) => {
       }
       ud.agile -= delta;
       if (ud.agile > 0) {
-        // Snappy slide toward the evade target — fast, but interpolated.
+        // Snappy slide toward the evade target - fast, but interpolated.
         ud.baseX = THREE.MathUtils.damp(ud.baseX, ud.dodgeToX, 9, delta);
         ud.baseY = THREE.MathUtils.damp(ud.baseY, ud.dodgeToY, 9, delta);
       } else {
@@ -10075,7 +10067,7 @@ const updatePlane = (delta) => {
           runMotherKills.value += 1;
           killsSinceMother = 0;
           setEclipse(false);
-          // The wreck detonates and collapses into a black hole — zone 4.
+          // The wreck detonates and collapses into a black hole - zone 4.
           const wreckAt = enemy.position.clone();
           removeEnemy(i);
           triggerMotherCollapse(wreckAt);
@@ -10161,7 +10153,7 @@ const updatePlane = (delta) => {
       }
       continue;
     }
-    // Graze: the bolt slips past the cockpit without hitting — pays out once
+    // Graze: the bolt slips past the cockpit without hitting - pays out once
     // per bolt, right as it crosses the player's z-plane.
     if (
       !bolt.userData.grazed &&
@@ -10184,7 +10176,7 @@ const updatePlane = (delta) => {
 };
 
 // Floating joystick: the center is the point of first touch, not a fixed
-// position — you can never miss it.
+// position - you can never miss it.
 const joyStart = (event) => {
   joyPointerId = event.pointerId;
   joyBase.value = { x: event.clientX, y: event.clientY };
@@ -10422,7 +10414,7 @@ const updateRunner = (delta) => {
       const prop = carjackProps[i];
       prop.position.z += speed.value * delta;
       if (prop.position.z > 30) {
-        // Clones share GLB template geometry — remove only, never dispose.
+        // Clones share GLB template geometry - remove only, never dispose.
         scene.remove(prop);
         carjackProps.splice(i, 1);
       }
@@ -10445,14 +10437,14 @@ const updateRunner = (delta) => {
       speed.value = THREE.MathUtils.damp(speed.value, 48, 1.1, delta);
       driveTargetSpeed = speed.value;
     } else {
-      // Zone 2 is capped at 80 km/h — permanently. No speed trap, no
+      // Zone 2 is capped at 80 km/h - permanently. No speed trap, no
       // temporary window; driveMaxSpeed IS the limit.
       const driveCap = driveMaxSpeed;
       if (accelHeld) {
         driveTargetSpeed = Math.min(driveCap, driveTargetSpeed + 26 * delta);
       }
       if (driveTargetSpeed > driveCap) {
-        // Forced deceleration while the limit is active — pedals or not.
+        // Forced deceleration while the limit is active - pedals or not.
         driveTargetSpeed = Math.max(driveCap, driveTargetSpeed - 60 * delta);
       }
       if (brakeHeld) {
@@ -10471,7 +10463,7 @@ const updateRunner = (delta) => {
           activateGodMode();
         }
       } else {
-        // Drain progress instead of a hard reset — dips cost time, not all.
+        // Drain progress instead of a hard reset - dips cost time, not all.
         godHoldTimer = Math.max(0, godHoldTimer - delta * 1.5);
       }
       godHoldProgress.value = godHoldTimer;
@@ -10505,7 +10497,7 @@ const updateRunner = (delta) => {
         }, 5200);
       }
     }
-    // No points below cruising speed — crawling along earns nothing.
+    // No points below cruising speed - crawling along earns nothing.
     if (speed.value >= driveScoreMinSpeed) {
       score.value += speed.value * delta * 2.4 * scoreMult;
     }
@@ -10536,7 +10528,7 @@ const updateRunner = (delta) => {
       level.baseSpeed + Math.min(3, score.value / level.stepDistance) * level.speedStep;
     if (dashTimer > 0) {
       // Dash impulse: a fixed distance in a fixed window, hard on. The
-      // extra rate comes straight from the impulse definition — no easing.
+      // extra rate comes straight from the impulse definition - no easing.
       speed.value = targetSpeed + dashDistance / dashDuration;
     } else if (dashSnap) {
       // Hard stop the frame the burst ends.
@@ -10650,7 +10642,7 @@ const updateRunner = (delta) => {
       dashTipVisible.value = false;
     }
 
-    // Skip offer: keyboard players can run straight past the overlay —
+    // Skip offer: keyboard players can run straight past the overlay -
     // treat that as "Keep playing".
     if (skipPromptVisible.value && score.value > 250) {
       skipPromptVisible.value = false;
@@ -10687,11 +10679,11 @@ const updateRunner = (delta) => {
     segment.position.z += speed.value * delta;
     if (segment.position.z > 30) {
       if (finalePhase.value === 'ramp' && ramp && ramp.position.z > -160) {
-        // The road ends at the ramp — stop recycling segments forward.
+        // The road ends at the ramp - stop recycling segments forward.
         segment.visible = false;
       } else {
         segment.position.z -= segmentLength * floorSegments.length;
-        // After the wrap, re-check against the crossing — the relative
+        // After the wrap, re-check against the crossing - the relative
         // distance changed by the full loop length.
         syncCrossingHouses(segment);
       }
@@ -10726,7 +10718,7 @@ const updateRunner = (delta) => {
   }
 
   // Warning-lamp blink: one shared material, all construction lamps pulse
-  // in sync — one color value per frame, practically free.
+  // in sync - one color value per frame, practically free.
   if (obstacleAssets) {
     const blink = 0.55 + 0.45 * Math.sin(performance.now() * 0.008);
     obstacleAssets.hazard.color.setRGB(blink, 0.63 * blink, 0.18 * blink);
@@ -10818,13 +10810,13 @@ const updateRunner = (delta) => {
   } else if (finalePhase.value === 'none') {
     updateZoneEvents(delta);
     // Normal rows pause only while an event's tail still sits deeper than
-    // the spawn point — new rows land safely behind it, so the pause stays
+    // the spawn point - new rows land safely behind it, so the pause stays
     // as short as possible.
     if (!eventSpawnHoldActive()) {
       spawnTimer -= delta;
       if (spawnTimer <= 0) {
         spawnRow();
-        // Arrival gap between hazards — a TIME, so at constant gap higher
+        // Arrival gap between hazards - a TIME, so at constant gap higher
         // speed only looks faster but plays identically. To actually get
         // harder, the gap shrinks continuously along the same curve the
         // speed follows (min(3, score/2500), see targetSpeed): 1.0 at the
@@ -10836,7 +10828,7 @@ const updateRunner = (delta) => {
       }
     } else {
       // 0.25 instead of 0.7: once a hold releases, the next row follows
-      // almost immediately — traffic packs tight behind a jam's tail (the
+      // almost immediately - traffic packs tight behind a jam's tail (the
       // safety distance itself lives in eventSpawnHoldActive's spawnDepth
       // margin, not here) instead of leaving a huge empty stretch.
       spawnTimer = Math.max(spawnTimer, 0.25);
@@ -10869,7 +10861,7 @@ const updateRunner = (delta) => {
       }
     }
     // Side-street cross traffic: moves in X, leaves the scene once it
-    // reaches the OPPOSITE side. Cull only in the driving direction —
+    // reaches the OPPOSITE side. Cull only in the driving direction -
     // convoy chains spawn far behind the starting edge (|x| up to ~50).
     if (obstacle.userData.vx) {
       obstacle.position.x += obstacle.userData.vx * delta;
@@ -10889,7 +10881,7 @@ const updateRunner = (delta) => {
         if (state.value === 'running') {
           const lateral = Math.abs(obstacle.position.x - player.position.x);
           // A real near miss needs the player to be mid-dodge right next to
-          // the car — standing in the neighbouring lane (2.0 apart) is safe.
+          // the car - standing in the neighbouring lane (2.0 apart) is safe.
           if (lateral < 1.6) {
             triggerNearMiss();
             spawnBurst(
@@ -10917,7 +10909,7 @@ const updateRunner = (delta) => {
     if (checkCollision(obstacle, collisionPlayerHeight)) {
       // Jam trampoline ONLY when landing from above (window 1.25 below the
       // roof edge): running frontally into the nose from the ground kills
-      // normally — no more auto-catapult onto the roof.
+      // normally - no more auto-catapult onto the roof.
       if (
         obstacle.userData.jam &&
         playerVelocityY < 0 &&
@@ -10926,7 +10918,7 @@ const updateRunner = (delta) => {
       ) {
         const roofY = obstacle.position.y + obstacle.userData.size.h / 2;
         player.position.y = roofY + collisionPlayerHeight / 2 + 0.02;
-        // 1.08: bounce apex ≈ 2.7 above the roof — clears every jam-legal
+        // 1.08: bounce apex ≈ 2.7 above the roof - clears every jam-legal
         // front (box truck ~1.5, ambulance ~1.94) with plenty of margin.
         playerVelocityY = jumpVelocity * 1.08;
         score.value += 20;
@@ -10950,14 +10942,14 @@ const updateRunner = (delta) => {
       }
       // Finale hand-off: from the 10k banner until the player sits in the
       // car, the world brakes hard and leftover traffic gets shoved into
-      // the runner — that stretch is a victory lap, not a fair death.
+      // the runner - that stretch is a victory lap, not a fair death.
       // Vulnerability returns the moment zone 2 driving starts ('drive').
       if (finalePhase.value === 'approach' || finalePhase.value === 'walk') {
         continue;
       }
       // Step-up: once the feet are well off the ground (roof run or
       // mid-jump), an edge rising less than 1.1 above them is stepped onto
-      // silently instead of killing — deterministic for every real pairing
+      // silently instead of killing - deterministic for every real pairing
       // (cars 1.17–1.47, box truck ~1.5, ambulance ~1.94 → worst roof-to-
       // roof rise ~0.77). Applies to any solid obstacle, so the crash set
       // is walkable too; 'over' hitboxes float in the air and are excluded.
@@ -10990,7 +10982,7 @@ const updateRunner = (delta) => {
         continue;
       }
       // Side bump: the player is still travelling sideways into the target
-      // lane and the obstacle sits in that lane — a frontal hit stays fatal.
+      // lane and the obstacle sits in that lane - a frontal hit stays fatal.
       const laneX = activeLanes()[currentLane];
       const sideBump =
         Math.abs(player.position.x - laneX) > 0.35 &&
@@ -11003,7 +10995,7 @@ const updateRunner = (delta) => {
         }
         continue;
       }
-      // Zone 2: rear-ending a low car ahead is survivable — it honks and
+      // Zone 2: rear-ending a low car ahead is survivable - it honks and
       // brakes, and we shed speed instead of crashing. Trucks and oncoming
       // traffic stay fatal.
       if (
@@ -11021,7 +11013,7 @@ const updateRunner = (delta) => {
         driveTargetSpeed = Math.min(driveTargetSpeed, shedSpeed);
         // The honked car pulls over to the neighbouring lane afterwards.
         // Without this, gassing into the same car again braked BOTH cars by
-        // 25% every 900ms — a decay spiral toward standstill where the gas
+        // 25% every 900ms - a decay spiral toward standstill where the gas
         // pedal seemed dead (only a lane change escaped it, and right after
         // the carjack restart at speed 2 it was easy to fall into).
         if (obstacle.userData.driftTo === undefined) {
@@ -11099,7 +11091,7 @@ const updateRunner = (delta) => {
     camera.rotation.z += player.rotation.z * 0.5;
   } else {
     // Zone 1+2 chase cam, Subway-Surfers style (matched against the
-    // reference capture frame by frame): anchored to the RESTING height —
+    // reference capture frame by frame): anchored to the RESTING height -
     // jumping/sliding never moves the camera. A lane change is nothing but
     // a smooth lateral glide FULLY into the new lane; the camera keeps
     // looking straight down the track (lookAt shares the camera x), so
@@ -11111,7 +11103,7 @@ const updateRunner = (delta) => {
     const chaseZ = player.position.z + Math.cos(0.35) * chaseDist;
     // Normal jumps (apex ~2.6 m at v=12/g=-28) leave the camera alone; only
     // anything beyond that (trampoline bounce off a car roof) slowly pulls
-    // it up. Cam AND lookAt rise by the same amount — the view glides up
+    // it up. Cam AND lookAt rise by the same amount - the view glides up
     // without tilting and sinks back after landing.
     const excessY = Math.max(0, player.position.y - restY - 2.6);
     chaseCamLift = THREE.MathUtils.damp(chaseCamLift, excessY, 4, delta);
@@ -11139,7 +11131,7 @@ const updateRunner = (delta) => {
 
 const startCrash = () => {
   // Zone 2 second chance: the first wreck ejects the character instead of
-  // ending the run — they steal a parked car at the left curb and drive on.
+  // ending the run - they steal a parked car at the left curb and drive on.
   if (finalePhase.value === 'drive' && !rampTriggered && !driveLifeUsed) {
     ejectFromCar();
     return;
@@ -11158,7 +11150,7 @@ const animate = (time) => {
   animationId = requestAnimationFrame(animate);
   // FPS cap: rAF keeps firing at display refresh, surplus ticks return
   // early. lastTime is untouched on a skipped tick, so the next executed
-  // frame sees the full accumulated delta — game logic is delta-based and
+  // frame sees the full accumulated delta - game logic is delta-based and
   // doesn't care. The -1ms slack absorbs vsync timestamp jitter.
   if (fpsCap.value > 0) {
     const interval = 1000 / fpsCap.value;
@@ -11166,7 +11158,7 @@ const animate = (time) => {
     lastCapTick = time - ((time - lastCapTick) % interval);
   }
   // Clamp in BOTH directions: the first rAF timestamp can lie behind
-  // lastTime (different time origin) — a negative delta makes damp()
+  // lastTime (different time origin) - a negative delta makes damp()
   // extrapolate backwards (e.g. music duck below 0 → volume exception).
   const rawDelta = Math.max(0, (time - lastTime) / 1000 || 0);
   const delta = Math.min(0.05, rawDelta);
@@ -11177,7 +11169,7 @@ const animate = (time) => {
   measurePerf(rawDelta);
 
   // Obstacle warmup parked beyond the fog: after a few rendered frames the
-  // GPU has everything — stash the instances into the pools.
+  // GPU has everything - stash the instances into the pools.
   if (warmupGroup) {
     warmupFramesLeft -= 1;
     if (warmupFramesLeft <= 0) {
@@ -11186,7 +11178,7 @@ const animate = (time) => {
   }
 
   // Offline-cooldown bookkeeping: while a run is live, re-stamp "run ended"
-  // every few seconds. A force-closed app fires no events at all — the last
+  // every few seconds. A force-closed app fires no events at all - the last
   // stamp then dates the kill to within ~8s, so the 5-minute offline window
   // starts at the moment the app died, exactly as intended.
   if ((state.value === 'running' || state.value === 'paused') && time - lastRunStampAt > 8000) {
@@ -11229,7 +11221,7 @@ const animate = (time) => {
       spawnBurst(player.position.clone(), ['gold', 'skin'], 14, 6);
     }
     if (bumpShakeTimer > 0) {
-      // Reference cam has zero shake — keep the timer for gameplay logic but
+      // Reference cam has zero shake - keep the timer for gameplay logic but
       // never wobble the camera.
       bumpShakeTimer -= delta;
     }
@@ -11251,7 +11243,7 @@ const animate = (time) => {
       // the free upper half. Bigger subjects need more camera distance.
       const kind = previewCar ? previewKind : 'runner';
       // Portrait: the dock hides the bottom ~55% of the screen, so the
-      // look target sits far BELOW the subject — that tilts the camera
+      // look target sits far BELOW the subject - that tilts the camera
       // down and floats the subject in the visible upper half.
       const frames = {
         runner: portrait
@@ -11293,7 +11285,6 @@ const animate = (time) => {
   }
   if (state.value === 'crashing') {
     crashTimer -= delta;
-    // Slow dolly toward the wreck while the debris hangs in slow motion.
     camera.position.y = THREE.MathUtils.damp(camera.position.y, 3.1, 2.0, delta);
     camera.position.z = THREE.MathUtils.damp(camera.position.z, 6.4, 2.0, delta);
     if (player) {
@@ -11309,7 +11300,6 @@ const animate = (time) => {
   }
 
   if (state.value !== 'paused') {
-    // Crash debris floats in slow motion for the drama.
     updateParticles(state.value === 'crashing' ? delta * 0.35 : delta);
     updateShootingStars(delta);
   }
@@ -11395,7 +11385,7 @@ const handleVisibility = () => {
 };
 
 // Alt-tab pauses too: an unfocused window stays "visible", but rAF keeps
-// running — without auto-pause the runner sprints to his death.
+// running - without auto-pause the runner sprints to his death.
 const handleWindowBlur = () => {
   pauseRun();
 };
@@ -11414,7 +11404,7 @@ onMounted(() => {
   // pointerUP, not down: on touch devices pointerdown does not count as a
   // user activation (Chrome grants it on pointerup/touchend), so play()
   // rejected on the very first tap. Permanent listener: every further tap
-  // retries until music actually starts — a no-op afterwards.
+  // retries until music actually starts - a no-op afterwards.
   pointerUnlockHandler = () => unlockAudio();
   window.addEventListener('pointerup', pointerUnlockHandler);
   document.addEventListener('visibilitychange', handleVisibility);
@@ -11425,7 +11415,7 @@ onMounted(() => {
   loadPlaneModel();
   // Prewarm lazily-built assets in the menu instead of mid-run: obstacle
   // materials/geometries and the gantry ad canvases otherwise get created
-  // (and GPU-uploaded) in the frame their first spawn scrolls in — one of
+  // (and GPU-uploaded) in the frame their first spawn scrolls in - one of
   // the "single hard stutter" sources on mobile.
   getObstacleAssets();
   getGantryAdTextures();
@@ -11437,7 +11427,7 @@ onMounted(() => {
   loadLeaderboard();
   resetRun();
   animate(0);
-  // AdMob (native Google-Play build only — no-op on web/PWA).
+  // AdMob (native Google-Play build only - no-op on web/PWA).
   initAds();
   // Hardware back button (native app only; browsers never fire this).
   if (adsSupported()) {
@@ -12242,7 +12232,7 @@ onBeforeUnmount(() => {
   animation: damageFlash 0.45s ease-out forwards;
 }
 
-/* Mothership blast / wormhole white-out — opacity is driven from script. */
+/* Mothership blast / wormhole white-out - opacity is driven from script. */
 .void-flash {
   position: absolute;
   inset: 0;
@@ -12621,7 +12611,7 @@ onBeforeUnmount(() => {
 }
 
 /* Top-right corner: the audio pill, tucked high so it clears the hero.
-   Above the pause overlay (z 7) — the pill stays clickable while paused. */
+   Above the pause overlay (z 7) - the pill stays clickable while paused. */
 .corner-hud {
   position: absolute;
   top: calc(10px + env(safe-area-inset-top));
@@ -12927,7 +12917,7 @@ onBeforeUnmount(() => {
 }
 
 /* Action-labelled toggle: red "Remove" while the track is in the playlist,
-   green "Add" while it is out — the label names the click, not the state. */
+   green "Add" while it is out - the label names the click, not the state. */
 .audio-toggle {
   min-width: 62px;
   height: 24px;
@@ -13119,7 +13109,7 @@ onBeforeUnmount(() => {
   transition: background 0.2s ease, color 0.2s ease;
 }
 
-/* Seven small buttons (Auto…240) — allow a second row on narrow screens. */
+/* Seven small buttons (Auto…240) - allow a second row on narrow screens. */
 .fps-toggle {
   flex-wrap: wrap;
 }
@@ -13203,7 +13193,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  /* Scrolls, but shows no bar — the bouncing "Ranking" hint is the cue. */
+  /* Scrolls, but shows no bar - the bouncing "Ranking" hint is the cue. */
   scrollbar-width: none;
 }
 
@@ -13288,7 +13278,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Ranking card below the fold — same glass card look as menu-screen-card. */
+/* Ranking card below the fold - same glass card look as menu-screen-card. */
 .classic-ranks {
   flex: none;
   background: linear-gradient(180deg, rgba(13, 19, 36, 0.92), rgba(8, 12, 24, 0.92));
@@ -13308,7 +13298,7 @@ onBeforeUnmount(() => {
 }
 
 /* Light readability scrim: just enough for the label at the top and the
-   hint at the bottom — the stage art itself stays vivid. */
+   hint at the bottom - the stage art itself stays vivid. */
 .mode-card-bg::after {
   content: '';
   position: absolute;
@@ -13346,7 +13336,7 @@ onBeforeUnmount(() => {
   clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
 }
 
-/* Narrow column: the toggle must never overflow the glass panel — shrink
+/* Narrow column: the toggle must never overflow the glass panel - shrink
    the labels instead and keep each on one line. */
 .mode-card-middle .difficulty-row {
   width: 100%;
@@ -13568,7 +13558,7 @@ onBeforeUnmount(() => {
   flex: none;
   scroll-snap-align: center;
   /* Hard detent: a fling settles on the NEXT tile instead of sailing two
-     or three past — with 4 stages, paging one per swipe is the safe feel. */
+     or three past - with 4 stages, paging one per swipe is the safe feel. */
   scroll-snap-stop: always;
   width: min(64vw, 250px);
   height: min(60vh, 430px);
@@ -13713,7 +13703,7 @@ onBeforeUnmount(() => {
   transform: scale(0.9);
 }
 
-/* Locked tiles grey out — the trophy stays full color and clickable. */
+/* Locked tiles grey out - the trophy stays full color and clickable. */
 .endless-tile.locked .endless-trophy {
   color: #ffd76b;
 }
@@ -14095,7 +14085,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  /* Four tabs + coin balance overflow narrow screens — wrap instead of
+  /* Four tabs + coin balance overflow narrow screens - wrap instead of
      getting clipped by the dock's clip-path. */
   flex-wrap: wrap;
   row-gap: 6px;
@@ -14987,7 +14977,7 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  /* Phones: the coin chip + music pill own the very top strip — the hero
+  /* Phones: the coin chip + music pill own the very top strip - the hero
      starts below them, and the flex layout shortens the mode cards by the
      same amount. */
   .menu-hero {
